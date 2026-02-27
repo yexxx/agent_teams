@@ -9,23 +9,23 @@ def test_stage_doc_paths() -> None:
     root = Path('D:/workspace/agent_teams')
     run_id = 'run123'
 
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_builder')).endswith(
+    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_spec')).endswith(
         '.agent_teams/stage_docs/run123/spec.md'.replace('/', '\\')
     )
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='design_builder')).endswith(
+    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design')).endswith(
         '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
     )
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='verify')).endswith(
+    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify')).endswith(
         '.agent_teams/stage_docs/run123/verify.md'.replace('/', '\\')
     )
 
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='design_builder')).endswith(
+    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design')).endswith(
         '.agent_teams/stage_docs/run123/spec.md'.replace('/', '\\')
     )
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='coder')).endswith(
+    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_coder')).endswith(
         '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
     )
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='verify')).endswith(
+    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify')).endswith(
         '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
     )
 

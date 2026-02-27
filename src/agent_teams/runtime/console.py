@@ -7,10 +7,10 @@ _OPEN_MODEL_STREAM_ROLE_ID: str | None = None
 
 ROLE_LABELS = {
     'coordinator_agent': 'Coordinator Agent',
-    'spec_builder': 'Spec Builder',
-    'design_builder': 'Design Builder',
-    'coder': 'Coder',
-    'verify': 'Verify',
+    'spec_spec': 'Spec Spec',
+    'spec_design': 'Spec Design',
+    'spec_coder': 'Spec Coder',
+    'spec_verify': 'Spec Verify',
 }
 
 

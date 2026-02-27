@@ -16,6 +16,7 @@ from agent_teams.state.task_repo import TaskRepository
 
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
+    from agent_teams.roles.registry import RoleRegistry
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class ToolDeps:
     session_id: str
     instance_id: str
     role_id: str
+    role_registry: 'RoleRegistry'
     task_execution_service: 'TaskExecutionService'
 
 

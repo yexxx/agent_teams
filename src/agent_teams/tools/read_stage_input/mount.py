@@ -11,19 +11,24 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
     def read_stage_input(ctx) -> str:
         def _action() -> str:
-            if ctx.deps.role_id == 'spec_builder':
+            if ctx.deps.role_id == 'spec_spec':
                 task = ctx.deps.task_repo.get(ctx.deps.task_id)
                 parent = task.envelope.parent_instruction or ''
                 return f'Requirement:\n{task.envelope.objective}\n\nParentInstruction:\n{parent}'
 
-            path = previous_stage_doc_path(
-                workspace_root=ctx.deps.workspace_root,
-                run_id=ctx.deps.run_id,
-                role_id=ctx.deps.role_id,
-            )
-            if not path.exists() or not path.is_file():
-                raise KeyError(f'Previous stage document not found: {path}')
-            return path.read_text(encoding='utf-8')
+            try:
+                path = previous_stage_doc_path(
+                    workspace_root=ctx.deps.workspace_root,
+                    run_id=ctx.deps.run_id,
+                    role_id=ctx.deps.role_id,
+                )
+                if path.exists() and path.is_file():
+                    return path.read_text(encoding='utf-8')
+            except ValueError:
+                pass
+
+            task = ctx.deps.task_repo.get(ctx.deps.task_id)
+            return f'No previous stage document available.\n\nTaskObjective:\n{task.envelope.objective}\n\nParentInstruction:\n{task.envelope.parent_instruction or "None"}'
 
         return execute_tool(
             ctx,

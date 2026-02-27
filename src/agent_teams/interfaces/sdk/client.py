@@ -85,6 +85,7 @@ class AgentTeamsApp:
                     workspace_root=Path.cwd(),
                     tool_registry=tool_registry,
                     allowed_tools=role.tools,
+                    role_registry=role_registry,
                     task_execution_service=task_execution_service,
                 )
             return provider

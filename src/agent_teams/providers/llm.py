@@ -18,6 +18,7 @@ from agent_teams.tools.runtime import ToolDeps
 
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
+    from agent_teams.roles.registry import RoleRegistry
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class OpenAICompatibleProvider(LLMProvider):
         workspace_root: Path,
         tool_registry: ToolRegistry,
         allowed_tools: tuple[str, ...],
+        role_registry: 'RoleRegistry',
         task_execution_service: TaskExecutionService,
     ) -> None:
         self._config = config
@@ -70,6 +72,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._workspace_root = workspace_root
         self._tool_registry = tool_registry
         self._allowed_tools = allowed_tools
+        self._role_registry = role_registry
         self._task_execution_service = task_execution_service
 
     def generate(self, request: LLMRequest) -> str:
@@ -111,6 +114,7 @@ class OpenAICompatibleProvider(LLMProvider):
             session_id=request.session_id,
             instance_id=request.instance_id,
             role_id=request.role_id,
+            role_registry=self._role_registry,
             task_execution_service=self._task_execution_service,
         )
         printed_any = False

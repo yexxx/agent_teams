@@ -6,7 +6,9 @@ __pycache__/
 *.egg-info/
 .idea/
 
-.agent_teams
+.agent_teams/stage_docs
+.agent_teams/.env
+.agent_teams/*.db
 
 tmp.db
 tmp.db-journal

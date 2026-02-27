@@ -63,3 +63,41 @@ def stage_from_scope(scope: tuple[str, ...]) -> str | None:
         if item.startswith('stage:'):
             return item.split(':', 1)[1]
     return None
+
+
+def get_tasks_from_graph(graph: dict[str, object]) -> dict[str, dict[str, object]]:
+    tasks = graph.get('tasks')
+    if not isinstance(tasks, dict):
+        return {}
+    return tasks
+
+
+def get_task_by_name(graph: dict[str, object], task_name: str) -> dict[str, object] | None:
+    tasks = get_tasks_from_graph(graph)
+    return tasks.get(task_name)
+
+
+def get_ready_tasks(graph: dict[str, object], task_records: dict[str, TaskRecord]) -> list[tuple[str, dict[str, object]]]:
+    tasks = get_tasks_from_graph(graph)
+    ready = []
+    for task_name, task_info in tasks.items():
+        task_id = task_info.get('task_id')
+        if not task_id:
+            continue
+        record = task_records.get(task_id)
+        if record is None:
+            continue
+        if record.status != TaskStatus.CREATED:
+            continue
+        depends_on = task_info.get('depends_on', [])
+        if not isinstance(depends_on, list):
+            depends_on = []
+        dep_ids = [tasks.get(dep, {}).get('task_id', '') for dep in depends_on if dep in tasks]
+        all_deps_completed = all(
+            task_records.get(dep_id).status == TaskStatus.COMPLETED
+            for dep_id in dep_ids
+            if dep_id in task_records
+        )
+        if all_deps_completed:
+            ready.append((task_name, task_info))
+    return ready

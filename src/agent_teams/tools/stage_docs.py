@@ -3,15 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 STAGE_ROLE_TO_FILE = {
-    'spec_builder': 'spec.md',
-    'design_builder': 'design.md',
-    'verify': 'verify.md',
+    'spec_spec': 'spec.md',
+    'spec_design': 'design.md',
+    'spec_verify': 'verify.md',
 }
 
 PREVIOUS_STAGE_FILE = {
-    'design_builder': 'spec.md',
-    'coder': 'design.md',
-    'verify': 'design.md',
+    'spec_design': 'spec.md',
+    'spec_coder': 'design.md',
+    'spec_verify': 'design.md',
 }
 
 

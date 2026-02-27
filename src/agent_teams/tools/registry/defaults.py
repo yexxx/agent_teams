@@ -4,11 +4,13 @@ from agent_teams.tools.create_subagent import TOOL_SPEC as CREATE_SUBAGENT
 from agent_teams.tools.create_task import TOOL_SPEC as CREATE_TASK
 from agent_teams.tools.create_workflow_graph import TOOL_SPEC as CREATE_WORKFLOW_GRAPH
 from agent_teams.tools.dispatch_ready_tasks import TOOL_SPEC as DISPATCH_READY_TASKS
+from agent_teams.tools.echo import TOOL_SPEC as ECHO
 from agent_teams.tools.emit_event import TOOL_SPEC as EMIT_EVENT
 from agent_teams.tools.get_workflow_status import TOOL_SPEC as GET_WORKFLOW_STATUS
 from agent_teams.tools.glob import TOOL_SPEC as GLOB
 from agent_teams.tools.grep import TOOL_SPEC as GREP
 from agent_teams.tools.list_tasks import TOOL_SPEC as LIST_TASKS
+from agent_teams.tools.list_available_roles import TOOL_SPEC as LIST_AVAILABLE_ROLES
 from agent_teams.tools.manage_state import TOOL_SPEC as MANAGE_STATE
 from agent_teams.tools.query_task import TOOL_SPEC as QUERY_TASK
 from agent_teams.tools.read import TOOL_SPEC as READ
@@ -31,6 +33,7 @@ def build_default_registry() -> ToolRegistry:
             QUERY_TASK,
             VERIFY_TASK,
             LIST_TASKS,
+            LIST_AVAILABLE_ROLES,
             CREATE_SUBAGENT,
             MANAGE_STATE,
             EMIT_EVENT,
@@ -42,5 +45,6 @@ def build_default_registry() -> ToolRegistry:
             READ_STAGE_INPUT,
             WRITE_STAGE_DOC,
             SHELL,
+            ECHO,
         )
     )

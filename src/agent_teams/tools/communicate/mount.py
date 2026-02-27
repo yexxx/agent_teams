@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from json import dumps
+from typing import Literal
 
 from pydantic_ai import Agent
 
@@ -11,7 +12,7 @@ from agent_teams.tools.tool_helpers import emit_tool_call, emit_tool_result, wit
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def communicate(ctx, mode: str, message: str, recipient_instance_id: str | None = None) -> str:
+    def communicate(ctx, mode: Literal['unicast', 'broadcast'], message: str, recipient_instance_id: str | None = None) -> str:
         emit_tool_call(ctx, 'communicate')
         running = ctx.deps.agent_repo.list_running(ctx.deps.run_id)
         running_ids = {item.instance_id for item in running}

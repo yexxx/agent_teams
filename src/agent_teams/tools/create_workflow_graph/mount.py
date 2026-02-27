@@ -144,11 +144,11 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                           Use "custom" when you want to define your own tasks.
             objective: The goal/objective of the workflow.
             tasks: JSON string array of task specifications. Each task needs: task_name, objective, role_id, depends_on.
-                   Only needed when workflow_type is "custom".
+                   Only needed when workflow_type is "custom". Optional fields: scope, dod, parent_instruction.
             parent_instruction: Optional instruction passed to child tasks.
 
         Returns:
-            Workflow created successfully with task IDs.
+            Workflow created successfully with task IDs. Use the returned workflow_id in dispatch_ready_tasks.
         """
         def _action() -> str:
             parsed_tasks = _parse_tasks_json(tasks)
@@ -159,9 +159,10 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                     {
                         'ok': True,
                         'created': False,
+                        'message': 'A workflow already exists for this task. Use dispatch_ready_tasks to continue, or start a new run for a fresh workflow.',
                         'workflow_id': existing.get('workflow_id'),
-                        'trace_id': ctx.deps.trace_id,
-                        'tasks': _format_tasks_for_response(existing),
+                        'workflow_type': existing.get('workflow_type'),
+                        'existing_tasks': _format_tasks_for_response(existing),
                     },
                     ensure_ascii=False,
                 )
@@ -177,12 +178,18 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             else:
                 if not parsed_tasks:
                     raise ValueError(
-                        'tasks must be provided when workflow_type is "custom". '
-                        'Use list_available_roles to see available roles.'
+                        'tasks is required for custom workflow. '
+                        'Example: [{"task_name": "code", "objective": "Write hello.py", "role_id": "spec_coder", "depends_on": []}]'
                     )
 
-            _validate_role_depends(ctx.deps.role_registry, parsed_tasks)
-            _detect_cycle(parsed_tasks)
+            try:
+                _validate_role_depends(ctx.deps.role_registry, parsed_tasks)
+                _detect_cycle(parsed_tasks)
+            except ValueError as e:
+                raise ValueError(
+                    f'Workflow validation failed: {str(e)}. '
+                    'Fix the issues and retry create_workflow_graph with corrected tasks.'
+                )
 
             name_to_task_id: dict[str, str] = {}
 
@@ -226,16 +233,25 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             }
             save_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id, graph=graph)
 
+            task_list = [
+                {
+                    'task_name': spec.task_name,
+                    'task_id': name_to_task_id[spec.task_name],
+                    'role_id': spec.role_id,
+                    'depends_on': spec.depends_on,
+                }
+                for spec in parsed_tasks
+            ]
+
             return json.dumps(
                 {
                     'ok': True,
                     'created': True,
+                    'message': f'Workflow created successfully with {len(task_list)} tasks. Use workflow_id="{workflow_id}" in dispatch_ready_tasks to execute.',
                     'workflow_id': workflow_id,
-                    'trace_id': ctx.deps.trace_id,
-                    'tasks': {
-                        spec.task_name: {'task_id': name_to_task_id[spec.task_name], 'role_id': spec.role_id}
-                        for spec in parsed_tasks
-                    },
+                    'workflow_type': workflow_type,
+                    'tasks': task_list,
+                    'next_action': 'Call dispatch_ready_tasks with this workflow_id to start executing tasks.',
                 },
                 ensure_ascii=False,
             )
@@ -247,7 +263,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 'workflow_type': workflow_type,
                 'objective_len': len(objective),
                 'has_tasks': tasks is not None,
-                'task_count': len(tasks) if tasks else 0,
+                'task_count': 4 if workflow_type == 'spec_flow' else (len(json.loads(tasks)) if tasks else 0),
                 'has_parent_instruction': bool(parent_instruction),
             },
             action=_action,

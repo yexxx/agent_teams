@@ -83,6 +83,17 @@ class TaskRepository:
         rows = self._conn.execute('SELECT * FROM tasks ORDER BY created_at ASC').fetchall()
         return tuple(self._to_record(row) for row in rows)
 
+    def list_by_trace(self, trace_id: str) -> tuple[TaskRecord, ...]:
+        rows = self._conn.execute(
+            '''
+            SELECT * FROM tasks
+            WHERE json_extract(envelope_json, '$.trace_id')=?
+            ORDER BY created_at ASC
+            ''',
+            (trace_id,),
+        ).fetchall()
+        return tuple(self._to_record(row) for row in rows)
+
     def _to_record(self, row: sqlite3.Row) -> TaskRecord:
         return TaskRecord(
             envelope=TaskEnvelope.model_validate_json(str(row['envelope_json'])),

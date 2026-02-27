@@ -47,6 +47,7 @@ class TaskEnvelope(BaseModel):
     parent_task_id: str | None = None
     trace_id: str = Field(min_length=1)
     objective: str = Field(min_length=1)
+    parent_instruction: str | None = None
     scope: tuple[str, ...] = Field(min_length=1)
     dod: tuple[str, ...] = Field(min_length=1)
     verification: VerificationPlan

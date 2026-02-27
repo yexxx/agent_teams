@@ -36,6 +36,7 @@ Act as final quality gate and confirm whether implementation satisfies requireme
 - Keep findings prioritized by severity.
 - Use `read_stage_input` to read the previous stage document.
 - Use `write_stage_doc` to publish exactly one verification document.
+- If code stage has partial failures, report FAIL explicitly and list blocking items first.
 
 # Output Contract
 Use the exact sections:

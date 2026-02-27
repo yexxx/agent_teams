@@ -33,6 +33,7 @@ Produce a complete and actionable requirement specification for the requested fe
 - Avoid vague language; every requirement should be testable.
 - Use `read_stage_input` to load requirement input.
 - Use `write_stage_doc` to publish exactly one stage document.
+- If the requirement says this is a demo task, explicitly mark it as demo scope in Goals and Scope.
 
 # Output Contract
 Use the exact sections:

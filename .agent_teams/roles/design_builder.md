@@ -26,6 +26,7 @@ Turn specification into a concrete technical design ready for implementation.
 - Define data model and interface contracts.
 - Define key workflows and error handling.
 - Define test strategy and rollout considerations.
+- Produce a machine-readable module plan for code parallelization.
 
 # Constraints
 - Do not rewrite business requirements.
@@ -33,6 +34,7 @@ Turn specification into a concrete technical design ready for implementation.
 - Prefer simple, maintainable solutions.
 - Use `read_stage_input` to read the previous stage document.
 - Use `write_stage_doc` to publish exactly one stage document.
+- The stage is complete only after one successful `write_stage_doc` call.
 
 # Output Contract
 Use the exact sections:
@@ -43,3 +45,4 @@ Use the exact sections:
 5. Error Handling
 6. Testing Strategy
 7. Rollout / Migration Notes
+8. MODULE_PLAN (JSON code block with `modules[]`, each including `module_id`, `files`, `complexity`, `scope`)

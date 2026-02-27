@@ -36,13 +36,17 @@ from agent_teams.tools.registry.defaults import build_default_registry
 from agent_teams.workflow.spec import WorkflowSpec
 
 
+def _get_project_root() -> Path:
+    return Path(__file__).parent.parent.parent.parent.parent
+
+
 class AgentTeamsApp:
     def __init__(
         self,
         roles_dir: Path | None = None,
         db_path: Path | None = None,
         model_config: ModelEndpointConfig | None = None,
-        config_dir: Path = Path('.agent_teams'),
+        config_dir: Path = _get_project_root() / '.agent_teams',
         debug: bool = False,
     ) -> None:
         set_debug(debug)

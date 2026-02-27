@@ -176,6 +176,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                     'executed': executed,
                     'failed': failed,
                     'converged_stage': converged_stage,
+                    'next_action': _next_action(converged_stage, failed),
                     'remaining_budget': max(0, bounded_dispatch - len(dispatched)),
                     'code_batch': {
                         'total': len([item for item in graph.get('code_tasks', []) if isinstance(item, dict)]),
@@ -192,3 +193,17 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             args_summary={'workflow_id': workflow_id, 'max_dispatch': max_dispatch},
             action=_action,
         )
+
+
+def _next_action(converged_stage: str, failed: list[dict[str, str]]) -> str:
+    if failed:
+        return 'review_failures'
+    if converged_stage in {'verify_completed'}:
+        return 'finalize'
+    if converged_stage.startswith('waiting_'):
+        return 'wait_or_retry_dispatch'
+    if converged_stage.startswith('code_materialized'):
+        return 'dispatch_again'
+    if converged_stage.endswith('_executed'):
+        return 'dispatch_again'
+    return 'inspect_status'

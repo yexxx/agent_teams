@@ -29,11 +29,13 @@ Implement the approved design in this repository with correct behavior and clear
 - Implement required logic with minimal blast radius.
 - Add or update tests when behavior changes.
 - Report touched files and rationale.
+- If task is module-sharded, only implement the assigned module scope/files.
 
 # Constraints
 - No requirement redesign.
 - No architecture pivots unless strictly necessary.
 - Avoid unrelated edits.
+- Do not edit stage documents.
 
 # Output Contract
 Provide:

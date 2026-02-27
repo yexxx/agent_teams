@@ -9,9 +9,12 @@ from agent_teams.tools.list_tasks import TOOL_SPEC as LIST_TASKS
 from agent_teams.tools.manage_state import TOOL_SPEC as MANAGE_STATE
 from agent_teams.tools.query_task import TOOL_SPEC as QUERY_TASK
 from agent_teams.tools.read import TOOL_SPEC as READ
+from agent_teams.tools.read_stage_input import TOOL_SPEC as READ_STAGE_INPUT
 from agent_teams.tools.registry.registry import ToolRegistry
+from agent_teams.tools.shell import TOOL_SPEC as SHELL
 from agent_teams.tools.verify_task import TOOL_SPEC as VERIFY_TASK
 from agent_teams.tools.write import TOOL_SPEC as WRITE
+from agent_teams.tools.write_stage_doc import TOOL_SPEC as WRITE_STAGE_DOC
 
 
 def build_default_registry() -> ToolRegistry:
@@ -30,5 +33,8 @@ def build_default_registry() -> ToolRegistry:
             READ,
             WRITE,
             COMMUNICATE,
+            READ_STAGE_INPUT,
+            WRITE_STAGE_DOC,
+            SHELL,
         )
     )

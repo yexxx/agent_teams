@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
@@ -66,6 +67,10 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def generate(self, request: LLMRequest) -> str:
         tool_rules = f'Available tools: {", ".join(self._allowed_tools)}.'
+        print(
+            f'[llm:start] role={request.role_id} run={request.run_id} '
+            f'task={request.task_id} instance={request.instance_id}'
+        )
         self._run_event_hub.publish(
             RunEvent(
                 run_id=request.run_id,
@@ -99,17 +104,62 @@ class OpenAICompatibleProvider(LLMProvider):
             instance_id=request.instance_id,
             role_id=request.role_id,
         )
-        result = agent.run_sync(request.user_prompt, deps=deps)
-        text = self._extract_text(result.response)
-        self._run_event_hub.publish(
-            RunEvent(
-                run_id=request.run_id,
-                trace_id=request.trace_id,
-                task_id=request.task_id,
-                event_type=RunEventType.TEXT_DELTA,
-                payload_json=dumps({'text': text}),
-            )
+        printed_any = False
+        emitted_text_chunks: list[str] = []
+
+        async def _event_stream_handler(_ctx, events: AsyncIterable[object]) -> None:
+            nonlocal printed_any
+            async for event in events:
+                kind = getattr(event, 'event_kind', None)
+                text: str | None = None
+                if kind == 'part_start':
+                    part = getattr(event, 'part', None)
+                    maybe = getattr(part, 'content', None)
+                    if isinstance(maybe, str) and maybe:
+                        text = maybe
+                elif kind == 'part_delta':
+                    delta = getattr(event, 'delta', None)
+                    maybe = getattr(delta, 'content_delta', None)
+                    if isinstance(maybe, str) and maybe:
+                        text = maybe
+
+                if not text:
+                    continue
+
+                print(text, end='', flush=True)
+                printed_any = True
+                emitted_text_chunks.append(text)
+                self._run_event_hub.publish(
+                    RunEvent(
+                        run_id=request.run_id,
+                        trace_id=request.trace_id,
+                        task_id=request.task_id,
+                        event_type=RunEventType.TEXT_DELTA,
+                        payload_json=dumps({'text': text}),
+                    )
+                )
+
+        result = agent.run_sync(
+            request.user_prompt,
+            deps=deps,
+            event_stream_handler=_event_stream_handler,
         )
+        if printed_any:
+            print()
+
+        text = self._extract_text(result.response)
+        if not text and emitted_text_chunks:
+            text = ''.join(emitted_text_chunks)
+        elif text and not emitted_text_chunks:
+            self._run_event_hub.publish(
+                RunEvent(
+                    run_id=request.run_id,
+                    trace_id=request.trace_id,
+                    task_id=request.task_id,
+                    event_type=RunEventType.TEXT_DELTA,
+                    payload_json=dumps({'text': text}),
+                )
+            )
         self._run_event_hub.publish(
             RunEvent(
                 run_id=request.run_id,
@@ -118,6 +168,10 @@ class OpenAICompatibleProvider(LLMProvider):
                 event_type=RunEventType.MODEL_STEP_FINISHED,
                 payload_json='{}',
             )
+        )
+        print(
+            f'[llm:done] role={request.role_id} run={request.run_id} '
+            f'task={request.task_id} chars={len(text)}'
         )
         return text
 

@@ -11,11 +11,8 @@ constraints:
   - Keep design implementable and testable.
   - Avoid speculative over-engineering.
 tools:
-  - grep
-  - glob
-  - read
-  - write
-  - communicate
+  - read_stage_input
+  - write_stage_doc
 model_profile: default
 ---
 # Role
@@ -34,6 +31,8 @@ Turn specification into a concrete technical design ready for implementation.
 - Do not rewrite business requirements.
 - Keep design consistent with repository realities.
 - Prefer simple, maintainable solutions.
+- Use `read_stage_input` to read the previous stage document.
+- Use `write_stage_doc` to publish exactly one stage document.
 
 # Output Contract
 Use the exact sections:

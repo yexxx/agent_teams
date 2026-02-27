@@ -11,11 +11,8 @@ constraints:
   - Do not design implementation details deeply.
   - Keep requirements verifiable.
 tools:
-  - grep
-  - glob
-  - read
-  - write
-  - communicate
+  - read_stage_input
+  - write_stage_doc
 model_profile: default
 ---
 # Role
@@ -34,6 +31,8 @@ Produce a complete and actionable requirement specification for the requested fe
 - No coding.
 - No architecture deep dive.
 - Avoid vague language; every requirement should be testable.
+- Use `read_stage_input` to load requirement input.
+- Use `write_stage_doc` to publish exactly one stage document.
 
 # Output Contract
 Use the exact sections:

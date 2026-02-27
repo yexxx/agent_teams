@@ -15,7 +15,7 @@ tools:
   - glob
   - read
   - write
-  - communicate
+  - shell
 model_profile: default
 ---
 # Role

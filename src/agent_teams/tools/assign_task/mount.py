@@ -4,18 +4,25 @@ from pydantic_ai import Agent
 
 from agent_teams.core.enums import TaskStatus
 from agent_teams.tools.runtime import ToolDeps
-from agent_teams.tools.tool_helpers import emit_tool_call, emit_tool_result, with_injections
+from agent_teams.tools.tool_helpers import execute_tool
 
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
     def assign_task(ctx, task_id: str, instance_id: str) -> str:
-        emit_tool_call(ctx, 'assign_task')
-        ctx.deps.task_repo.update_status(
-            task_id=task_id,
-            status=TaskStatus.ASSIGNED,
-            assigned_instance_id=instance_id,
+        def _action() -> str:
+            # Guard against made-up instance ids from model output.
+            ctx.deps.instance_pool.get(instance_id)
+            ctx.deps.task_repo.update_status(
+                task_id=task_id,
+                status=TaskStatus.ASSIGNED,
+                assigned_instance_id=instance_id,
+            )
+            return task_id
+
+        return execute_tool(
+            ctx,
+            tool_name='assign_task',
+            args_summary={'task_id': task_id, 'instance_id': instance_id},
+            action=_action,
         )
-        result = with_injections(ctx, task_id)
-        emit_tool_result(ctx, 'assign_task')
-        return result

@@ -3,14 +3,19 @@ from __future__ import annotations
 from pydantic_ai import Agent
 
 from agent_teams.tools.runtime import ToolDeps
-from agent_teams.tools.tool_helpers import emit_tool_call, emit_tool_result, with_injections
+from agent_teams.tools.tool_helpers import execute_tool
 
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
     def query_task(ctx, task_id: str) -> str:
-        emit_tool_call(ctx, 'query_task')
-        record = ctx.deps.task_repo.get(task_id)
-        result = with_injections(ctx, record.model_dump_json())
-        emit_tool_result(ctx, 'query_task')
-        return result
+        def _action() -> str:
+            record = ctx.deps.task_repo.get(task_id)
+            return record.model_dump_json()
+
+        return execute_tool(
+            ctx,
+            tool_name='query_task',
+            args_summary={'task_id': task_id},
+            action=_action,
+        )

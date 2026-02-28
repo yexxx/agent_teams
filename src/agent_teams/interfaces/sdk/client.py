@@ -4,8 +4,8 @@ from json import dumps
 from pathlib import Path
 from threading import Thread
 
-from agent_teams.agents.instance_pool import InstancePool
-from agent_teams.agents.meta_agent import MetaAgent
+from agent_teams.agents.management.instance_pool import InstancePool
+from agent_teams.agents.core.meta_agent import MetaAgent
 from agent_teams.coordination.coordinator import CoordinatorGraph
 from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.core.config import load_runtime_config

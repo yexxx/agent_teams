@@ -1,4 +1,4 @@
-from agent_teams.agents.instance_pool import InstancePool
+from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.core.enums import InstanceStatus
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from agent_teams.agents.instance_pool import InstancePool
+from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.core.enums import EventType, InstanceStatus, ScopeType, TaskStatus
 from agent_teams.core.ids import new_task_id, new_trace_id
 from agent_teams.core.models import EventEnvelope, IntentInput, RoleDefinition, TaskEnvelope, VerificationPlan

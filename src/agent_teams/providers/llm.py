@@ -12,7 +12,7 @@ from agent_teams.runtime.console import close_model_stream, is_debug, log_debug,
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.state.agent_repo import AgentInstanceRepository
-from agent_teams.tools.agent_builder import build_collaboration_agent
+from agent_teams.agents.builders.collaboration_agent import build_collaboration_agent
 from agent_teams.tools.registry.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps
 

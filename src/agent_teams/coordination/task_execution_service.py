@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from agent_teams.agents.instance_pool import InstancePool
-from agent_teams.agents.subagent import SubAgentRunner
+from agent_teams.agents.management.instance_pool import InstancePool
+from agent_teams.agents.core.subagent import SubAgentRunner
 from agent_teams.core.enums import EventType, InstanceStatus, ScopeType, TaskStatus
 from agent_teams.core.models import EventEnvelope, RoleDefinition, ScopeRef, TaskEnvelope
 from agent_teams.events.event_bus import EventBus

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from json import dumps
+from json import dumps, loads
 from pathlib import Path
 from threading import Thread
 import uuid
+
+from pydantic_ai.messages import ModelMessagesTypeAdapter
 
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.agents.core.meta_agent import MetaAgent
@@ -26,7 +28,11 @@ from agent_teams.core.models import (
 )
 from agent_teams.state.event_log import EventLog
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
-from agent_teams.providers.llm import EchoProvider, LLMProvider, OpenAICompatibleProvider
+from agent_teams.providers.llm import (
+    EchoProvider,
+    LLMProvider,
+    OpenAICompatibleProvider,
+)
 from agent_teams.roles.registry import RoleLoader
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_event_hub import RunEventHub
@@ -50,11 +56,13 @@ class AgentTeamsApp:
         roles_dir: Path | None = None,
         db_path: Path | None = None,
         model_config: ModelEndpointConfig | None = None,
-        config_dir: Path = _get_project_root() / '.agent_teams',
+        config_dir: Path = _get_project_root() / ".agent_teams",
         debug: bool = False,
     ) -> None:
         set_debug(debug)
-        runtime = load_runtime_config(config_dir=config_dir, roles_dir=roles_dir, db_path=db_path)
+        runtime = load_runtime_config(
+            config_dir=config_dir, roles_dir=roles_dir, db_path=db_path
+        )
         effective_model_config = model_config or runtime.model_endpoint
 
         role_registry = RoleLoader().load_all(runtime.paths.roles_dir)
@@ -164,7 +172,7 @@ class AgentTeamsApp:
                 trace_id=run_id,
                 task_id=None,
                 event_type=RunEventType.RUN_STARTED,
-                payload_json=dumps({'session_id': intent.session_id}),
+                payload_json=dumps({"session_id": intent.session_id}),
             )
         )
 
@@ -187,7 +195,7 @@ class AgentTeamsApp:
                         trace_id=run_id,
                         task_id=None,
                         event_type=RunEventType.RUN_FAILED,
-                        payload_json=dumps({'error': str(exc)}),
+                        payload_json=dumps({"error": str(exc)}),
                     )
                 )
             finally:
@@ -198,14 +206,19 @@ class AgentTeamsApp:
         while True:
             event = queue.get()
             yield event
-            if event.event_type in (RunEventType.RUN_COMPLETED, RunEventType.RUN_FAILED):
+            if event.event_type in (
+                RunEventType.RUN_COMPLETED,
+                RunEventType.RUN_FAILED,
+            ):
                 self._run_event_hub.unsubscribe_all(run_id)
                 break
 
-    def inject_message(self, run_id: str, source: InjectionSource, content: str) -> InjectionMessage:
+    def inject_message(
+        self, run_id: str, source: InjectionSource, content: str
+    ) -> InjectionMessage:
         running = self._agent_repo.list_running(run_id)
         if not running:
-            raise KeyError(f'No RUNNING agent for run_id={run_id}')
+            raise KeyError(f"No RUNNING agent for run_id={run_id}")
 
         created: InjectionMessage | None = None
         for record in running:
@@ -226,14 +239,16 @@ class AgentTeamsApp:
             )
 
         if created is None:
-            raise KeyError(f'No RUNNING agent for run_id={run_id}')
+            raise KeyError(f"No RUNNING agent for run_id={run_id}")
         return created
 
     def create_workflow(self, spec: WorkflowSpec) -> str:
         self._workflows.append(spec)
         return spec.workflow_id
 
-    def create_session(self, session_id: str | None = None, metadata: dict[str, str] | None = None) -> SessionRecord:
+    def create_session(
+        self, session_id: str | None = None, metadata: dict[str, str] | None = None
+    ) -> SessionRecord:
         if not session_id:
             session_id = f"session-{uuid.uuid4().hex[:8]}"
         return self._session_repo.create(session_id=session_id, metadata=metadata)
@@ -267,8 +282,10 @@ class AgentTeamsApp:
         return self._agent_repo.list_by_session(session_id)
 
     def get_agent_messages(self, instance_id: str):
+        from pydantic_ai.messages import ModelMessagesTypeAdapter
+        import json
         history = self._message_repo.get_history(instance_id)
-        out = []
-        for msg in history:
-            out.append(msg.model_dump())
-        return out
+        # model_dump() is not on the base ModelMessage directly for the Union.
+        # Use TypeAdapter to properly dump it.
+        json_bytes = ModelMessagesTypeAdapter.dump_json(history)
+        return json.loads(json_bytes)

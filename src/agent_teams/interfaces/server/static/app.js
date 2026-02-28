@@ -347,7 +347,7 @@ function startIntentStream(promptText) {
     const es = new EventSource(url);
     state.activeEventSource = es;
 
-    function buildAgentContainer(roleId) {
+    function buildAgentContainer(roleId, targetContainer) {
         const div = document.createElement('div');
         div.className = 'message';
         div.dataset.role = roleId;
@@ -365,11 +365,16 @@ function startIntentStream(promptText) {
                 </div>
             </div>
         `;
-        els.chatMessages.appendChild(div);
+        targetContainer.appendChild(div);
         currentAgentDiv = div;
         currentAgentContent = div.querySelector('.msg-content');
         rawMarkdownBuffer = "";
-        scrollToBottom();
+
+        if (targetContainer.id && targetContainer.id.startsWith('view-')) {
+            targetContainer.scrollTop = targetContainer.scrollHeight;
+        } else {
+            scrollToBottom();
+        }
     }
 
     es.onmessage = (event) => {
@@ -389,12 +394,16 @@ function startIntentStream(promptText) {
             }
             else if (evType === 'text_delta') {
                 const roleId = payload.role_id || 'agent';
+                const instanceId = payload.instance_id || 'main';
+                let targetContainer = state.agentViews[instanceId] || state.agentViews['main'];
+
                 if (payload.instance_id && payload.role_id) {
                     addAgentTab(payload.role_id, payload.instance_id, false);
+                    targetContainer = state.agentViews[payload.instance_id];
                 }
 
-                if (!currentAgentDiv || currentAgentDiv.dataset.role !== roleId) {
-                    buildAgentContainer(roleId);
+                if (!currentAgentDiv || currentAgentDiv.dataset.role !== roleId || currentAgentDiv.parentElement !== targetContainer) {
+                    buildAgentContainer(roleId, targetContainer);
                 }
 
                 // remove typing indicator
@@ -403,16 +412,25 @@ function startIntentStream(promptText) {
 
                 rawMarkdownBuffer += payload.text;
                 currentAgentContent.innerHTML = marked.parse(rawMarkdownBuffer);
-                scrollToBottom();
+
+                if (targetContainer.id && targetContainer.id.startsWith('view-')) {
+                    targetContainer.scrollTop = targetContainer.scrollHeight;
+                } else {
+                    scrollToBottom();
+                }
             }
             else if (evType === 'tool_call') {
                 const roleId = payload.role_id || 'agent';
+                const instanceId = payload.instance_id || 'main';
+                let targetContainer = state.agentViews[instanceId] || state.agentViews['main'];
+
                 if (payload.instance_id && payload.role_id) {
                     addAgentTab(payload.role_id, payload.instance_id, false);
+                    targetContainer = state.agentViews[payload.instance_id];
                 }
 
-                if (!currentAgentDiv || currentAgentDiv.dataset.role !== roleId) {
-                    buildAgentContainer(roleId);
+                if (!currentAgentDiv || currentAgentDiv.dataset.role !== roleId || currentAgentDiv.parentElement !== targetContainer) {
+                    buildAgentContainer(roleId, targetContainer);
                 }
 
                 // Build a new tool block inside current agent message
@@ -435,7 +453,14 @@ function startIntentStream(promptText) {
                 `;
                 currentAgentDiv.appendChild(toolBlock);
                 currentToolBlock = toolBlock; // Track it so tool_result knows where to go
-                scrollToBottom();
+
+                targetContainer = currentAgentDiv.parentElement;
+                if (targetContainer.id && targetContainer.id.startsWith('view-')) {
+                    targetContainer.scrollTop = targetContainer.scrollHeight;
+                } else {
+                    scrollToBottom();
+                }
+
                 sysLog(`[Tool] Calling ${payload.tool_name}...`);
             }
             else if (evType === 'tool_result') {

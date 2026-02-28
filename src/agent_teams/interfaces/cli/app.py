@@ -144,5 +144,18 @@ def roles_validate(config_dir: Path = DEFAULT_CONFIG_DIR) -> None:
     typer.echo(f"Loaded {len(registry.list_roles())} roles")
 
 
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Host ID to bind the server to"),
+    port: int = typer.Option(8000, "--port", help="Port to bind the server to")
+) -> None:
+    import uvicorn
+    from agent_teams.interfaces.server.app import app as fastapi_app
+    
+    # We run the Uvicorn ASGI server with the FastAPI app instance from server.app
+    typer.echo(f"Starting Agent Teams server on http://{host}:{port}")
+    uvicorn.run(fastapi_app, host=host, port=port)
+
+
 def main() -> None:
     app()

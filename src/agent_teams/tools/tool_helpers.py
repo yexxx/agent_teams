@@ -10,30 +10,6 @@ from agent_teams.runtime.console import is_debug, log_debug, log_tool_call, log_
 from agent_teams.tools.runtime import ToolContext
 
 
-def emit_tool_call(ctx: ToolContext, tool_name: str) -> None:
-    ctx.deps.run_event_hub.publish(
-        RunEvent(
-            run_id=ctx.deps.run_id,
-            trace_id=ctx.deps.trace_id,
-            task_id=ctx.deps.task_id,
-            event_type=RunEventType.TOOL_CALL,
-            payload_json=f'{{"tool":"{tool_name}"}}',
-        )
-    )
-
-
-def emit_tool_result(ctx: ToolContext, tool_name: str) -> None:
-    ctx.deps.run_event_hub.publish(
-        RunEvent(
-            run_id=ctx.deps.run_id,
-            trace_id=ctx.deps.trace_id,
-            task_id=ctx.deps.task_id,
-            event_type=RunEventType.TOOL_RESULT,
-            payload_json=f'{{"tool":"{tool_name}"}}',
-        )
-    )
-
-
 def execute_tool(
     ctx: ToolContext,
     *,
@@ -41,7 +17,15 @@ def execute_tool(
     args_summary: dict[str, object],
     action: Callable[[], str],
 ) -> str:
-    emit_tool_call(ctx, tool_name)
+    ctx.deps.run_event_hub.publish(
+        RunEvent(
+            run_id=ctx.deps.run_id,
+            trace_id=ctx.deps.trace_id,
+            task_id=ctx.deps.task_id,
+            event_type=RunEventType.TOOL_CALL,
+            payload_json=json.dumps({"tool_name": tool_name, "args": args_summary, "role_id": ctx.deps.role_id}),
+        )
+    )
     started = time.perf_counter()
     if is_debug():
         log_debug(
@@ -53,13 +37,35 @@ def execute_tool(
     try:
         result = action()
         elapsed_ms = int((time.perf_counter() - started) * 1000)
+        
+        ctx.deps.run_event_hub.publish(
+            RunEvent(
+                run_id=ctx.deps.run_id,
+                trace_id=ctx.deps.trace_id,
+                task_id=ctx.deps.task_id,
+                event_type=RunEventType.TOOL_RESULT,
+                payload_json=json.dumps({"tool_name": tool_name, "result": str(result), "error": False}),
+            )
+        )
+        
         if is_debug():
             log_debug(f'[tool:ok] tool={tool_name} elapsed_ms={elapsed_ms}')
-        emit_tool_result(ctx, tool_name)
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         payload = _error_payload(tool_name, exc)
+        compact_payload = json.dumps(payload, ensure_ascii=False)
+        
+        ctx.deps.run_event_hub.publish(
+            RunEvent(
+                run_id=ctx.deps.run_id,
+                trace_id=ctx.deps.trace_id,
+                task_id=ctx.deps.task_id,
+                event_type=RunEventType.TOOL_RESULT,
+                payload_json=json.dumps({"tool_name": tool_name, "result": compact_payload, "error": True}),
+            )
+        )
+        
         if is_debug():
             log_debug(
                 f'[tool:error] tool={tool_name} elapsed_ms={elapsed_ms} '
@@ -75,8 +81,7 @@ def execute_tool(
                 ensure_ascii=False,
             )
             log_tool_error(ctx.deps.role_id, compact)
-        emit_tool_result(ctx, tool_name)
-        return json.dumps(payload, ensure_ascii=False)
+        return compact_payload
 
 
 def _error_payload(tool_name: str, exc: Exception) -> dict[str, object]:

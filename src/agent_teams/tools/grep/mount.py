@@ -12,7 +12,7 @@ MAX_FILE_SIZE = 256_000
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def grep(
+    async def grep(
         ctx: ToolContext, pattern: str, path: str = ".", case_sensitive: bool = False
     ) -> str:
         def _action() -> str:
@@ -38,7 +38,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                     break
             return "\n".join(hits)
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="grep",
             args_summary={

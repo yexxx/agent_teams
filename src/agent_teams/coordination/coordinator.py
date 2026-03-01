@@ -41,7 +41,7 @@ class CoordinatorGraph:
     gate_manager: GateManager = field(default_factory=GateManager)
     run_event_hub: RunEventHub | None = None
 
-    def run(self, intent: IntentInput, trace_id: str | None = None) -> tuple[str, str, str, str]:
+    async def run(self, intent: IntentInput, trace_id: str | None = None) -> tuple[str, str, str, str]:
         trace_id = trace_id or new_trace_id().value
         self.role_registry.get(ROLE_COORDINATOR)
         log_debug(
@@ -118,21 +118,21 @@ class CoordinatorGraph:
         mode = intent.execution_mode
 
         if mode == ExecutionMode.AI:
-            result = self._run_ai_mode(
+            result = await self._run_ai_mode(
                 intent=intent,
                 trace_id=trace_id,
                 root_task=root_task,
                 coordinator_instance_id=coordinator_instance_id,
             )
         elif mode == ExecutionMode.AUTO:
-            result = self._run_auto_mode(
+            result = await self._run_auto_mode(
                 intent=intent,
                 trace_id=trace_id,
                 root_task=root_task,
                 coordinator_instance_id=coordinator_instance_id,
             )
         elif mode == ExecutionMode.HUMAN:
-            result = self._run_human_mode(
+            result = await self._run_human_mode(
                 intent=intent,
                 trace_id=trace_id,
                 root_task=root_task,
@@ -150,7 +150,7 @@ class CoordinatorGraph:
     # Execution modes
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_ai_mode(
+    async def _run_ai_mode(
         self,
         intent: IntentInput,
         trace_id: str,
@@ -158,7 +158,7 @@ class CoordinatorGraph:
         coordinator_instance_id: str,
     ) -> str:
         """Current default: Coordinator LLM plans + re-plans between sub-task batches."""
-        coordinator_result = self._task_executor(
+        coordinator_result = await self._task_executor(
             instance_id=coordinator_instance_id,
             role_id=ROLE_COORDINATOR,
             task=root_task,
@@ -169,7 +169,7 @@ class CoordinatorGraph:
         while cycle < MAX_ORCHESTRATION_CYCLES:
             cycle += 1
             log_debug(f'[coord:ai:cycle] run={trace_id} cycle={cycle}')
-            ran_any = self._run_pending_delegated_tasks(
+            ran_any = await self._run_pending_delegated_tasks(
                 trace_id=trace_id,
                 root_task_id=root_task.task_id,
                 confirmation_gate=intent.confirmation_gate,
@@ -177,7 +177,7 @@ class CoordinatorGraph:
             if not ran_any:
                 log_debug(f'[coord:ai:cycle-stop] run={trace_id} cycle={cycle} reason=no-pending-subtasks')
                 break
-            coordinator_result = self._task_executor(
+            coordinator_result = await self._task_executor(
                 instance_id=coordinator_instance_id,
                 role_id=ROLE_COORDINATOR,
                 task=root_task,
@@ -186,7 +186,7 @@ class CoordinatorGraph:
 
         return coordinator_result
 
-    def _run_auto_mode(
+    async def _run_auto_mode(
         self,
         intent: IntentInput,
         trace_id: str,
@@ -198,7 +198,7 @@ class CoordinatorGraph:
         without returning to the Coordinator between batches.  The confirmation gate
         still applies to each sub-task if enabled.
         """
-        coordinator_result = self._task_executor(
+        coordinator_result = await self._task_executor(
             instance_id=coordinator_instance_id,
             role_id=ROLE_COORDINATOR,
             task=root_task,
@@ -210,7 +210,7 @@ class CoordinatorGraph:
         iteration = 0
         while iteration < max_drain:
             iteration += 1
-            ran_any = self._run_pending_delegated_tasks(
+            ran_any = await self._run_pending_delegated_tasks(
                 trace_id=trace_id,
                 root_task_id=root_task.task_id,
                 confirmation_gate=intent.confirmation_gate,
@@ -221,7 +221,7 @@ class CoordinatorGraph:
 
         return coordinator_result
 
-    def _run_human_mode(
+    async def _run_human_mode(
         self,
         intent: IntentInput,
         trace_id: str,
@@ -234,7 +234,7 @@ class CoordinatorGraph:
         After each human-dispatched execution the loop re-publishes the pending list.
         """
         # Let the coordinator LLM produce the initial plan (creates sub-tasks in task_repo)
-        coordinator_result = self._task_executor(
+        coordinator_result = await self._task_executor(
             instance_id=coordinator_instance_id,
             role_id=ROLE_COORDINATOR,
             task=root_task,
@@ -306,7 +306,7 @@ class CoordinatorGraph:
                 event_type=RunEventType.HUMAN_TASK_DISPATCHED,
                 payload={'task_id': dispatched_task_id, 'role_id': instance.role_id},
             )
-            result = self._task_executor(
+            result = await self._task_executor(
                 instance_id=instance.instance_id,
                 role_id=instance.role_id,
                 task=record.envelope,
@@ -315,7 +315,7 @@ class CoordinatorGraph:
 
             # Apply confirmation gate if requested
             if intent.confirmation_gate:
-                self._apply_gate(
+                await self._apply_gate(
                     run_id=trace_id,
                     session_id=intent.session_id,
                     task=record.envelope,
@@ -330,7 +330,7 @@ class CoordinatorGraph:
     # Shared helpers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_pending_delegated_tasks(
+    async def _run_pending_delegated_tasks(
         self,
         trace_id: str,
         root_task_id: str,
@@ -368,7 +368,7 @@ class CoordinatorGraph:
                 f'[coord:dispatch] run={trace_id} task={task.task_id} '
                 f'instance={instance.instance_id} role={instance.role_id} status={record.status.value}'
             )
-            result = self._task_executor(
+            result = await self._task_executor(
                 instance_id=instance.instance_id,
                 role_id=instance.role_id,
                 task=task,
@@ -377,7 +377,7 @@ class CoordinatorGraph:
 
             # Confirmation gate: pause here and wait for human decision
             if confirmation_gate or task.confirmation_gate:
-                self._apply_gate(
+                await self._apply_gate(
                     run_id=trace_id,
                     session_id=task.session_id,
                     task=task,
@@ -396,7 +396,7 @@ class CoordinatorGraph:
             and r.assigned_instance_id is not None
         ]
 
-    def _apply_gate(
+    async def _apply_gate(
         self,
         run_id: str,
         session_id: str,
@@ -466,7 +466,7 @@ class CoordinatorGraph:
             )
             self.instance_pool.mark_idle(instance_id)
             log_debug(f'[coord:gate:revise] run={run_id} task={task.task_id} feedback={feedback[:80]}')
-            self._task_executor(instance_id=instance_id, role_id=role_id, task=task)
+            await self._task_executor(instance_id=instance_id, role_id=role_id, task=task)
 
     def _wait_for_human_dispatch(
         self,
@@ -577,5 +577,5 @@ class CoordinatorGraph:
         )
         return instance.instance_id
 
-    def _task_executor(self, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
-        return self.task_execution_service.execute(instance_id=instance_id, role_id=role_id, task=task)
+    async def _task_executor(self, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
+        return await self.task_execution_service.execute(instance_id=instance_id, role_id=role_id, task=task)

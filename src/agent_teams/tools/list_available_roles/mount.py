@@ -10,7 +10,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def list_available_roles(ctx: ToolContext) -> str:
+    async def list_available_roles(ctx: ToolContext) -> str:
         """
         List all available roles in the system.
 
@@ -38,7 +38,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 ensure_ascii=False,
             )
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="list_available_roles",
             args_summary={},

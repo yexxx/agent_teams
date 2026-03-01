@@ -146,7 +146,7 @@ def _create_spec_flow_template(
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def create_workflow_graph(
+    async def create_workflow_graph(
         ctx: ToolContext,
         workflow_type: WorkflowType = "spec_flow",
         objective: str = "",
@@ -276,7 +276,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 ensure_ascii=False,
             )
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="create_workflow_graph",
             args_summary={

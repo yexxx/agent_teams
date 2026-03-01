@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic_ai._agent_graph import ModelRequestNode
+from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent
+)
 from pydantic_ai._utils import get_event_loop
 
 from agent_teams.core.enums import RunEventType
@@ -41,12 +45,12 @@ class LLMRequest:
 
 
 class LLMProvider:
-    def generate(self, request: LLMRequest) -> str:
+    async def generate(self, request: LLMRequest) -> str:
         raise NotImplementedError
 
 
 class EchoProvider(LLMProvider):
-    def generate(self, request: LLMRequest) -> str:
+    async def generate(self, request: LLMRequest) -> str:
         return f'ECHO: {request.user_prompt}'
 
 
@@ -92,8 +96,8 @@ class OpenAICompatibleProvider(LLMProvider):
         self._task_execution_service = task_execution_service
         self._message_repo = message_repo
 
-    def generate(self, request: LLMRequest) -> str:
-        return get_event_loop().run_until_complete(self._generate_async(request))
+    async def generate(self, request: LLMRequest) -> str:
+        return await self._generate_async(request)
 
     async def _generate_async(self, request: LLMRequest) -> str:
         tool_rules = f'Available tools: {", ".join(self._allowed_tools)}.'
@@ -186,47 +190,95 @@ class OpenAICompatibleProvider(LLMProvider):
                                             }),
                                         )
                                     )
-                        # Flush messages accumulated up to this node
-                        all_new = agent_run.new_messages()
-                        to_save = list(all_new)[saved_count:]
-                        if to_save:
-                            self._message_repo.append(
-                                session_id=request.session_id,
-                                instance_id=request.instance_id,
-                                task_id=request.task_id,
-                                trace_id=request.trace_id,
-                                messages=to_save,
-                            )
-                            saved_count += len(to_save)
 
-                        # Drain pending user injections at this boundary
-                        injections = self._injection_manager.drain_at_boundary(
-                            request.run_id, request.instance_id
+                    # After each node (ModelRequestNode or others like CallToolsNode),
+                    # scan for new messages to emit tool call/result events
+                    all_new = agent_run.new_messages()
+                    new_to_process = list(all_new)[saved_count:]
+                    if new_to_process:
+                        from pydantic_ai.messages import ModelResponse, ModelRequest, ToolCallPart, ToolReturnPart
+                        
+                        for msg in new_to_process:
+                            if isinstance(msg, ModelResponse):
+                                for part in msg.parts:
+                                    if isinstance(part, ToolCallPart):
+                                        self._run_event_hub.publish(
+                                            RunEvent(
+                                                session_id=request.session_id,
+                                                run_id=request.run_id,
+                                                trace_id=request.trace_id,
+                                                task_id=request.task_id,
+                                                instance_id=request.instance_id,
+                                                role_id=request.role_id,
+                                                event_type=RunEventType.TOOL_CALL,
+                                                payload_json=self._to_json({
+                                                    "tool_name": part.tool_name,
+                                                    "args": part.args,
+                                                    "role_id": request.role_id,
+                                                    "instance_id": request.instance_id,
+                                                }),
+                                            )
+                                        )
+                            elif isinstance(msg, ModelRequest):
+                                for part in msg.parts:
+                                    if isinstance(part, ToolReturnPart):
+                                        self._run_event_hub.publish(
+                                            RunEvent(
+                                                session_id=request.session_id,
+                                                run_id=request.run_id,
+                                                trace_id=request.trace_id,
+                                                task_id=request.task_id,
+                                                instance_id=request.instance_id,
+                                                role_id=request.role_id,
+                                                event_type=RunEventType.TOOL_RESULT,
+                                                payload_json=self._to_json({
+                                                    "tool_name": part.tool_name,
+                                                    "result": part.content,
+                                                    "error": False, # Basic assumption for now
+                                                    "role_id": request.role_id,
+                                                    "instance_id": request.instance_id,
+                                                }),
+                                            )
+                                        )
+
+                        # Persist to repo
+                        self._message_repo.append(
+                            session_id=request.session_id,
+                            instance_id=request.instance_id,
+                            task_id=request.task_id,
+                            trace_id=request.trace_id,
+                            messages=new_to_process,
                         )
-                        if injections:
-                            from pydantic_ai.messages import ModelRequest, UserPromptPart
-                            extra = [
-                                ModelRequest(parts=[UserPromptPart(content=msg.content)])
-                                for msg in injections
-                            ]
-                            for msg in injections:
-                                self._run_event_hub.publish(
-                                    RunEvent(
-                                        session_id=request.session_id,
-                                        run_id=request.run_id,
-                                        trace_id=request.trace_id,
-                                        task_id=request.task_id,
-                                        instance_id=request.instance_id,
-                                        role_id=request.role_id,
-                                        event_type=RunEventType.INJECTION_APPLIED,
-                                        payload_json=msg.model_dump_json(),
-                                    )
+                        saved_count += len(new_to_process)
+
+                    # Drain pending user injections at this boundary (already handled in previous version, check if needed here)
+                    injections = self._injection_manager.drain_at_boundary(
+                        request.run_id, request.instance_id
+                    )
+                    if injections:
+                        from pydantic_ai.messages import ModelRequest, UserPromptPart
+                        extra = [
+                            ModelRequest(parts=[UserPromptPart(content=msg.content)])
+                            for msg in injections
+                        ]
+                        for msg in injections:
+                            self._run_event_hub.publish(
+                                RunEvent(
+                                    session_id=request.session_id,
+                                    run_id=request.run_id,
+                                    trace_id=request.trace_id,
+                                    task_id=request.task_id,
+                                    instance_id=request.instance_id,
+                                    role_id=request.role_id,
+                                    event_type=RunEventType.INJECTION_APPLIED,
+                                    payload_json=msg.model_dump_json(),
                                 )
-                            # Restart iter() with injected messages appended to history
-                            history = list(agent_run.new_messages()) + extra
-                            saved_count = len(history) - len(extra)
-                            restarted = True
-                            break  # break inner for-loop, restart while
+                            )
+                        # Restart iter() with injected messages appended to history
+                        history = list(agent_run.new_messages()) + extra
+                        saved_count = len(history) - len(extra)
+                        restarted = True
+                        break  # break inner for-loop, restart while
 
             if not restarted:
                 # Normal completion
@@ -302,3 +354,10 @@ class OpenAICompatibleProvider(LLMProvider):
             if texts:
                 return ''.join(texts)
         return str(response)
+
+    def _to_json(self, obj: Any) -> str:
+        import json
+        try:
+            return json.dumps(obj, ensure_ascii=False, default=str)
+        except Exception:
+            return json.dumps({"error": "unserializable", "repr": str(obj)})

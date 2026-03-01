@@ -9,14 +9,14 @@ from agent_teams.tools.verify_task.impl import verify_task as verify_task_impl
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def verify_task(ctx: ToolContext, task_id: str) -> str:
+    async def verify_task(ctx: ToolContext, task_id: str) -> str:
         def _action() -> str:
             verification = verify_task_impl(
                 ctx.deps.task_repo, ctx.deps.event_bus, task_id
             )
             return verification.model_dump_json()
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="verify_task",
             args_summary={"task_id": task_id},

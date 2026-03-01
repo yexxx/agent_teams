@@ -2,40 +2,28 @@ from __future__ import annotations
 
 import json
 import time
+import inspect
+from typing import Any
 from collections.abc import Callable
 
-from agent_teams.core.enums import RunEventType
-from agent_teams.core.models import RunEvent
 from agent_teams.runtime.console import is_debug, log_debug, log_tool_call, log_tool_error
 from agent_teams.tools.runtime import ToolContext
 
 
-def execute_tool(
+async def execute_tool(
     ctx: ToolContext,
     *,
     tool_name: str,
     args_summary: dict[str, object],
-    action: Callable[[], str],
-) -> str:
-    ctx.deps.run_event_hub.publish(
-        RunEvent(
-            session_id=ctx.deps.session_id,
-            run_id=ctx.deps.run_id,
-            trace_id=ctx.deps.trace_id,
-            task_id=ctx.deps.task_id,
-            instance_id=ctx.deps.instance_id,
-            role_id=ctx.deps.role_id,
-            event_type=RunEventType.TOOL_CALL,
-            payload_json=json.dumps(
-                {
-                    "tool_name": tool_name,
-                    "args": args_summary,
-                    "role_id": ctx.deps.role_id,
-                    "instance_id": ctx.deps.instance_id,
-                }
-            ),
-        )
-    )
+    action: Callable[[], Any] | Any,
+) -> Any:
+    """A wrapper for tool execution that handles logging and errors.
+    
+    NOTE: Event publication (TOOL_CALL, TOOL_RESULT) is now handled 
+    centrally in llm.py by capturing pydantic-ai tool events. 
+    This wrapper remains for satisfying existing tool imports and 
+    common error handling/logging.
+    """
     started = time.perf_counter()
     if is_debug():
         log_debug(
@@ -44,59 +32,26 @@ def execute_tool(
         )
     else:
         log_tool_call(ctx.deps.role_id, tool_name, args_summary)
+    
     try:
-        result = action()
+        if callable(action):
+            result = action()
+        else:
+            result = action
+
+        if inspect.isawaitable(result):
+            result = await result
+
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        
-        ctx.deps.run_event_hub.publish(
-            RunEvent(
-                session_id=ctx.deps.session_id,
-                run_id=ctx.deps.run_id,
-                trace_id=ctx.deps.trace_id,
-                task_id=ctx.deps.task_id,
-                instance_id=ctx.deps.instance_id,
-                role_id=ctx.deps.role_id,
-                event_type=RunEventType.TOOL_RESULT,
-                payload_json=json.dumps(
-                    {
-                        "tool_name": tool_name,
-                        "result": str(result),
-                        "error": False,
-                        "role_id": ctx.deps.role_id,
-                        "instance_id": ctx.deps.instance_id,
-                    }
-                ),
-            )
-        )
         
         if is_debug():
             log_debug(f'[tool:ok] tool={tool_name} elapsed_ms={elapsed_ms}')
+                
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         payload = _error_payload(tool_name, exc)
         compact_payload = json.dumps(payload, ensure_ascii=False)
-        
-        ctx.deps.run_event_hub.publish(
-            RunEvent(
-                session_id=ctx.deps.session_id,
-                run_id=ctx.deps.run_id,
-                trace_id=ctx.deps.trace_id,
-                task_id=ctx.deps.task_id,
-                instance_id=ctx.deps.instance_id,
-                role_id=ctx.deps.role_id,
-                event_type=RunEventType.TOOL_RESULT,
-                payload_json=json.dumps(
-                    {
-                        "tool_name": tool_name,
-                        "result": compact_payload,
-                        "error": True,
-                        "role_id": ctx.deps.role_id,
-                        "instance_id": ctx.deps.instance_id,
-                    }
-                ),
-            )
-        )
         
         if is_debug():
             log_debug(

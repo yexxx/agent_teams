@@ -13,7 +13,7 @@ from agent_teams.workflow.runtime_graph import get_ready_tasks, load_graph
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def dispatch_ready_tasks(
+    async def dispatch_ready_tasks(
         ctx: ToolContext, workflow_id: str, max_dispatch: int = 4
     ) -> str:
         """
@@ -27,7 +27,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             Dispatched tasks, execution results, progress status, and next action recommendation.
         """
 
-        def _action() -> str:
+        async def _action() -> str:
             graph = load_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id)
             if graph is None:
                 raise KeyError(
@@ -59,7 +59,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                     for record in ctx.deps.task_repo.list_by_trace(ctx.deps.trace_id)
                 }
 
-            def _ensure_and_execute(task_id: str, task_name: str, role_id: str) -> bool:
+            async def _ensure_and_execute(task_id: str, task_name: str, role_id: str) -> bool:
                 nonlocal records
                 if len(dispatched) >= bounded_dispatch:
                     return False
@@ -91,7 +91,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                     }
                 )
                 try:
-                    ctx.deps.task_execution_service.execute(
+                    await ctx.deps.task_execution_service.execute(
                         instance_id=instance.instance_id,
                         role_id=instance.role_id,
                         task=record.envelope,
@@ -121,7 +121,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 role_id = task_info.get("role_id", "")
                 if not task_id or not role_id:
                     continue
-                _ensure_and_execute(task_id, task_name, role_id)
+                await _ensure_and_execute(task_id, task_name, role_id)
 
             all_tasks = list(tasks.keys())
             completed_tasks = [
@@ -160,7 +160,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 ensure_ascii=False,
             )
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="dispatch_ready_tasks",
             args_summary={"workflow_id": workflow_id, "max_dispatch": max_dispatch},

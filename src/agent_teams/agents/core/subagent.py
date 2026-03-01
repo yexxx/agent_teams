@@ -13,7 +13,7 @@ class SubAgentRunner:
     prompt_builder: RuntimePromptBuilder
     provider: LLMProvider
 
-    def run(
+    async def run(
         self,
         task: TaskEnvelope,
         instance_id: str,
@@ -28,7 +28,7 @@ class SubAgentRunner:
                 shared_state_snapshot=shared_state_snapshot,
             )
         )
-        return self.provider.generate(
+        return await self.provider.generate(
             LLMRequest(
                 run_id=task.trace_id,
                 trace_id=task.trace_id,

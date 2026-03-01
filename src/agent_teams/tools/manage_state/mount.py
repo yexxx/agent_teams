@@ -14,7 +14,7 @@ SCOPE_TYPE_LITERAL = Literal["global", "session", "task", "instance"]
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def manage_state(
+    async def manage_state(
         ctx: ToolContext,
         scope_type: SCOPE_TYPE_LITERAL,
         scope_id: str,
@@ -30,7 +30,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             ctx.deps.shared_store.manage_state(mutation)
             return key
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="manage_state",
             args_summary={

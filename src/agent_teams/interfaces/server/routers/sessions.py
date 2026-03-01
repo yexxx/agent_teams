@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from typing import Generator
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -63,14 +64,6 @@ def update_session(session_id: str, req: UpdateSessionRequest, sdk: AgentTeamsAp
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
 
-@router.delete("/{session_id}")
-def delete_session(session_id: str, sdk: AgentTeamsApp = Depends(get_sdk)):
-    try:
-        sdk.delete_session(session_id)
-        return {"status": "success"}
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Session not found")
-
 @router.get("/{session_id}/rounds")
 def get_session_rounds(session_id: str, sdk: AgentTeamsApp = Depends(get_sdk)):
     return sdk.get_session_rounds(session_id)
@@ -104,7 +97,7 @@ def get_session_workflows(session_id: str, sdk: AgentTeamsApp = Depends(get_sdk)
     return sdk.get_session_workflows(session_id)
 
 @router.post("/{session_id}/intent")
-def run_intent(session_id: str, req: IntentRequest, sdk: AgentTeamsApp = Depends(get_sdk)):
+async def run_intent(session_id: str, req: IntentRequest, sdk: AgentTeamsApp = Depends(get_sdk)):
     input_event = IntentInput(
         session_id=session_id,
         intent=req.intent,
@@ -112,11 +105,11 @@ def run_intent(session_id: str, req: IntentRequest, sdk: AgentTeamsApp = Depends
         execution_mode=req.execution_mode,
         confirmation_gate=req.confirmation_gate,
     )
-    result = sdk.run_intent(input_event)
+    result = await sdk.run_intent(input_event)
     return result.model_dump()
 
 @router.get("/{session_id}/intent/stream")
-def run_intent_stream(
+async def run_intent_stream(
     session_id: str,
     intent: str,
     execution_mode: ExecutionMode = ExecutionMode.AI,
@@ -130,9 +123,9 @@ def run_intent_stream(
         confirmation_gate=confirmation_gate,
     )
     
-    def event_generator() -> Generator[str, None, None]:
+    async def event_generator():
         try:
-            for event in sdk.run_intent_stream(input_event):
+            async for event in sdk.run_intent_stream(input_event):
                 data_str = event.model_dump_json()
                 yield f"data: {data_str}\n\n"
         except Exception as e:

@@ -12,7 +12,7 @@ MAX_CHARS = 50_000
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def read(ctx: ToolContext, path: str) -> str:
+    async def read(ctx: ToolContext, path: str) -> str:
         def _action() -> str:
             file_path = resolve_workspace_path(ctx.deps.workspace_root, path)
             if not file_path.exists() or not file_path.is_file():
@@ -22,7 +22,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 text = text[:MAX_CHARS]
             return text
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="read",
             args_summary={"path": path},

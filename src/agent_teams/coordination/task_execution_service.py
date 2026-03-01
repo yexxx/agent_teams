@@ -35,7 +35,7 @@ class TaskExecutionService:
     provider_factory: Callable[[RoleDefinition], LLMProvider]
     injection_manager: RunInjectionManager | None = None
 
-    def execute(self, *, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
+    async def execute(self, *, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
         log_debug(
             f'[subagent:start] run={task.trace_id} task={task.task_id} '
             f'instance={instance_id} role={role_id}'
@@ -62,7 +62,7 @@ class TaskExecutionService:
             else self.shared_store.snapshot(ScopeRef(scope_type=ScopeType.SESSION, scope_id=task.session_id))
         )
         try:
-            result = runner.run(
+            result = await runner.run(
                 task=task,
                 instance_id=instance_id,
                 parent_instruction=task.parent_instruction,

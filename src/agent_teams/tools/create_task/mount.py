@@ -13,7 +13,7 @@ MAX_COORDINATOR_DELEGATED_TASKS = 4
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def create_task(
+    async def create_task(
         ctx: ToolContext,
         objective: str,
         scope: list[str],
@@ -49,7 +49,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             ctx.deps.task_repo.create(envelope)
             return envelope.task_id
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="create_task",
             args_summary={

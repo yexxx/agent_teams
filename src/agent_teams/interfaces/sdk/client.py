@@ -191,16 +191,17 @@ class AgentTeamsApp:
             self._session_repo.create(session_id=session_id)
             return session_id
 
-    def run_intent(self, intent: IntentInput) -> RunResult:
+    async def run_intent(self, intent: IntentInput) -> RunResult:
         intent.session_id = self._ensure_session(intent.session_id)
         run_id = new_trace_id().value
         self._injection_manager.activate(run_id)
         try:
-            return self._meta_agent.handle_intent(intent, trace_id=run_id)
+            return await self._meta_agent.handle_intent(intent, trace_id=run_id)
         finally:
             self._injection_manager.deactivate(run_id)
 
-    def run_intent_stream(self, intent: IntentInput):
+    async def run_intent_stream(self, intent: IntentInput):
+        import asyncio
         intent.session_id = self._ensure_session(intent.session_id)
         run_id = new_trace_id().value
         queue = self._run_event_hub.subscribe(run_id)
@@ -216,9 +217,9 @@ class AgentTeamsApp:
             )
         )
 
-        def _worker() -> None:
+        async def _worker() -> None:
             try:
-                result = self._meta_agent.handle_intent(intent, trace_id=run_id)
+                result = await self._meta_agent.handle_intent(intent, trace_id=run_id)
                 self._run_event_hub.publish(
                     RunEvent(
                         session_id=intent.session_id,
@@ -243,10 +244,10 @@ class AgentTeamsApp:
             finally:
                 self._injection_manager.deactivate(run_id)
 
-        Thread(target=_worker, daemon=True).start()
+        asyncio.create_task(_worker())
 
         while True:
-            event = queue.get()
+            event = await queue.get()
             yield event
             if event.event_type in (
                 RunEventType.RUN_COMPLETED,

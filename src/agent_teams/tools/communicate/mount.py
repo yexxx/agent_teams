@@ -12,7 +12,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def communicate(
+    async def communicate(
         ctx: ToolContext,
         mode: Literal["unicast", "broadcast"],
         message: str,
@@ -52,7 +52,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 {"mode": mode, "recipients": recipients, "count": len(recipients)}
             )
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="communicate",
             args_summary={

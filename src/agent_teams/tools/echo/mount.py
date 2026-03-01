@@ -10,7 +10,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def echo(ctx: ToolContext, input_string: str) -> str:
+    async def echo(ctx: ToolContext, input_string: str) -> str:
         """
         Echo function that returns the input string unchanged.
 
@@ -35,7 +35,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             # Return the input string unchanged
             return input_string
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="echo",
             args_summary={

@@ -11,7 +11,7 @@ from agent_teams.workflow.runtime_graph import load_graph
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def get_workflow_status(ctx: ToolContext, workflow_id: str) -> str:
+    async def get_workflow_status(ctx: ToolContext, workflow_id: str) -> str:
         """
         Get the current status of a workflow.
 
@@ -77,7 +77,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
                 ensure_ascii=False,
             )
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="get_workflow_status",
             args_summary={"workflow_id": workflow_id},

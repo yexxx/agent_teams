@@ -9,7 +9,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def read_stage_input(ctx: ToolContext) -> str:
+    async def read_stage_input(ctx: ToolContext) -> str:
         def _action() -> str:
             if ctx.deps.role_id == "spec_spec":
                 task = ctx.deps.task_repo.get(ctx.deps.task_id)
@@ -30,7 +30,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             task = ctx.deps.task_repo.get(ctx.deps.task_id)
             return f"No previous stage document available.\n\nTaskObjective:\n{task.envelope.objective}\n\nParentInstruction:\n{task.envelope.parent_instruction or 'None'}"
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="read_stage_input",
             args_summary={"role_id": ctx.deps.role_id},

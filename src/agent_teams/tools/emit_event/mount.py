@@ -25,7 +25,7 @@ EVENT_TYPE_LITERAL = Literal[
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def emit_event(
+    async def emit_event(
         ctx: ToolContext,
         event_type: EVENT_TYPE_LITERAL,
         task_id: str | None = None,
@@ -44,7 +44,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             ctx.deps.event_bus.emit(event)
             return event.event_type.value
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="emit_event",
             args_summary={

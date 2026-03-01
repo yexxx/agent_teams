@@ -14,7 +14,7 @@ MAX_OUTPUT_CHARS = 64_000
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def shell(
+    async def shell(
         ctx: ToolContext, command: str, timeout_seconds: int | None = None
     ) -> str:
         def _action() -> str:
@@ -34,7 +34,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             }
             return json.dumps(payload, ensure_ascii=False)
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="shell",
             args_summary={"command": command[:160], "timeout_seconds": timeout_seconds},

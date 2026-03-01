@@ -9,7 +9,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def mount(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    def create_subagent(ctx: ToolContext, role_id: str) -> str:
+    async def create_subagent(ctx: ToolContext, role_id: str) -> str:
         def _action() -> str:
             instance = ctx.deps.instance_pool.create_subagent(role_id)
             ctx.deps.agent_repo.upsert_instance(
@@ -22,7 +22,7 @@ def mount(agent: Agent[ToolDeps, str]) -> None:
             )
             return instance.model_dump_json()
 
-        return execute_tool(
+        return await execute_tool(
             ctx,
             tool_name="create_subagent",
             args_summary={"role_id": role_id},

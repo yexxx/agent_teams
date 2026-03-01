@@ -119,6 +119,13 @@ class SkillsDirectory:
                     description=desc,
                     path=script_path
                 )
+                # Also add as a resource to allow reading the script source
+                resource_name = f"scripts/{script_path.name}"
+                resources[resource_name] = SkillResource(
+                    name=resource_name,
+                    description=f"Script source: {s_name}",
+                    path=script_path
+                )
 
         metadata = SkillMetadata(
             name=name,

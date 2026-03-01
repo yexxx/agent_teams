@@ -71,29 +71,52 @@ class SkillsDirectory:
         if not name:
             return None
 
-        # Parse resources
+        # Parse resources from YAML and auto-discover in resources/ or assets/
         resources = {}
         if "resources" in data and isinstance(data["resources"], dict):
             for r_name, r_data in data["resources"].items():
                 r_path = None
                 if "path" in r_data:
-                    # Resolve relativity to the SKILL.md's directory
                     r_path = path.parent / r_data["path"]
                 resources[r_name] = SkillResource(
                     name=r_name,
                     description=r_data.get("description", ""),
                     path=r_path
                 )
+        
+        # Auto-discover in resources/ directory
+        for r_dir_name in ["resources", "assets"]:
+            r_dir = path.parent / r_dir_name
+            if r_dir.exists() and r_dir.is_dir():
+                for r_path in r_dir.glob("*"):
+                    if r_path.is_file() and r_path.name not in resources:
+                        resources[r_path.name] = SkillResource(
+                            name=r_path.name,
+                            description=f"Auto-discovered resource: {r_path.name}",
+                            path=r_path
+                        )
 
-        # Parse scripts from scripts/ directory
+        # Parse scripts from scripts/ directory and correlate with markdown body
         scripts = {}
         scripts_dir = path.parent / "scripts"
+        
+        # Simple extraction of descriptions from markdown: look for lines like "- name: description (path)"
+        import re
+        script_meta = {}
+        # Find lines in the format: - name: description (optional path)
+        # or - name: description
+        matches = re.finditer(r'^- ([\w-]+):\s*(.*?)(?:\s*\((.*?)\))?$', body, re.MULTILINE)
+        for m in matches:
+            s_name, s_desc, s_path = m.groups()
+            script_meta[s_name] = (s_desc.strip(), s_path)
+
         if scripts_dir.exists() and scripts_dir.is_dir():
             for script_path in scripts_dir.glob("*.py"):
                 s_name = script_path.stem
+                desc, _ = script_meta.get(s_name, (f"Execute {s_name} script.", None))
                 scripts[s_name] = SkillScript(
                     name=s_name,
-                    description=f"Auto-discovered script: {script_path.name}",
+                    description=desc,
                     path=script_path
                 )
 
@@ -101,7 +124,7 @@ class SkillsDirectory:
             name=name,
             description=description,
             instructions=body.strip(),
-            resources=resources, # Retaining basic resource parsing if we still want it, or could auto-discover
+            resources=resources, # Retaining existing resource parsing for now
             scripts=scripts
         )
 

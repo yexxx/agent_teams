@@ -55,7 +55,7 @@ export function routeEvent(evType, payload, eventMeta) {
         const streamKey = instanceId || (isCoordinator ? 'coordinator' : roleId);
 
         if (isCoordinator) {
-            const container = els.chatMessages;
+            const container = _coordinatorContainerFor(eventMeta);
             getOrCreateStreamBlock(container, streamKey, COORDINATOR_ROLE, label);
             appendStreamChunk(streamKey, payload.text || '');
         } else {
@@ -94,7 +94,7 @@ export function routeEvent(evType, payload, eventMeta) {
     else if (evType === 'tool_call') {
         const isCoordinator = !roleId || roleId === COORDINATOR_ROLE;
         const container = isCoordinator
-            ? els.chatMessages
+            ? _coordinatorContainerFor(eventMeta)
             : getPanelScrollContainer(instanceId, roleId);
         if (!isCoordinator) openAgentPanel(instanceId, roleId);
         const streamKey = instanceId || 'coordinator';
@@ -171,7 +171,7 @@ function _tryRenderLiveDAG(result) {
 
 function _renderHumanDispatchPanel(payload) {
     document.querySelectorAll('.human-dispatch-panel').forEach(el => el.remove());
-    const container = els.chatMessages;
+    const container = _coordinatorContainerFor({ trace_id: state.activeRunId });
     if (!container) return;
 
     const panel = document.createElement('div');
@@ -209,4 +209,15 @@ function _renderHumanDispatchPanel(payload) {
 
     container.appendChild(panel);
     container.scrollTop = container.scrollHeight;
+}
+
+function _coordinatorContainerFor(eventMeta) {
+    const runId = eventMeta?.trace_id || eventMeta?.run_id || state.activeRunId;
+    if (runId) {
+        const section = document.querySelector(`.session-round-section[data-run-id=\"${runId}\"]`);
+        if (section) return section;
+    }
+    const live = document.querySelector('.session-round-section[data-run-id=\"__live__\"]');
+    if (live) return live;
+    return els.chatMessages;
 }

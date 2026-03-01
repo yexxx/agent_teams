@@ -7,7 +7,7 @@ import { els } from './utils/dom.js';
 import { sysLog } from './utils/logger.js';
 import { loadSessions, handleNewSessionClick, setRoundsMode } from './components/sidebar.js';
 import { startIntentStream } from './core/stream.js';
-import { loadSessionRounds, toggleWorkflow, goBackToSessions, currentRounds, selectRound, createLiveRound } from './components/rounds.js';
+import { loadSessionRounds, toggleWorkflow, createLiveRound } from './components/rounds.js';
 import { setupNavbarBindings } from './components/navbar.js';
 import { clearAllPanels } from './components/agentPanel.js';
 import { clearAllStreamState } from './components/messageRenderer.js';
@@ -33,7 +33,6 @@ function setupEventBindings() {
     });
     els.sendBtn.onclick = handleSend;
     if (els.newSessionBtn) els.newSessionBtn.onclick = () => handleNewSessionClick(true);
-    if (els.backBtn) els.backBtn.onclick = () => { goBackToSessions(); loadSessions(); };
     if (els.workflowCollapsed) els.workflowCollapsed.onclick = toggleWorkflow;
     if (els.collapseWorkflowBtn) els.collapseWorkflowBtn.onclick = toggleWorkflow;
 }
@@ -87,7 +86,12 @@ async function handleSend() {
     um.innerHTML = `
         <div class="msg-header"><span class="msg-role role-user">YOU</span></div>
         <div class="msg-content"><div class="msg-text">${text.replace(/</g, '&lt;')}</div></div>`;
-    els.chatMessages.appendChild(um);
+    const liveSection = els.chatMessages.querySelector('.session-round-section[data-run-id="__live__"]');
+    if (liveSection) {
+        liveSection.appendChild(um);
+    } else {
+        els.chatMessages.appendChild(um);
+    }
     els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 
     // 3) Start the SSE stream
@@ -100,7 +104,6 @@ async function handleSend() {
         async (sid) => {
             // After the run, reload full history from backend
             await loadSessionRounds(sid);
-            if (currentRounds.length > 0) selectRound(currentRounds[0]);
         },
     );
 }

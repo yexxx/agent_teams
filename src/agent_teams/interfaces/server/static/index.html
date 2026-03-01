@@ -49,6 +49,7 @@
                 <div class="status-indicator online"><span></span> Backend Connected</div>
             </div>
         </aside>
+        <div class="sidebar-resizer" id="sidebar-resizer" title="Drag to resize sidebar"></div>
 
         <!-- Main Workspace -->
         <main class="workspace">
@@ -87,33 +88,6 @@
                     </div>
                 </div>
 
-                <!-- DAG Workspace Visualization -->
-                <div id="workflow-collapsed" class="workflow-collapsed">
-                    <div class="workflow-status-bar">
-                        <svg viewBox="0 0 24 24" fill="none" class="icon">
-                            <path d="M3 3v18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" />
-                            <path d="M7 16l4-8 4 6 5-10" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" />
-                        </svg>
-                        <span>Execution Graph</span>
-                        <span id="workflow-count" class="workflow-count">0</span>
-                    </div>
-                </div>
-
-                <div id="workflow-panel" class="workflow-panel" style="display: none;">
-                    <div class="workflow-header">
-                        <h4>Execution Graph — <span class="wf-hint">点击节点查看 Subagent 详情</span></h4>
-                        <button id="collapse-workflow" class="icon-btn" title="Collapse">
-                            <svg viewBox="0 0 24 24" fill="none" class="icon">
-                                <path d="M19 9l-7 7-7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="workflow-canvas" id="workflow-canvas"></div>
-                </div>
-
                 <!-- Input Area -->
                 <div class="input-container">
                     <form id="chat-form">
@@ -147,15 +121,28 @@
             </div>
         </main>
 
-        <!-- Agent Drawer (right side — subagent detail) -->
-        <aside class="agent-drawer" id="agent-drawer"></aside>
+        <aside class="right-rail" id="right-rail">
+            <section class="rail-graph-card">
+                <div id="workflow-collapsed" class="workflow-collapsed" style="display:none;"></div>
+                <div id="workflow-panel" class="workflow-panel" style="display: flex;">
+                    <div class="workflow-header">
+                        <h4>Execution Graph — <span class="wf-hint">跟随当前 Round</span></h4>
+                        <span id="workflow-count" class="workflow-count">0</span>
+                    </div>
+                    <div class="workflow-canvas" id="workflow-canvas"></div>
+                </div>
+            </section>
 
-        <!-- Logs/Inspector Panel -->
-        <aside class="inspector" id="inspector-panel">
-            <header>
-                <h3>System Logs</h3>
-            </header>
-            <div class="logs-scroll" id="system-logs"></div>
+            <section class="rail-subagent-card">
+                <aside class="agent-drawer" id="agent-drawer"></aside>
+            </section>
+
+            <aside class="inspector" id="inspector-panel">
+                <header>
+                    <h3>System Logs</h3>
+                </header>
+                <div class="logs-scroll" id="system-logs"></div>
+            </aside>
         </aside>
     </div>
 

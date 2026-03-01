@@ -1,30 +1,28 @@
 ﻿/**
  * components/rounds.js
- * Renders session rounds (sidebar list + main area coordinator view).
+ * Session timeline + floating round navigator.
  */
 import { els } from '../utils/dom.js';
 import { state } from '../core/state.js';
 import { fetchSessionRounds } from '../core/api.js';
 import { renderNativeDAG } from './workflow.js';
-import { setSessionMode } from './sidebar.js';
 import { renderHistoricalMessageList, clearAllStreamState } from './messageRenderer.js';
 import { clearAllPanels } from './agentPanel.js';
 
 export let currentRounds = [];
 export let currentRound = null;
 
+let _scrollBound = false;
+let _activeRunId = null;
+let _activeVisibility = 0;
+
 export async function loadSessionRounds(sessionId) {
     try {
         const rounds = await fetchSessionRounds(sessionId);
-        currentRounds = rounds || [];
-        renderRoundsListInSidebar(currentRounds);
-
-        if (currentRounds.length > 0) {
-            selectRound(currentRounds[0]);
-        } else {
-            renderRoundContent(null);
-            updateWorkflowState(0, null);
-        }
+        currentRounds = (rounds || []).slice().sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        renderSessionTimeline(currentRounds);
     } catch (e) {
         console.error('Failed loading rounds', e);
     }
@@ -41,133 +39,225 @@ export function createLiveRound(intentText) {
         role_instance_map: {},
     };
 
-    currentRounds = [liveRound, ...currentRounds];
-    currentRound = liveRound;
+    currentRounds = [...currentRounds, liveRound];
+    renderSessionTimeline(currentRounds, { preserveScroll: false });
 
-    renderRoundsListInSidebar(currentRounds);
-    clearAllPanels();
-    clearAllStreamState();
-    state.instanceRoleMap = {};
-
-    const container = els.chatMessages;
-    if (container) {
-        container.innerHTML = '';
-        const headerEl = document.createElement('div');
-        headerEl.className = 'round-detail-header';
-        headerEl.innerHTML = `
-            <div class="round-detail-label">Round 1 <span class="live-badge">LIVE</span></div>
-            <div class="round-detail-time">${new Date().toLocaleString()}</div>
-            <div class="round-detail-intent">
-                <span class="intent-label">Intent:</span>
-                <span class="intent-text">${_esc(intentText)}</span>
-            </div>`;
-        container.appendChild(headerEl);
+    const section = document.getElementById(_roundSectionId('__live__'));
+    if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-
-    if (els.workflowPanel) {
-        els.workflowPanel.style.display = 'flex';
-        const canvas = document.getElementById('workflow-canvas');
-        if (canvas) canvas.innerHTML = '<div class="panel-empty">Waiting for coordinator to create workflow graph...</div>';
-    }
-    if (els.workflowCollapsed) els.workflowCollapsed.style.display = 'none';
-}
-
-function renderRoundsListInSidebar(rounds) {
-    if (!els.roundsList) return;
-    els.roundsList.innerHTML = '';
-
-    const header = document.createElement('div');
-    header.className = 'rounds-header';
-    header.textContent = 'Rounds';
-    els.roundsList.appendChild(header);
-
-    rounds.forEach((round, index) => {
-        const item = document.createElement('div');
-        item.className = 'round-item';
-        if (currentRound?.run_id === round.run_id) item.classList.add('active');
-        item.onclick = () => selectRound(round);
-
-        const dot = document.createElement('span');
-        dot.className = 'round-item-dot';
-
-        const label = round.run_id === '__live__'
-            ? `Live Round ${index + 1}: ${round.intent || ''}`
-            : `Round ${index + 1}: ${round.intent || 'No intent'}`;
-
-        const text = document.createElement('span');
-        text.className = 'round-item-text';
-        text.textContent = label;
-
-        item.appendChild(dot);
-        item.appendChild(text);
-        els.roundsList.appendChild(item);
-    });
 }
 
 export function selectRound(round) {
-    currentRound = round;
+    if (!round) return;
+    const section = document.getElementById(_roundSectionId(round.run_id));
+    if (!section) return;
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
-    document.querySelectorAll('.round-item').forEach((el, idx) => {
-        el.classList.toggle('active', currentRounds[idx]?.run_id === round.run_id);
-    });
+function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
+    const container = els.chatMessages;
+    if (!container) return;
+
+    const oldScroll = container.scrollTop;
+    container.innerHTML = '';
 
     clearAllPanels();
     clearAllStreamState();
-    state.instanceRoleMap = round?.instance_role_map || {};
+    _activeRunId = null;
+    _activeVisibility = 0;
 
-    renderRoundContent(round);
-    updateWorkflowState(round?.workflows?.length ?? 0, round);
-}
-
-function renderRoundContent(round) {
-    const container = els.chatMessages;
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!round) {
+    if (!rounds || rounds.length === 0) {
+        currentRound = null;
+        state.instanceRoleMap = {};
+        _activeRunId = null;
+        _renderRoundNavigator([]);
+        _updateWorkflowByRound(null);
         container.innerHTML = `
             <div class="system-intro">
-                <div class="intro-icon">info</div>
+                <div class="intro-icon">🛸</div>
                 <h1>Welcome to Agent Teams</h1>
                 <p>Select a session or create a new one to begin.</p>
             </div>`;
         return;
     }
 
-    const time = new Date(round.created_at).toLocaleString();
-    const idx = currentRounds.indexOf(round);
-    const headerEl = document.createElement('div');
-    headerEl.className = 'round-detail-header';
-    headerEl.innerHTML = `
-        <div class="round-detail-label">Round ${idx + 1}</div>
-        <div class="round-detail-time">${time}</div>
-        <div class="round-detail-intent">
-            <span class="intent-label">Intent:</span>
-            <span class="intent-text">${_esc(round.intent || 'No intent')}</span>
-        </div>`;
-    container.appendChild(headerEl);
+    rounds.forEach((round, index) => {
+        const section = document.createElement('section');
+        section.className = 'session-round-section';
+        section.dataset.runId = round.run_id;
+        section.id = _roundSectionId(round.run_id);
 
-    if (round.coordinator_messages?.length > 0) {
-        renderHistoricalMessageList(container, round.coordinator_messages);
+        const time = new Date(round.created_at).toLocaleString();
+        const header = document.createElement('div');
+        header.className = 'round-detail-header';
+        header.innerHTML = `
+            <div class="round-detail-label">Round ${index + 1}${round.run_id === '__live__' ? ' <span class="live-badge">LIVE</span>' : ''}</div>
+            <div class="round-detail-time">${time}</div>
+            <div class="round-detail-intent">
+                <span class="intent-label">Intent:</span>
+                <span class="intent-text">${_esc(round.intent || 'No intent')}</span>
+            </div>`;
+        section.appendChild(header);
+
+        if (round.coordinator_messages?.length > 0) {
+            renderHistoricalMessageList(section, round.coordinator_messages);
+        } else if (round.run_id !== '__live__') {
+            const empty = document.createElement('div');
+            empty.className = 'panel-empty';
+            empty.textContent = 'No coordinator messages in this round.';
+            section.appendChild(empty);
+        }
+
+        container.appendChild(section);
+    });
+
+    _renderRoundNavigator(rounds);
+    _bindScrollSync();
+
+    if (opts.preserveScroll) {
+        container.scrollTop = oldScroll;
+    } else {
+        container.scrollTop = container.scrollHeight;
     }
 
-    container.scrollTop = container.scrollHeight;
+    _syncActiveRoundFromScroll();
 }
 
-function updateWorkflowState(workflowCount, round) {
-    if (!els.workflowCount || !els.workflowCollapsed || !els.workflowPanel) return;
-    els.workflowCount.textContent = workflowCount;
+function _bindScrollSync() {
+    if (_scrollBound || !els.chatMessages) return;
+    els.chatMessages.addEventListener('scroll', _syncActiveRoundFromScroll, { passive: true });
+    _scrollBound = true;
+}
 
-    if (workflowCount > 0) {
-        els.workflowPanel.style.display = 'flex';
-        els.workflowCollapsed.style.display = 'none';
-        if (round?.workflows?.length > 0) {
-            renderNativeDAG(round.workflows[round.workflows.length - 1]);
+function _syncActiveRoundFromScroll() {
+    const container = els.chatMessages;
+    if (!container) return;
+
+    const sections = Array.from(container.querySelectorAll('.session-round-section'));
+    if (sections.length === 0) return;
+
+    const atTop = container.scrollTop <= 2;
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
+    if (atTop) {
+        _activateRoundSection(sections[0], Number.POSITIVE_INFINITY);
+        return;
+    }
+    if (atBottom) {
+        _activateRoundSection(sections[sections.length - 1], Number.POSITIVE_INFINITY);
+        return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    let best = null;
+    let bestVisible = -1;
+
+    sections.forEach(sec => {
+        const rect = sec.getBoundingClientRect();
+        const visibleTop = Math.max(rect.top, containerRect.top);
+        const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+        const visible = Math.max(0, visibleBottom - visibleTop);
+        if (visible > bestVisible) {
+            bestVisible = visible;
+            best = sec;
         }
-    } else {
+    });
+    _activateRoundSection(best, bestVisible);
+}
+
+function _activateRoundSection(section, visibleScore) {
+    const runId = section?.dataset?.runId || null;
+    if (!runId) return;
+
+    // Hysteresis: avoid rapid toggling when two rounds have similar visibility.
+    if (
+        _activeRunId &&
+        runId !== _activeRunId &&
+        visibleScore < _activeVisibility * 1.08
+    ) {
+        return;
+    }
+    if (runId === _activeRunId) {
+        _activeVisibility = visibleScore;
+        return;
+    }
+
+    _activeRunId = runId;
+    _activeVisibility = visibleScore;
+    const round = currentRounds.find(r => r.run_id === runId) || null;
+    currentRound = round;
+
+    document.querySelectorAll('.round-nav-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.runId === runId);
+    });
+
+    _updateWorkflowByRound(round);
+}
+
+function _updateWorkflowByRound(round) {
+    if (!els.workflowCount || !els.workflowCollapsed || !els.workflowPanel) return;
+    const canvas = document.getElementById('workflow-canvas');
+
+    if (!round) {
+        els.workflowCount.textContent = '0';
         els.workflowCollapsed.style.display = 'none';
         els.workflowPanel.style.display = 'none';
+        state.instanceRoleMap = {};
+        if (canvas) canvas.innerHTML = '';
+        return;
     }
+
+    state.instanceRoleMap = round.instance_role_map || {};
+
+    const workflowCount = round.workflows?.length ?? 0;
+    els.workflowCount.textContent = String(workflowCount);
+    // Keep panel height stable to avoid flicker loops when switching rounds.
+    els.workflowPanel.style.display = 'flex';
+    els.workflowCollapsed.style.display = 'none';
+    if (workflowCount > 0) {
+        renderNativeDAG(round.workflows[workflowCount - 1]);
+    } else if (canvas) {
+        canvas.innerHTML = '<div class="panel-empty">No workflow graph for this round.</div>';
+    }
+}
+
+function _renderRoundNavigator(rounds) {
+    let nav = document.getElementById('round-nav-float');
+    if (!nav) {
+        nav = document.createElement('div');
+        nav.id = 'round-nav-float';
+        nav.className = 'round-nav-float';
+        const chatContainer = document.querySelector('.chat-container');
+        if (chatContainer) chatContainer.appendChild(nav);
+    }
+
+    if (!rounds || rounds.length === 0) {
+        nav.style.display = 'none';
+        nav.innerHTML = '';
+        if (els.workflowPanel) els.workflowPanel.style.display = 'none';
+        if (els.workflowCollapsed) els.workflowCollapsed.style.display = 'none';
+        return;
+    }
+
+    nav.style.display = 'flex';
+    nav.innerHTML = `
+        <div class="round-nav-title">Rounds</div>
+        <div class="round-nav-list"></div>
+    `;
+
+    const list = nav.querySelector('.round-nav-list');
+    rounds.forEach((round, idx) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'round-nav-item';
+        item.dataset.runId = round.run_id;
+        item.innerHTML = `
+            <span class="idx">${idx + 1}</span>
+            <span class="txt">${_esc(round.intent || 'No intent')}</span>
+        `;
+        item.onclick = () => selectRound(round);
+        list.appendChild(item);
+    });
 }
 
 export function toggleWorkflow() {
@@ -186,22 +276,11 @@ export function toggleWorkflow() {
 }
 
 export function goBackToSessions() {
-    setSessionMode();
-    currentRound = null;
-    currentRounds = [];
-    clearAllPanels();
-    clearAllStreamState();
-    state.instanceRoleMap = {};
+    // Legacy no-op: session list always visible now.
+}
 
-    els.chatMessages.innerHTML = `
-        <div class="system-intro">
-            <div class="intro-icon">info</div>
-            <h1>Welcome to Agent Teams</h1>
-            <p>Select a session from the sidebar to view details.</p>
-        </div>`;
-
-    if (els.workflowPanel) els.workflowPanel.style.display = 'none';
-    if (els.workflowCollapsed) els.workflowCollapsed.style.display = 'none';
+function _roundSectionId(runId) {
+    return `round-${String(runId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 }
 
 function _esc(text) {

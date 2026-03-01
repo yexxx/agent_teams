@@ -5,9 +5,16 @@
 import { els } from '../utils/dom.js';
 
 export function setupNavbarBindings() {
+    _initSidebarResize();
+
     if (els.sidebarToggleBtn) {
         els.sidebarToggleBtn.onclick = () => {
-            els.sidebar.classList.toggle('collapsed');
+            const collapsed = els.sidebar.classList.toggle('collapsed');
+            if (collapsed) {
+                localStorage.setItem('agent_teams_sidebar_collapsed', '1');
+            } else {
+                localStorage.setItem('agent_teams_sidebar_collapsed', '0');
+            }
         };
     }
 
@@ -30,4 +37,52 @@ export function setupNavbarBindings() {
             document.body.classList.add('light-theme');
         }
     }
+}
+
+function _initSidebarResize() {
+    if (!els.sidebar) return;
+
+    const savedWidth = localStorage.getItem('agent_teams_sidebar_width');
+    if (savedWidth && /^\d+$/.test(savedWidth)) {
+        const px = Number(savedWidth);
+        if (px >= 180 && px <= 520) {
+            els.sidebar.style.width = `${px}px`;
+            els.sidebar.style.setProperty('--sidebar-width', `${px}px`);
+        }
+    }
+
+    const collapsed = localStorage.getItem('agent_teams_sidebar_collapsed');
+    if (collapsed === '1') {
+        els.sidebar.classList.add('collapsed');
+    }
+
+    if (!els.sidebarResizer) return;
+    let dragging = false;
+
+    const onMove = (e) => {
+        if (!dragging || !els.sidebar || els.sidebar.classList.contains('collapsed')) return;
+        const next = Math.max(180, Math.min(520, e.clientX));
+        els.sidebar.style.width = `${next}px`;
+        els.sidebar.style.setProperty('--sidebar-width', `${next}px`);
+        localStorage.setItem('agent_teams_sidebar_width', String(next));
+    };
+
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        els.sidebarResizer.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+    };
+
+    els.sidebarResizer.addEventListener('mousedown', (e) => {
+        if (els.sidebar.classList.contains('collapsed')) return;
+        dragging = true;
+        els.sidebarResizer.classList.add('dragging');
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        e.preventDefault();
+    });
 }

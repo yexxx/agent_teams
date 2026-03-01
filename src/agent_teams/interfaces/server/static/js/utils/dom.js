@@ -20,6 +20,7 @@ export const els = {
     workflowCount: qs('#workflow-count'),
     collapseWorkflowBtn: qs('#collapse-workflow'),
     sidebar: qs('.sidebar'),
+    sidebarResizer: qs('#sidebar-resizer'),
     sidebarToggleBtn: qs('#toggle-sidebar'),
     inspectorToggleBtn: qs('#toggle-inspector'),
     newSessionBtn: qs('#new-btn'),

@@ -70,9 +70,10 @@ export function setSessionMode() {
 }
 
 export function setRoundsMode() {
-    els.sessionsList.style.display = 'none';
-    els.roundsList.style.display = 'block';
-    els.backBtn.style.display = 'flex';
+    // Session list stays visible; rounds are shown as a floating navigator in main area.
+    els.sessionsList.style.display = 'block';
+    els.roundsList.style.display = 'none';
+    els.backBtn.style.display = 'none';
 }
 
 export async function handleNewSessionClick(manualClick = true) {

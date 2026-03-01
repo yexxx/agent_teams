@@ -19,6 +19,10 @@ function _getDrawer() {
     return document.getElementById('agent-drawer');
 }
 
+function _getSubagentCard() {
+    return document.querySelector('.rail-subagent-card');
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -49,6 +53,8 @@ export function openAgentPanel(instanceId, roleId) {
 
     // Open drawer
     drawer.classList.add('open');
+    const card = _getSubagentCard();
+    if (card) card.classList.add('open');
 
     // Highlight DAG node
     _highlightNode(roleId, instanceId);
@@ -57,6 +63,8 @@ export function openAgentPanel(instanceId, roleId) {
 export function closeAgentPanel() {
     const drawer = _getDrawer();
     if (drawer) drawer.classList.remove('open');
+    const card = _getSubagentCard();
+    if (card) card.classList.remove('open');
     _activeInstanceId = null;
     document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('active-tab'));
 }
@@ -68,6 +76,8 @@ export function clearAllPanels() {
     _panels.clear();
     _activeInstanceId = null;
     drawer.classList.remove('open');
+    const card = _getSubagentCard();
+    if (card) card.classList.remove('open');
 }
 
 /** Load historical messages from API into the panel */

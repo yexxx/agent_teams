@@ -21,12 +21,65 @@ export async function loadSessionRounds(sessionId) {
         const rounds = await fetchSessionRounds(sessionId);
         currentRounds = rounds || [];
         renderRoundsListInSidebar(currentRounds);
-        renderRoundContent(currentRounds[0] ?? null);
-        updateWorkflowState(currentRounds[0]?.workflows?.length ?? 0, currentRounds[0] ?? null);
+        // Show first (most recent) round
+        if (currentRounds.length > 0) {
+            renderRoundContent(currentRounds[0]);
+            updateWorkflowState(currentRounds[0].workflows?.length ?? 0, currentRounds[0]);
+        } else {
+            renderRoundContent(null);
+            updateWorkflowState(0, null);
+        }
     } catch (e) {
         console.error('Failed loading rounds', e);
     }
 }
+
+/**
+ * Create an immediate "live round" entry in the sidebar and switch to a
+ * streaming view in the main area.  Called right after the user hits Send
+ * so they see the new round instantly, before any SSE events arrive.
+ */
+export function createLiveRound(intentText) {
+    const liveRound = {
+        run_id: '__live__',
+        created_at: new Date().toISOString(),
+        intent: intentText,
+        coordinator_messages: [],
+        workflows: [],
+    };
+
+    // Prepend to the rounds array
+    currentRounds = [liveRound, ...currentRounds];
+    currentRound = liveRound;
+
+    renderRoundsListInSidebar(currentRounds);
+
+    // Clear main area and show the live header
+    const container = els.chatMessages;
+    if (container) {
+        container.innerHTML = '';
+        const headerEl = document.createElement('div');
+        headerEl.className = 'round-detail-header';
+        headerEl.innerHTML = `
+            <div class="round-detail-label">Round ${currentRounds.length === 1 ? 1 : 1} <span class="live-badge">LIVE</span></div>
+            <div class="round-detail-time">${new Date().toLocaleString()}</div>
+            <div class="round-detail-intent">
+                <span class="intent-label">Intent:</span>
+                <span class="intent-text">${_esc(intentText)}</span>
+            </div>`;
+        container.appendChild(headerEl);
+    }
+
+    // Show the execution graph panel (collapsed initially)
+    if (els.workflowPanel) {
+        els.workflowPanel.style.display = 'flex';
+        const canvas = document.getElementById('workflow-canvas');
+        if (canvas) canvas.innerHTML = '<div class="panel-empty">等待 Coordinator 创建 workflow graph…</div>';
+    }
+    if (els.workflowCollapsed) els.workflowCollapsed.style.display = 'none';
+}
+
+// ─── Sidebar round list ──────────────────────────────────────────────────────
 
 function renderRoundsListInSidebar(rounds) {
     if (!els.roundsList) return;
@@ -46,9 +99,13 @@ function renderRoundsListInSidebar(rounds) {
         const dot = document.createElement('span');
         dot.className = 'round-item-dot';
 
+        const label = round.run_id === '__live__'
+            ? `🔴 Round ${index + 1}: ${round.intent || '…'}`
+            : `Round ${index + 1}: ${round.intent || 'No intent'}`;
+
         const text = document.createElement('span');
         text.className = 'round-item-text';
-        text.textContent = `Round ${index + 1}: ${round.intent || 'No intent'}`;
+        text.textContent = label;
 
         item.appendChild(dot);
         item.appendChild(text);
@@ -65,7 +122,6 @@ export function selectRound(round) {
 
     // Clear agent panels when switching rounds
     clearAllPanels();
-    // Reset instance map
     state.instanceRoleMap = {};
 
     renderRoundContent(round);
@@ -114,8 +170,6 @@ function updateWorkflowState(workflowCount, round) {
     els.workflowCount.textContent = workflowCount;
 
     if (workflowCount > 0) {
-        els.workflowCollapsed.style.display = 'block';
-        // Auto-expand with DAG
         els.workflowPanel.style.display = 'flex';
         els.workflowCollapsed.style.display = 'none';
         if (round?.workflows?.length > 0) {

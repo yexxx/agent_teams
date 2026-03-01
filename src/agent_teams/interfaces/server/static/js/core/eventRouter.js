@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
-import { updateDagActiveNode } from '../components/workflow.js';
+import { updateDagActiveNode, renderNativeDAG } from '../components/workflow.js';
 import {
     getOrCreateStreamBlock,
     appendStreamChunk,
@@ -20,7 +20,7 @@ import {
     showGateCard,
     removeGateCard,
 } from '../components/agentPanel.js';
-import { resolveGate, dispatchHumanTask } from './api.js';
+import { dispatchHumanTask } from './api.js';
 import { parseMarkdown } from '../utils/markdown.js';
 
 const COORDINATOR_ROLE = 'coordinator_agent';
@@ -61,13 +61,11 @@ export function routeEvent(evType, payload, eventMeta) {
 
         if (isCoordinator) {
             const container = els.chatMessages;
-            // 4-arg call: (container, instanceId/key, roleId, displayLabel)
             getOrCreateStreamBlock(container, streamKey, COORDINATOR_ROLE, label);
             appendStreamChunk(streamKey, payload.text || '');
         } else {
             const container = getPanelScrollContainer(instanceId, roleId);
             openAgentPanel(instanceId, roleId);
-            // 4-arg call: (container, instanceId, roleId, displayLabel)
             getOrCreateStreamBlock(container, instanceId, roleId, label);
             appendStreamChunk(instanceId, payload.text || '');
         }
@@ -119,6 +117,11 @@ export function routeEvent(evType, payload, eventMeta) {
     else if (evType === 'tool_result') {
         const streamKey = instanceId || 'coordinator';
         updateToolResult(streamKey, payload.tool_name, payload.result, !!payload.error);
+
+        // ★ Live DAG: when create_workflow_graph tool completes, render the graph immediately
+        if (payload.tool_name === 'create_workflow_graph' && payload.result) {
+            _tryRenderLiveDAG(payload.result);
+        }
     }
 
     // ── Human orchestration mode ─────────────────────────────────────────────
@@ -152,7 +155,42 @@ export function routeEvent(evType, payload, eventMeta) {
     }
 }
 
+// ─── Live DAG render from tool result ─────────────────────────────────────────
+
+function _tryRenderLiveDAG(result) {
+    try {
+        const data = typeof result === 'string' ? JSON.parse(result) : result;
+        if (!data.ok || !data.tasks) return;
+
+        // Convert the flat task array into a `{ tasks: { name: { role_id, depends_on } } }` format
+        // the tool returns tasks as an array: [{task_name, task_id, role_id, depends_on}, ...]
+        const taskMap = {};
+        const tasksArr = Array.isArray(data.tasks) ? data.tasks : Object.values(data.tasks);
+        for (const t of tasksArr) {
+            taskMap[t.task_name || t.task_id] = {
+                task_id: t.task_id,
+                role_id: t.role_id,
+                depends_on: t.depends_on || [],
+            };
+        }
+
+        const workflow = { tasks: taskMap, workflow_id: data.workflow_id };
+
+        // Show the workflow panel
+        const panel = document.getElementById('workflow-panel');
+        if (panel) panel.style.display = 'flex';
+        const collapsed = document.getElementById('workflow-collapsed');
+        if (collapsed) collapsed.style.display = 'none';
+
+        renderNativeDAG(workflow);
+        sysLog(`📊 Live DAG rendered (${Object.keys(taskMap).length} tasks)`);
+    } catch (e) {
+        console.error('Failed to render live DAG', e);
+    }
+}
+
 // ─── Human dispatch panel ─────────────────────────────────────────────────────
+
 function _renderHumanDispatchPanel(payload, eventMeta) {
     document.querySelectorAll('.human-dispatch-panel').forEach(el => el.remove());
     const container = els.chatMessages;

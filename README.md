@@ -22,16 +22,16 @@ uv sync
 Linux/macOS:
 
 ```bash
-cp .agent_teams/llm.json.example .agent_teams/llm.json
+cp .agent_teams/model.json.example .agent_teams/model.json
 ```
 
 Windows PowerShell:
 
 ```powershell
-Copy-Item .agent_teams/llm.json.example .agent_teams/llm.json
+Copy-Item .agent_teams/model.json.example .agent_teams/model.json
 ```
 
-Then edit `.agent_teams/llm.json`. You must configure the `default` profile, and optionally add more profiles for different roles.
+Then edit `.agent_teams/model.json`. You must configure the `default` profile, and optionally add more profiles for different roles.
 
 ```json
 {
@@ -52,13 +52,13 @@ Then edit `.agent_teams/llm.json`. You must configure the `default` profile, and
 
 #### Per-role model configuration
 
-In each role's markdown file (e.g., `.agent_teams/roles/coordinator_agent.md`), add `llm_profile` to use a specific model:
+In each role's markdown file (e.g., `.agent_teams/roles/coordinator_agent.md`), add `model_profile` to use a specific model:
 
 ```yaml
 ---
 role_id: coordinator_agent
 name: Coordinator Agent
-llm_profile: fast
+model_profile: fast
 ...
 ---
 ```

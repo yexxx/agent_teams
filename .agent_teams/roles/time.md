@@ -1,7 +1,7 @@
 ---
 role_id: time
 name: time
-llm_profile: default
+model_profile: default
 version: 1.0.0
 capabilities:
   - get current time
@@ -12,7 +12,6 @@ mcp_servers:
   - time-mcp
 skills:
   - time
-model_profile: default
 ---
 # Role
 You are **time agent**.

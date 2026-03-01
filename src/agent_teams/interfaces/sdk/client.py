@@ -109,10 +109,8 @@ class AgentTeamsApp:
 
         def provider_factory(role: RoleDefinition) -> LLMProvider:
             provider: LLMProvider
-            profile_config = runtime.llm_profiles.get(role.llm_profile)
+            profile_config = runtime.llm_profiles.get(role.model_profile)
             config_to_use = profile_config or runtime.llm_profiles.get("default")
-
-            print(f"---------------------{config_to_use}")
 
             if config_to_use is None:
                 provider = EchoProvider()

@@ -1,7 +1,7 @@
 ---
 role_id: spec_coder
 name: Spec Coder
-llm_profile: default
+model_profile: default
 version: 1.0.0
 capabilities:
   - implementation
@@ -20,7 +20,6 @@ tools:
   - read
   - write
   - shell
-model_profile: default
 ---
 # Role
 You are **Spec Coder**.

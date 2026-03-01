@@ -36,9 +36,8 @@ class RoleLoader:
         "capabilities",
         "constraints",
         "tools",
-        "model_profile",
     )
-    OPTIONAL_FIELDS = ("llm_profile",)
+    OPTIONAL_FIELDS = ("model_profile",)
 
     def load_all(self, roles_dir: Path) -> RoleRegistry:
         registry = RoleRegistry()
@@ -90,8 +89,7 @@ class RoleLoader:
             mcp_servers=tuple(str(item) for item in mcp_servers),
             skills=tuple(str(item) for item in skills),
             depends_on=tuple(str(item) for item in depends_on),
-            model_profile=str(parsed["model_profile"]),
-            llm_profile=str(parsed.get("llm_profile", "default")),
+            model_profile=str(parsed.get("model_profile", "default")),
             system_prompt=body.strip(),
         )
 

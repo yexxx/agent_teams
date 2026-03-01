@@ -1,7 +1,7 @@
 ---
 role_id: spec_spec
 name: Spec Spec
-llm_profile: default
+model_profile: default
 version: 1.0.0
 capabilities:
   - requirements
@@ -15,7 +15,6 @@ constraints:
 tools:
   - read_stage_input
   - write_stage_doc
-model_profile: default
 ---
 # Role
 You are **Spec Spec**.

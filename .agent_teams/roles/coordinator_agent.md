@@ -1,7 +1,7 @@
 ---
 role_id: coordinator_agent
 name: Coordinator Agent
-llm_profile: default
+model_profile: kimi
 version: 1.0.0
 capabilities:
   - orchestrate
@@ -18,7 +18,6 @@ tools:
   - create_workflow_graph
   - dispatch_ready_tasks
   - get_workflow_status
-model_profile: default
 ---
 # Role
 You are **CoordinatorAgent**, the entrypoint for end-to-end requirement delivery.

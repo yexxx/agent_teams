@@ -57,20 +57,20 @@ def load_llm_configs(
     config_dir: Path,
     env_pairs: tuple[tuple[str, str], ...],
 ) -> dict[str, ModelEndpointConfig]:
-    llm_file = config_dir / "llm.json"
-    if not llm_file.exists():
+    model_file = config_dir / "model.json"
+    if not model_file.exists():
         raise FileNotFoundError(
-            f"llm.json not found in {config_dir}. "
-            "Please create .agent_teams/llm.json with a 'default' profile."
+            f"model.json not found in {config_dir}. "
+            "Please create .agent_teams/model.json with a 'default' profile."
         )
 
     try:
-        data = loads(llm_file.read_text(encoding="utf-8"))
+        data = loads(model_file.read_text(encoding="utf-8"))
     except Exception as e:
-        raise ValueError(f"Failed to parse llm.json: {e}")
+        raise ValueError(f"Failed to parse model.json: {e}")
 
     if "default" not in data:
-        raise ValueError("llm.json must contain a 'default' profile.")
+        raise ValueError("model.json must contain a 'default' profile.")
 
     profiles: dict[str, ModelEndpointConfig] = {}
     for name, cfg in data.items():

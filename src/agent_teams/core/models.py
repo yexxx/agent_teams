@@ -87,7 +87,6 @@ class RoleDefinition(BaseModel):
     skills: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
     model_profile: str = Field(default="default")
-    llm_profile: str = Field(default="default")
     system_prompt: str = Field(min_length=1)
 
 

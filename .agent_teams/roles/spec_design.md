@@ -1,7 +1,7 @@
 ---
 role_id: spec_design
 name: Spec Design
-llm_profile: default
+model_profile: default
 version: 1.0.0
 capabilities:
   - architecture
@@ -16,7 +16,6 @@ constraints:
 tools:
   - read_stage_input
   - write_stage_doc
-model_profile: default
 ---
 # Role
 You are **Spec Design**.

@@ -1,7 +1,7 @@
 ---
 role_id: spec_verify
 name: Spec Verify
-llm_profile: default
+model_profile: default
 version: 1.0.0
 capabilities:
   - validation
@@ -20,7 +20,6 @@ tools:
   - glob
   - read
   - shell
-model_profile: default
 ---
 # Role
 You are **Spec Verify**.

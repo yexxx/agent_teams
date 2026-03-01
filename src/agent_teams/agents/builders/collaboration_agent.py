@@ -28,6 +28,14 @@ def build_collaboration_agent(
     if mcp_registry and allowed_mcp_servers:
         toolsets.extend(mcp_registry.get_toolsets(allowed_mcp_servers))
         
+    skill_tools = []
+    if skill_registry and allowed_skills:
+        skill_registry.validate_known(allowed_skills)
+        skill_tools = skill_registry.get_toolset_tools(allowed_skills)
+        instructions = skill_registry.get_instructions(allowed_skills)
+        if instructions:
+            system_prompt = f"{system_prompt}\n\n{instructions}"
+
     model = OpenAIChatModel(
         model_name,
         provider=OpenAIProvider(base_url=base_url, api_key=api_key),
@@ -38,14 +46,10 @@ def build_collaboration_agent(
         output_type=str,
         system_prompt=system_prompt,
         toolsets=toolsets,
+        tools=skill_tools,
     )
     specs = tool_registry.require(allowed_tools)
     for spec in specs:
         spec.mount(agent)
     
-    if skill_registry:
-        skills = skill_registry.require(allowed_skills)
-        for skill in skills:
-            skill.mount(agent)
-            
     return agent

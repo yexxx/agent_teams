@@ -9,6 +9,8 @@ constraints: []
 tools: []
 mcp_servers:
   - time-mcp
+skills:
+  - time
 model_profile: default
 ---
 # Role

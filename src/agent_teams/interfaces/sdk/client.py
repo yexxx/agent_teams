@@ -84,7 +84,12 @@ class AgentTeamsApp:
                 print(f"Warning: Failed to load mcp.json: {e}")
                 
         mcp_registry = McpRegistry(tuple(mcp_specs))
-        skill_registry = SkillRegistry()
+        
+        from agent_teams.skills.discovery import SkillsDirectory
+        skills_dir = config_dir / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        skill_directory = SkillsDirectory(base_dir=skills_dir)
+        skill_registry = SkillRegistry(directory=skill_directory)
         
         for role in role_registry.list_roles():
             tool_registry.validate_known(role.tools)

@@ -4,13 +4,13 @@
  */
 
 export async function fetchSessions() {
-    const res = await fetch('/api/v1/session');
+    const res = await fetch('/api/v1/session/');
     if (!res.ok) throw new Error("Failed to fetch sessions");
     return res.json();
 }
 
 export async function startNewSession() {
-    const res = await fetch('/api/v1/session', {
+    const res = await fetch('/api/v1/session/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})

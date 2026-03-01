@@ -20,7 +20,7 @@ export const els = {
     sendBtn: document.getElementById('send-btn'),
     systemLogs: document.getElementById('system-logs'),
     toggleInspector: document.getElementById('toggle-inspector'),
-    inspectorPanel: document.getElementById('inspector-panel'),
+    inspectorPanel: document.getElementById('rail-inspector'),
     toggleSidebar: document.getElementById('toggle-sidebar'),
     sidebar: document.querySelector('.sidebar')
 };

@@ -11,7 +11,7 @@ export const els = {
     sessionsList: qs('#sessions-list'),
     roundsList: qs('#rounds-list'),
     backBtn: qs('#back-btn'),
-    inspectorPanel: qs('#inspector-panel'),
+    inspectorPanel: qs('#rail-inspector'),
     systemLogs: qs('#system-logs'),
     chatMessages: qs('#chat-messages'),
     workflowPanel: qs('#workflow-panel'),

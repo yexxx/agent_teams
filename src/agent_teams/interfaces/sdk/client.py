@@ -43,6 +43,8 @@ from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.tools.defaults import build_default_registry
 from agent_teams.workflow.spec import WorkflowSpec
+from agent_teams.mcp.registry import McpRegistry, McpServerSpec
+from agent_teams.skills.registry import SkillRegistry
 
 
 def _get_project_root() -> Path:
@@ -66,8 +68,28 @@ class AgentTeamsApp:
 
         role_registry = RoleLoader().load_all(runtime.paths.roles_dir)
         tool_registry = build_default_registry()
+        
+        # Load MCP configs from .agent_teams/mcp.json if it exists
+        mcp_specs = []
+        mcp_file = config_dir / "mcp.json"
+        if mcp_file.exists():
+            try:
+                mcp_data = loads(mcp_file.read_text("utf-8"))
+                servers = mcp_data.get("mcpServers", mcp_data)
+                for name, cfg in servers.items():
+                    # FastMCPToolset expects the {"mcpServers": {name: config}} structure
+                    wrapped_cfg = {"mcpServers": {name: cfg}}
+                    mcp_specs.append(McpServerSpec(name=name, config=wrapped_cfg))
+            except Exception as e:
+                print(f"Warning: Failed to load mcp.json: {e}")
+                
+        mcp_registry = McpRegistry(tuple(mcp_specs))
+        skill_registry = SkillRegistry()
+        
         for role in role_registry.list_roles():
             tool_registry.validate_known(role.tools)
+            mcp_registry.validate_known(role.mcp_servers)
+            skill_registry.validate_known(role.skills)
 
         task_repo = TaskRepository(runtime.paths.db_path)
         shared_store = SharedStore(runtime.paths.db_path)
@@ -98,7 +120,11 @@ class AgentTeamsApp:
                     agent_repo=agent_repo,
                     workspace_root=Path.cwd(),
                     tool_registry=tool_registry,
+                    mcp_registry=mcp_registry,
+                    skill_registry=skill_registry,
                     allowed_tools=role.tools,
+                    allowed_mcp_servers=role.mcp_servers,
+                    allowed_skills=role.skills,
                     message_repo=message_repo,
                     role_registry=role_registry,
                     task_execution_service=task_execution_service,

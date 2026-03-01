@@ -20,6 +20,8 @@ from agent_teams.state.message_repo import MessageRepository
 from agent_teams.agents.builders.collaboration_agent import build_collaboration_agent
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps
+from agent_teams.mcp.registry import McpRegistry
+from agent_teams.skills.registry import SkillRegistry
 
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
@@ -62,7 +64,11 @@ class OpenAICompatibleProvider(LLMProvider):
         agent_repo: AgentInstanceRepository,
         workspace_root: Path,
         tool_registry: ToolRegistry,
+        mcp_registry: McpRegistry,
+        skill_registry: SkillRegistry,
         allowed_tools: tuple[str, ...],
+        allowed_mcp_servers: tuple[str, ...],
+        allowed_skills: tuple[str, ...],
         message_repo: MessageRepository,
         role_registry: 'RoleRegistry',
         task_execution_service: 'TaskExecutionService',
@@ -77,7 +83,11 @@ class OpenAICompatibleProvider(LLMProvider):
         self._agent_repo = agent_repo
         self._workspace_root = workspace_root
         self._tool_registry = tool_registry
+        self._mcp_registry = mcp_registry
+        self._skill_registry = skill_registry
         self._allowed_tools = allowed_tools
+        self._allowed_mcp_servers = allowed_mcp_servers
+        self._allowed_skills = allowed_skills
         self._role_registry = role_registry
         self._task_execution_service = task_execution_service
         self._message_repo = message_repo
@@ -110,7 +120,11 @@ class OpenAICompatibleProvider(LLMProvider):
             api_key=self._config.api_key,
             system_prompt=f'{request.system_prompt}\n\n{tool_rules}',
             allowed_tools=self._allowed_tools,
+            allowed_mcp_servers=self._allowed_mcp_servers,
+            allowed_skills=self._allowed_skills,
             tool_registry=self._tool_registry,
+            mcp_registry=self._mcp_registry,
+            skill_registry=self._skill_registry,
         )
         deps = ToolDeps(
             task_repo=self._task_repo,

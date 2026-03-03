@@ -19,6 +19,7 @@ from agent_teams.core.models import (
 )
 from agent_teams.application.bootstrap import build_service_components
 from agent_teams.application.rounds_projection import (
+    collect_pending_stream_snapshots,
     collect_pending_tool_approvals,
     find_round_by_run_id,
     paginate_rounds,
@@ -340,6 +341,18 @@ class AgentTeamsService:
         parsed_events: list[tuple[dict, dict[str, Any]]],
     ) -> dict[str, list[dict[str, str]]]:
         return collect_pending_tool_approvals(parsed_events)
+
+    @staticmethod
+    def _collect_pending_stream_snapshots(
+        parsed_events: list[tuple[dict, dict[str, Any]]],
+        session_messages: list[dict[str, Any]],
+        by_run_instance_role: dict[str, dict[str, str]],
+    ) -> dict[str, dict[str, Any]]:
+        return collect_pending_stream_snapshots(
+            parsed_events,
+            session_messages,
+            by_run_instance_role,
+        )
 
     def _build_session_rounds(self, session_id: str) -> list[dict]:
         return self._session_service.build_session_rounds(session_id)

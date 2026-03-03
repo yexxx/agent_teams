@@ -1,6 +1,5 @@
 # Agent Teams API 设计文档
 
-更新时间：2026-03-03  
 版本：MVP（直接演进版，无 `/api/v1` 兼容层）
 
 ## 1. 设计目标
@@ -106,6 +105,8 @@
 - `POST /runs/{run_id}/stop`
 - `GET /runs/{run_id}/gates`
 - `POST /runs/{run_id}/gates/{task_id}/resolve`
+- `GET /runs/{run_id}/tool-approvals`
+- `POST /runs/{run_id}/tool-approvals/{tool_call_id}/resolve`
 - `POST /runs/{run_id}/dispatch`
 
 ### 4.4 Tasks
@@ -241,6 +242,24 @@ Content-Type: application/json
 {"session_id":"session-ab12cd34","task_id":"task-xxx"}
 ```
 
+### 5.6 工具调用审批
+
+- 获取待审批的工具调用：`GET /api/runs/{run_id}/tool-approvals`
+- 审批/拒绝工具调用：
+```http
+POST /api/runs/{run_id}/tool-approvals/{tool_call_id}/resolve
+Content-Type: application/json
+
+{"action":"approve","feedback":""}
+```
+
+```http
+POST /api/runs/{run_id}/tool-approvals/{tool_call_id}/resolve
+Content-Type: application/json
+
+{"action":"deny","feedback":"不安全操作"}
+```
+
 ## 6. 枚举约束
 
 ### execution_mode
@@ -263,6 +282,8 @@ Content-Type: application/json
 - `text_delta`
 - `tool_call`
 - `tool_result`
+- `tool_approval_requested`
+- `tool_approval_resolved`
 - `injection_enqueued`
 - `injection_applied`
 - `subagent_stopped`
@@ -280,3 +301,29 @@ Content-Type: application/json
 - 旧 `/api/v1/*` 接口已不作为标准契约。
 - 新客户端应统一接入 `/api/*`。
 - Web 与 CLI 均应按“创建 run + 订阅 SSE”流程实现。
+
+## 8. Session Rounds Payload Notes (2026-03-04)
+
+`GET /sessions/{session_id}/rounds` and `GET /sessions/{session_id}/rounds/{run_id}` now include `pending_streams` for refresh-safe stream recovery.
+
+Example:
+
+```json
+{
+  "run_id": "run-123",
+  "pending_tool_approvals": [],
+  "pending_streams": {
+    "coordinator_text": "",
+    "coordinator_instance_id": "",
+    "by_instance": {
+      "inst-abc": "still streaming text..."
+    }
+  }
+}
+```
+
+Semantics:
+- `coordinator_text`: unpersisted coordinator stream delta for this round.
+- `coordinator_instance_id`: coordinator instance id if available.
+- `by_instance`: unpersisted stream deltas keyed by subagent instance id.
+- Empty strings/maps mean no pending stream delta should be rendered.

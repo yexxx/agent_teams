@@ -82,6 +82,194 @@ def collect_pending_tool_approvals(
     return result
 
 
+def collect_pending_stream_snapshots(
+    parsed_events: list[tuple[dict, dict[str, Any]]],
+    session_messages: list[dict[str, Any]],
+    by_run_instance_role: dict[str, dict[str, str]],
+) -> dict[str, dict[str, Any]]:
+    persisted_by_run_actor: dict[str, dict[str, str]] = {}
+    for msg in session_messages:
+        if str(msg.get("role") or "") == "user":
+            continue
+        run_id = str(msg.get("trace_id") or "")
+        if not run_id:
+            continue
+        instance_id = str(msg.get("instance_id") or "")
+        role_id = str(msg.get("role_id") or by_run_instance_role.get(run_id, {}).get(instance_id) or "")
+        text = _extract_text_from_message(msg.get("message"))
+        if not text:
+            continue
+        actor_map = persisted_by_run_actor.setdefault(run_id, {})
+        if instance_id:
+            actor_map[instance_id] = actor_map.get(instance_id, "") + text
+        if role_id:
+            role_key = f"role:{role_id}"
+            actor_map[role_key] = actor_map.get(role_key, "") + text
+
+    active_steps: dict[tuple[str, str], dict[str, str]] = {}
+    terminal_events = {
+        RunEventType.RUN_COMPLETED.value,
+        RunEventType.RUN_FAILED.value,
+        RunEventType.RUN_STOPPED.value,
+    }
+
+    for ev, payload in parsed_events:
+        run_id = str(ev.get("trace_id") or "")
+        if not run_id:
+            continue
+        event_type = str(ev.get("event_type") or "")
+        if not event_type:
+            continue
+        safe_payload = payload if isinstance(payload, dict) else {}
+        event_instance_id = str(ev.get("instance_id") or "")
+        instance_id = str(safe_payload.get("instance_id") or event_instance_id or "")
+        role_id = str(
+            safe_payload.get("role_id")
+            or by_run_instance_role.get(run_id, {}).get(instance_id)
+            or ""
+        )
+        actor_key = instance_id or (f"role:{role_id}" if role_id else "coordinator")
+        state_key = (run_id, actor_key)
+
+        if event_type == RunEventType.MODEL_STEP_STARTED.value:
+            active_steps[state_key] = {
+                "run_id": run_id,
+                "actor_key": actor_key,
+                "instance_id": instance_id,
+                "role_id": role_id,
+                "text": "",
+            }
+            continue
+
+        if event_type == RunEventType.TEXT_DELTA.value:
+            chunk = safe_payload.get("text")
+            if not isinstance(chunk, str) or not chunk:
+                continue
+            state = active_steps.setdefault(
+                state_key,
+                {
+                    "run_id": run_id,
+                    "actor_key": actor_key,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                    "text": "",
+                },
+            )
+            state["text"] = f"{state['text']}{chunk}"
+            if role_id and not state.get("role_id"):
+                state["role_id"] = role_id
+            if instance_id and not state.get("instance_id"):
+                state["instance_id"] = instance_id
+            continue
+
+        if event_type == RunEventType.MODEL_STEP_FINISHED.value:
+            active_steps.pop(state_key, None)
+            continue
+
+        if event_type in terminal_events:
+            stale_keys = [key for key in active_steps.keys() if key[0] == run_id]
+            for key in stale_keys:
+                active_steps.pop(key, None)
+
+    snapshots: dict[str, dict[str, Any]] = {}
+    for state in active_steps.values():
+        run_id = str(state.get("run_id") or "")
+        if not run_id:
+            continue
+        pending_text = str(state.get("text") or "")
+        if not pending_text.strip():
+            continue
+
+        actor_key = str(state.get("actor_key") or "")
+        role_id = str(state.get("role_id") or "")
+        instance_id = str(state.get("instance_id") or "")
+        persisted_map = persisted_by_run_actor.get(run_id, {})
+        persisted_text = persisted_map.get(actor_key, "")
+        if not persisted_text and role_id:
+            persisted_text = persisted_map.get(f"role:{role_id}", "")
+
+        delta = _subtract_persisted_text(pending_text, persisted_text)
+        if not delta:
+            continue
+
+        entry = snapshots.setdefault(
+            run_id,
+            {
+                "coordinator_text": "",
+                "coordinator_instance_id": "",
+                "by_instance": {},
+            },
+        )
+
+        is_coordinator = role_id == "coordinator_agent" or (
+            not instance_id and actor_key in {"coordinator", "role:coordinator_agent"}
+        )
+        if is_coordinator:
+            entry["coordinator_text"] = delta
+            if instance_id:
+                entry["coordinator_instance_id"] = instance_id
+            continue
+        if instance_id:
+            by_instance = entry["by_instance"]
+            by_instance[instance_id] = delta
+            continue
+        entry["coordinator_text"] = delta
+
+    return snapshots
+
+
+def _extract_text_from_message(message: Any) -> str:
+    if not isinstance(message, dict):
+        return ""
+    parts = message.get("parts")
+    if not isinstance(parts, list):
+        return ""
+    chunks: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if part.get("part_kind") != "text":
+            continue
+        content = part.get("content")
+        if isinstance(content, str) and content:
+            chunks.append(content)
+    return "".join(chunks)
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _subtract_persisted_text(pending_text: str, persisted_text: str) -> str:
+    pending = str(pending_text or "")
+    if not pending.strip():
+        return ""
+    persisted = str(persisted_text or "")
+    if not persisted.strip():
+        return pending
+    if pending.startswith(persisted):
+        delta = pending[len(persisted):]
+        return delta if delta.strip() else ""
+
+    pending_norm = _normalize_text(pending)
+    persisted_norm = _normalize_text(persisted)
+    if not pending_norm:
+        return ""
+    if pending_norm == persisted_norm:
+        return ""
+    if pending_norm in persisted_norm:
+        return ""
+
+    max_overlap = min(len(pending), len(persisted))
+    overlap = 0
+    for length in range(max_overlap, 0, -1):
+        if persisted[-length:] == pending[:length]:
+            overlap = length
+            break
+    delta = pending[overlap:]
+    return delta if delta.strip() else ""
+
+
 def build_session_rounds(
     *,
     session_id: str,
@@ -105,7 +293,6 @@ def build_session_rounds(
     rounds_map: dict[str, dict] = {}
     by_run_instance_role: dict[str, dict[str, str]] = {}
     by_run_role_instance: dict[str, dict[str, str]] = {}
-    pending_by_run = collect_pending_tool_approvals(parsed_events)
 
     for ev, payload in parsed_events:
         run_id = ev["trace_id"]
@@ -121,6 +308,23 @@ def build_session_rounds(
         role_map = by_run_role_instance.setdefault(rec.run_id, {})
         role_map.setdefault(rec.role_id, rec.instance_id)
 
+    messages = get_session_messages(session_id)
+    for msg in messages:
+        run_id = str(msg.get("trace_id") or "")
+        instance_id = str(msg.get("instance_id") or "")
+        if not run_id or not instance_id:
+            continue
+        role_id = by_run_instance_role.get(run_id, {}).get(instance_id)
+        if role_id:
+            msg["role_id"] = role_id
+
+    pending_by_run = collect_pending_tool_approvals(parsed_events)
+    pending_streams_by_run = collect_pending_stream_snapshots(
+        parsed_events,
+        messages,
+        by_run_instance_role,
+    )
+
     for ev in events:
         run_id = ev["trace_id"]
         if run_id not in rounds_map:
@@ -130,6 +334,14 @@ def build_session_rounds(
                 "intent": None,
                 "coordinator_messages": [],
                 "pending_tool_approvals": pending_by_run.get(run_id, []),
+                "pending_streams": pending_streams_by_run.get(
+                    run_id,
+                    {
+                        "coordinator_text": "",
+                        "coordinator_instance_id": "",
+                        "by_instance": {},
+                    },
+                ),
                 "workflows": [],
                 "instance_role_map": by_run_instance_role.get(run_id, {}),
                 "role_instance_map": by_run_role_instance.get(run_id, {}),
@@ -137,14 +349,12 @@ def build_session_rounds(
         if ev["occurred_at"] < rounds_map[run_id]["created_at"]:
             rounds_map[run_id]["created_at"] = ev["occurred_at"]
 
-    messages = get_session_messages(session_id)
     for msg in messages:
         run_id = msg["trace_id"]
         round_data = rounds_map.get(run_id)
         if round_data is None:
             continue
-
-        role_id = by_run_instance_role.get(run_id, {}).get(msg["instance_id"])
+        role_id = msg.get("role_id") or by_run_instance_role.get(run_id, {}).get(msg["instance_id"])
         msg["role_id"] = role_id
 
         if msg["role"] == "user":

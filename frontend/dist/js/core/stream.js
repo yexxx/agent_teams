@@ -57,18 +57,78 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
         return;
     }
 
-    const url = `/api/runs/${runId}/events`;
-    sysLog(`SSE start run=${runId} (mode=${executionMode} gate=${confirmationGate})`);
+    resumeRunStream(runId, sessionId, onCompleted, {
+        reason: `start mode=${executionMode} gate=${confirmationGate}`,
+        makeUiBusy: false,
+    });
+}
+
+export function endStream() {
+    if (state.activeEventSource) {
+        state.activeEventSource.close();
+        state.activeEventSource = null;
+    }
+    state.isGenerating = false;
+
+    const panel = document.getElementById('workflow-panel');
+    if (panel) panel.classList.remove('generating');
+
+    if (els.sendBtn) els.sendBtn.disabled = false;
+    if (els.stopBtn) {
+        els.stopBtn.disabled = true;
+        els.stopBtn.style.display = 'none';
+    }
+    if (els.promptInput) {
+        els.promptInput.disabled = false;
+        els.promptInput.focus();
+    }
+}
+
+export function resumeRunStream(runId, sessionId = state.currentSessionId, onCompleted = null, options = {}) {
+    const safeRunId = typeof runId === 'string' ? runId.trim() : '';
+    if (!safeRunId) return;
+
+    const reason = typeof options.reason === 'string' && options.reason
+        ? options.reason
+        : 'resume';
+    const makeUiBusy = options.makeUiBusy !== false;
+
+    state.activeRunId = safeRunId;
+    if (makeUiBusy) {
+        state.isGenerating = true;
+        if (els.sendBtn) els.sendBtn.disabled = true;
+        if (els.promptInput) els.promptInput.disabled = true;
+        if (els.stopBtn) {
+            els.stopBtn.style.display = 'inline-flex';
+            els.stopBtn.disabled = false;
+        }
+        const panel = document.getElementById('workflow-panel');
+        if (panel) panel.classList.add('generating');
+    }
+
+    if (state.activeEventSource) {
+        state.activeEventSource.close();
+        state.activeEventSource = null;
+    }
+
+    const url = `/api/runs/${safeRunId}/events`;
+    sysLog(`SSE ${reason} run=${safeRunId}`);
     const es = new EventSource(url);
     state.activeEventSource = es;
 
     let done = false;
-    function finish() {
+    const finish = () => {
         if (done) return;
         done = true;
         endStream();
-        if (onCompleted) onCompleted(sessionId);
-    }
+        if (typeof onCompleted === 'function') {
+            onCompleted(sessionId);
+            return;
+        }
+        if (sessionId) {
+            void refreshRoundsAfterCompletion(sessionId);
+        }
+    };
 
     es.onmessage = (event) => {
         try {
@@ -98,23 +158,14 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
     };
 }
 
-export function endStream() {
-    if (state.activeEventSource) {
-        state.activeEventSource.close();
-        state.activeEventSource = null;
-    }
-    state.isGenerating = false;
-
-    const panel = document.getElementById('workflow-panel');
-    if (panel) panel.classList.remove('generating');
-
-    if (els.sendBtn) els.sendBtn.disabled = false;
-    if (els.stopBtn) {
-        els.stopBtn.disabled = true;
-        els.stopBtn.style.display = 'none';
-    }
-    if (els.promptInput) {
-        els.promptInput.disabled = false;
-        els.promptInput.focus();
+async function refreshRoundsAfterCompletion(sessionId) {
+    if (!sessionId || state.currentSessionId !== sessionId) return;
+    try {
+        const roundsModule = await import('../components/rounds.js');
+        if (typeof roundsModule.loadSessionRounds === 'function' && state.currentSessionId === sessionId) {
+            await roundsModule.loadSessionRounds(sessionId);
+        }
+    } catch (e) {
+        console.error('Failed to refresh rounds after stream completion', e);
     }
 }

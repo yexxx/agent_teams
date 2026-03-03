@@ -250,6 +250,7 @@ function attachPendingApprovalActions(toolBlock, approval, runId) {
             try {
                 await resolveToolApproval(runId, toolCallId, 'approve', '');
                 markResolved('approve');
+                emitApprovalResolved(runId);
             } catch (e) {
                 setBusy(false);
                 if (stateEl) stateEl.textContent = `Approval failed: ${e.message}`;
@@ -263,10 +264,21 @@ function attachPendingApprovalActions(toolBlock, approval, runId) {
             try {
                 await resolveToolApproval(runId, toolCallId, 'deny', '');
                 markResolved('deny');
+                emitApprovalResolved(runId);
             } catch (e) {
                 setBusy(false);
                 if (stateEl) stateEl.textContent = `Approval failed: ${e.message}`;
             }
         };
     }
+}
+
+function emitApprovalResolved(runId) {
+    const safeRunId = String(runId || '');
+    if (!safeRunId) return;
+    document.dispatchEvent(
+        new CustomEvent('run-approval-resolved', {
+            detail: { runId: safeRunId },
+        }),
+    );
 }

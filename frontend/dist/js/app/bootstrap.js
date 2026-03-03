@@ -8,7 +8,7 @@ import { handleNewSessionClick, loadSessions } from '../components/sidebar.js';
 import { setupNavbarBindings } from '../components/navbar.js';
 import { stopRun } from '../core/api.js';
 import { state } from '../core/state.js';
-import { endStream } from '../core/stream.js';
+import { endStream, resumeRunStream } from '../core/stream.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 
@@ -39,6 +39,12 @@ export function setupEventBindings(handleSend) {
     if (els.newSessionBtn) els.newSessionBtn.onclick = () => handleNewSessionClick(true);
     if (els.workflowCollapsed) els.workflowCollapsed.onclick = toggleWorkflow;
     if (els.collapseWorkflowBtn) els.collapseWorkflowBtn.onclick = toggleWorkflow;
+
+    document.addEventListener('run-approval-resolved', (event) => {
+        const runId = event?.detail?.runId;
+        if (!runId || typeof runId !== 'string') return;
+        resumeRunStream(runId);
+    });
 }
 
 function setupSettingsButton() {

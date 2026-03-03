@@ -9,9 +9,12 @@ __pycache__/
 .agent_teams/stage_docs
 .agent_teams/.env
 .agent_teams/*.db
+.agent_teams/*.db-journal
 .agent_teams/model.json
 
 tmp.db
 tmp.db-journal
 .tmp_pytest/
 pytest-cache-files-*/
+frontend/node_modules/
+frontend/.vite/

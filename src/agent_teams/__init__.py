@@ -1,3 +1,3 @@
-from agent_teams.interfaces.sdk.client import AgentTeamsApp
+from agent_teams.interfaces.sdk.client import AgentTeamsApp, AgentTeamsClient
 
-__all__ = ["AgentTeamsApp"]
+__all__ = ["AgentTeamsApp", "AgentTeamsClient"]

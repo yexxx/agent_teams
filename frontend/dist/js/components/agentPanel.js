@@ -146,7 +146,7 @@ export function showGateCard(instanceId, roleId, gatePayload) {
     async function doResolve(action, feedback = '') {
         card.querySelectorAll('button').forEach(b => { b.disabled = true; });
         try {
-            await resolveGate(state.currentSessionId, state.activeRunId, task_id, action, feedback);
+            await resolveGate(run_id || state.activeRunId, task_id, action, feedback);
         } catch (e) {
             card.querySelectorAll('button').forEach(b => { b.disabled = false; });
         }

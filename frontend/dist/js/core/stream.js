@@ -1,14 +1,13 @@
 /**
  * core/stream.js
- * Connects to the SSE EventSource, dispatches events, handles lifecycle.
- * The GET /intent/stream endpoint starts the intent AND streams events.
+ * Creates a run via HTTP, then subscribes to run events over SSE.
  */
 import { state } from './state.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 import { routeEvent } from './eventRouter.js';
 
-export function startIntentStream(promptText, sessionId, executionMode, confirmationGate, onCompleted) {
+export async function startIntentStream(promptText, sessionId, executionMode, confirmationGate, onCompleted) {
     state.isGenerating = true;
     if (els.sendBtn) els.sendBtn.disabled = true;
     if (els.promptInput) els.promptInput.disabled = true;
@@ -21,18 +20,36 @@ export function startIntentStream(promptText, sessionId, executionMode, confirma
         state.activeEventSource = null;
     }
 
-    const encodedPrompt = encodeURIComponent(promptText);
-    const url = `/api/v1/session/${sessionId}/intent/stream?intent=${encodedPrompt}&execution_mode=${executionMode}&confirmation_gate=${confirmationGate}`;
+    let runId = null;
+    try {
+        const createRes = await fetch('/api/runs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                intent: promptText,
+                session_id: sessionId,
+                execution_mode: executionMode,
+                confirmation_gate: confirmationGate,
+            }),
+        });
+        if (!createRes.ok) throw new Error('Failed to create run');
+        const run = await createRes.json();
+        runId = run.run_id;
+    } catch (err) {
+        console.error(err);
+        endStream();
+        return;
+    }
 
-    sysLog(`SSE start (mode=${executionMode} gate=${confirmationGate})`);
+    const url = `/api/runs/${runId}/events`;
+    sysLog(`SSE start run=${runId} (mode=${executionMode} gate=${confirmationGate})`);
     const es = new EventSource(url);
     state.activeEventSource = es;
 
-    // Guard: only call onCompleted once even if both message and onerror fire
-    let _done = false;
-    function _finish() {
-        if (_done) return;
-        _done = true;
+    let done = false;
+    function finish() {
+        if (done) return;
+        done = true;
         endStream();
         if (onCompleted) onCompleted(sessionId);
     }
@@ -40,24 +57,27 @@ export function startIntentStream(promptText, sessionId, executionMode, confirma
     es.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
+            if (data.error) {
+                sysLog(`Run stream error: ${data.error}`, 'log-error');
+                finish();
+                return;
+            }
+
             const evType = data.event_type;
             const payload = JSON.parse(data.payload_json || '{}');
-
             routeEvent(evType, payload, data);
 
             if (evType === 'run_completed' || evType === 'run_failed') {
-                _finish();
+                finish();
             }
         } catch (e) {
             console.error('SSE parse error', e, event.data);
         }
     };
 
-    // onerror fires when the server closes the connection after run_completed.
-    // The _done guard prevents a second call to onCompleted.
     es.onerror = () => {
         sysLog('SSE closed.', 'log-error');
-        _finish();
+        finish();
     };
 }
 

@@ -1,50 +1,52 @@
-import logging
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from agent_teams.interfaces.sdk.client import AgentTeamsApp
-from agent_teams.interfaces.server.routers import system, sessions, tasks, roles
+from agent_teams.application.service import AgentTeamsService
+from agent_teams.interfaces.server.routers import roles, runs, sessions, system, tasks
 
-logger = logging.getLogger(__name__)
 
 def _get_project_root() -> Path:
-    return Path(__file__).parent.parent.parent.parent.parent
+    return Path(__file__).resolve().parent.parent.parent.parent.parent
+
 
 DEFAULT_CONFIG_DIR = _get_project_root() / ".agent_teams"
+FRONTEND_DIST_DIR = _get_project_root() / "frontend" / "dist"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize the SDK App globally
-    app.state.sdk = AgentTeamsApp(config_dir=DEFAULT_CONFIG_DIR, debug=True)
+    app.state.service = AgentTeamsService(config_dir=DEFAULT_CONFIG_DIR, debug=False)
     yield
-    # Cleanup if needed
+
 
 app = FastAPI(
     title="Agent Teams Server",
     description="REST API for Agent Teams orchestration.",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-STATIC_DIR = Path(__file__).parent / "static"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.include_router(system.router, prefix="/api")
+app.include_router(sessions.router, prefix="/api")
+app.include_router(runs.router, prefix="/api")
+app.include_router(tasks.router, prefix="/api")
+app.include_router(roles.router, prefix="/api")
 
-# Include JSON API Routers
-app.include_router(system.router, prefix="/api/v1")
-app.include_router(sessions.router, prefix="/api/v1")
-app.include_router(tasks.router, prefix="/api/v1")
-app.include_router(roles.router, prefix="/api/v1")
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST_DIR), html=True), name="frontend")
+else:
 
-# Mount Static Assets
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-@app.get("/")
-def serve_index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-def get_sdk(request: Request) -> AgentTeamsApp:
-    return request.app.state.sdk
+    @app.get("/")
+    def missing_frontend() -> JSONResponse:
+        return JSONResponse(
+            {
+                "status": "frontend_not_built",
+                "message": "Frontend build artifacts were not found in ./frontend/dist",
+            }
+        )

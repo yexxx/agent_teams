@@ -111,7 +111,7 @@ async function handleSend() {
 
     // 3) Start the SSE stream
     sysLog(`Sending (mode=${executionMode} gate=${confirmationGate})`);
-    startIntentStream(
+    await startIntentStream(
         text,
         state.currentSessionId,
         executionMode,

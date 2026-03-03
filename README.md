@@ -9,6 +9,8 @@ Runtime model execution uses `pydantic_ai` with OpenAI-compatible endpoints.
 
 Start the server with `uv run agent-teams serve` and open http://127.0.0.1:8000 in your browser.
 
+Frontend assets are now decoupled under `frontend/dist` and served by the backend.
+
 ## Quick start
 
 ### 1) Install dependencies
@@ -79,32 +81,27 @@ uv run agent-teams serve
 
 Then open http://127.0.0.1:8000 in your browser to access the web interface.
 
-### 5) Run an intent
+### 5) Run a prompt (CLI via HTTP/SSE)
+
+```bash
+uv run agent-teams prompt -m "Draft a release note"
+```
+
+### 5.1) Legacy alias (still available)
 
 ```bash
 uv run agent-teams run-intent --intent "Draft a release note"
 ```
 
-### 5.1) Stream run events
-
-```bash
-uv run agent-teams run-intent-stream --intent "Draft a release note"
-```
-
-### 5.2) Inject messages during a running stream (SDK)
+### 5.2) Create a run and stream events (HTTP SDK)
 
 ```python
-from pathlib import Path
-from agent_teams.interfaces.sdk.client import AgentTeamsApp
-from agent_teams.core.enums import InjectionSource
-from agent_teams.core.models import IntentInput
+from agent_teams.interfaces.sdk.client import AgentTeamsClient
 
-app = AgentTeamsApp(config_dir=Path(".agent_teams"))
-stream = app.run_intent_stream(IntentInput(session_id="s1", intent="do multi-step work"))
-first_event = next(stream)
-app.inject_message(first_event.run_id, InjectionSource.USER, "Additional constraint from user")
-for event in stream:
-    print(event.event_type, event.payload_json)
+client = AgentTeamsClient(base_url="http://127.0.0.1:8000")
+run = client.create_run(intent="do multi-step work", session_id="s1")
+for event in client.stream_run_events(run.run_id):
+    print(event.get("event_type"))
 ```
 
 ### 6) Query task records

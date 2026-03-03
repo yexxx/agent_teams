@@ -1,0 +1,73 @@
+/**
+ * core/api/system.js
+ * System configuration related API wrappers.
+ */
+import { requestJson } from './request.js';
+
+export async function fetchConfigStatus() {
+    return requestJson('/api/system/configs', undefined, 'Failed to fetch config status');
+}
+
+export async function fetchModelConfig() {
+    return requestJson('/api/system/configs/model', undefined, 'Failed to fetch model config');
+}
+
+export async function fetchModelProfiles() {
+    return requestJson('/api/system/configs/model/profiles', undefined, 'Failed to fetch model profiles');
+}
+
+export async function saveModelProfile(name, profile) {
+    return requestJson(
+        `/api/system/configs/model/profiles/${name}`,
+        {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profile),
+        },
+        'Failed to save model profile',
+    );
+}
+
+export async function deleteModelProfile(name) {
+    return requestJson(
+        `/api/system/configs/model/profiles/${name}`,
+        { method: 'DELETE' },
+        'Failed to delete model profile',
+    );
+}
+
+export async function saveModelConfig(config) {
+    return requestJson(
+        '/api/system/configs/model',
+        {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config }),
+        },
+        'Failed to save model config',
+    );
+}
+
+export async function reloadModelConfig() {
+    return requestJson(
+        '/api/system/configs/model:reload',
+        { method: 'POST' },
+        'Failed to reload model config',
+    );
+}
+
+export async function reloadMcpConfig() {
+    return requestJson(
+        '/api/system/configs/mcp:reload',
+        { method: 'POST' },
+        'Failed to reload MCP config',
+    );
+}
+
+export async function reloadSkillsConfig() {
+    return requestJson(
+        '/api/system/configs/skills:reload',
+        { method: 'POST' },
+        'Failed to reload skills config',
+    );
+}

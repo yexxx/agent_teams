@@ -1,0 +1,70 @@
+/**
+ * core/api/runs.js
+ * Run, gate, and tool-approval related API wrappers.
+ */
+import { requestJson } from './request.js';
+
+export async function sendUserPrompt(sessionId, prompt, { executionMode = 'ai', confirmationGate = false } = {}) {
+    return requestJson(
+        '/api/runs',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                intent: prompt,
+                session_id: sessionId,
+                execution_mode: executionMode,
+                confirmation_gate: confirmationGate,
+            }),
+        },
+        'Failed to create run',
+    );
+}
+
+export async function resolveGate(runId, taskId, action, feedback = '') {
+    return requestJson(
+        `/api/runs/${runId}/gates/${taskId}/resolve`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, feedback }),
+        },
+        'Failed to resolve gate',
+    );
+}
+
+export async function resolveToolApproval(runId, toolCallId, action, feedback = '') {
+    return requestJson(
+        `/api/runs/${runId}/tool-approvals/${toolCallId}/resolve`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, feedback }),
+        },
+        'Failed to resolve tool approval',
+    );
+}
+
+export async function dispatchHumanTask(sessionId, runId, taskId) {
+    return requestJson(
+        `/api/runs/${runId}/dispatch`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId, session_id: sessionId }),
+        },
+        'Failed to dispatch task',
+    );
+}
+
+export async function injectMessage(runId, content) {
+    return requestJson(
+        `/api/runs/${runId}/inject`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+        },
+        'Failed to inject message',
+    );
+}

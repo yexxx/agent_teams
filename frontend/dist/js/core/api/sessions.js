@@ -1,0 +1,68 @@
+/**
+ * core/api/sessions.js
+ * Session and history related API wrappers.
+ */
+import { requestJson } from './request.js';
+
+export async function fetchSessions() {
+    return requestJson('/api/sessions', undefined, 'Failed to fetch sessions');
+}
+
+export async function startNewSession() {
+    return requestJson(
+        '/api/sessions',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        },
+        'Failed to create session',
+    );
+}
+
+export async function fetchSessionHistory(sessionId) {
+    return requestJson(`/api/sessions/${sessionId}`, undefined, 'Failed to fetch session history');
+}
+
+export async function fetchSessionWorkflows(sessionId) {
+    return requestJson(`/api/sessions/${sessionId}/workflows`, undefined, 'Failed to fetch session workflows');
+}
+
+export async function fetchSessionRounds(sessionId, { limit = 8, cursorRunId = null } = {}) {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (cursorRunId) params.set('cursor_run_id', cursorRunId);
+    const data = await requestJson(
+        `/api/sessions/${sessionId}/rounds?${params.toString()}`,
+        undefined,
+        'Failed to fetch session rounds',
+    );
+    if (Array.isArray(data)) {
+        return {
+            items: data,
+            has_more: false,
+            next_cursor: null,
+        };
+    }
+    return data;
+}
+
+export async function fetchSessionAgents(sessionId) {
+    return requestJson(`/api/sessions/${sessionId}/agents`, undefined, 'Failed to fetch session agents');
+}
+
+export async function fetchAgentMessages(sessionId, instanceId) {
+    return requestJson(
+        `/api/sessions/${sessionId}/agents/${instanceId}/messages`,
+        undefined,
+        'Failed to fetch agent messages',
+    );
+}
+
+export async function deleteSession(sessionId) {
+    return requestJson(
+        `/api/sessions/${sessionId}`,
+        { method: 'DELETE' },
+        'Failed to delete session',
+    );
+}

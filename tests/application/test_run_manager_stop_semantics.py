@@ -47,14 +47,35 @@ class _MessageRepo:
         return None
 
 
+class _InstancePool:
+    def mark_stopped(self, instance_id: str):
+        return None
+
+    def mark_failed(self, instance_id: str):
+        return None
+
+
+class _EventBus:
+    def emit(self, event) -> None:
+        return None
+
+
 def _make_run_manager(control: RunControlManager) -> RunManager:
-    return RunManager(
-        meta_agent=_MetaAgent(),
-        injection_manager=RunInjectionManager(),
-        run_event_hub=RunEventHub(),
+    hub = RunEventHub()
+    injection = RunInjectionManager()
+    control.bind_runtime(
+        run_event_hub=hub,
+        injection_manager=injection,
         agent_repo=_AgentRepo(),
         task_repo=_TaskRepo(),
         message_repo=_MessageRepo(),
+        instance_pool=_InstancePool(),
+        event_bus=_EventBus(),
+    )
+    return RunManager(
+        meta_agent=_MetaAgent(),
+        injection_manager=injection,
+        run_event_hub=hub,
         gate_manager=GateManager(),
         run_control_manager=control,
         tool_approval_manager=ToolApprovalManager(),
@@ -82,13 +103,20 @@ def test_create_run_blocked_when_paused_subagent_exists() -> None:
 def test_stop_pending_run_emits_run_stopped_event() -> None:
     control = RunControlManager()
     hub = RunEventHub()
-    manager = RunManager(
-        meta_agent=_MetaAgent(),
-        injection_manager=RunInjectionManager(),
+    injection = RunInjectionManager()
+    control.bind_runtime(
         run_event_hub=hub,
+        injection_manager=injection,
         agent_repo=_AgentRepo(),
         task_repo=_TaskRepo(),
         message_repo=_MessageRepo(),
+        instance_pool=_InstancePool(),
+        event_bus=_EventBus(),
+    )
+    manager = RunManager(
+        meta_agent=_MetaAgent(),
+        injection_manager=injection,
+        run_event_hub=hub,
         gate_manager=GateManager(),
         run_control_manager=control,
         tool_approval_manager=ToolApprovalManager(),

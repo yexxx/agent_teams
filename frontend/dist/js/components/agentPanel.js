@@ -10,5 +10,7 @@ export {
     getPanelScrollContainer,
     showGateCard,
     removeGateCard,
+    setRoundPendingApprovals,
     getActiveInstanceId,
+    getActiveRoundRunId,
 } from './agentPanel/index.js';

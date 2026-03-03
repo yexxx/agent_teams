@@ -68,6 +68,9 @@ class _FakeRunControlManager:
     def is_subagent_stop_requested(self, *, run_id: str, instance_id: str) -> bool:
         return False
 
+    def raise_if_cancelled(self, *, run_id: str, instance_id: str | None = None) -> None:
+        return None
+
 
 def test_execute_tool_returns_standard_envelope() -> None:
     deps = _FakeDeps(

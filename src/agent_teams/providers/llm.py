@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
@@ -161,6 +160,10 @@ class OpenAICompatibleProvider(LLMProvider):
             tool_approval_manager=self._tool_approval_manager,
             tool_approval_policy=self._tool_approval_policy,
         )
+        control_ctx = self._run_control_manager.context(
+            run_id=request.run_id,
+            instance_id=request.instance_id,
+        )
 
         printed_any = False
         emitted_text_chunks: list[str] = []
@@ -169,7 +172,7 @@ class OpenAICompatibleProvider(LLMProvider):
         restarted = False
 
         while True:
-            self._raise_if_stopped(request)
+            control_ctx.raise_if_cancelled()
             restarted = False
             async with agent.iter(
                 request.user_prompt if not history else None,
@@ -177,12 +180,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 message_history=history,
             ) as agent_run:
                 async for node in agent_run:
-                    self._raise_if_stopped(request)
+                    control_ctx.raise_if_cancelled()
                     if isinstance(node, ModelRequestNode):
                         # Stream text chunks from this model response in real-time
                         async with node.stream(agent_run.ctx) as stream:
                             async for text_delta in stream.stream_text(delta=True):
-                                self._raise_if_stopped(request)
+                                control_ctx.raise_if_cancelled()
                                 if text_delta:
                                     if is_debug():
                                         print(text_delta, end='', flush=True)
@@ -330,15 +333,6 @@ class OpenAICompatibleProvider(LLMProvider):
             if texts:
                 return ''.join(texts)
         return str(response)
-
-    def _raise_if_stopped(self, request: LLMRequest) -> None:
-        if self._run_control_manager.is_run_stop_requested(request.run_id):
-            raise asyncio.CancelledError
-        if self._run_control_manager.is_subagent_stop_requested(
-            run_id=request.run_id,
-            instance_id=request.instance_id,
-        ):
-            raise asyncio.CancelledError
 
     def _to_json(self, obj: Any) -> str:
         import json

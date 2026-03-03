@@ -9,6 +9,7 @@ import {
     getActiveRoundRunId,
     getPanel,
     getPendingApprovalsForPanel,
+    getPendingStreamTextForPanel,
 } from './state.js';
 
 export async function loadAgentHistory(instanceId, roleId = null) {
@@ -19,14 +20,18 @@ export async function loadAgentHistory(instanceId, roleId = null) {
         scrollEl.innerHTML = '<div class="panel-loading">Loading history...</div>';
         const messages = await fetchAgentMessages(state.currentSessionId, instanceId);
         const pendingToolApprovals = getPendingApprovalsForPanel(instanceId, roleId);
+        const pendingStreamText = getPendingStreamTextForPanel(instanceId);
         const runId = getActiveRoundRunId();
         scrollEl.innerHTML = '';
-        if (messages.length === 0 && pendingToolApprovals.length === 0) {
+        if (messages.length === 0 && pendingToolApprovals.length === 0 && !pendingStreamText.trim()) {
             scrollEl.innerHTML = '<div class="panel-empty">No messages yet.</div>';
         } else {
             renderHistoricalMessageList(scrollEl, messages, {
                 pendingToolApprovals,
                 runId,
+                pendingStreamText,
+                pendingStreamRoleId: roleId || '',
+                pendingStreamInstanceId: instanceId,
             });
         }
     } catch (e) {

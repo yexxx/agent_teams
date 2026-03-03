@@ -47,6 +47,14 @@ export async function fetchSessionRounds(sessionId, { limit = 8, cursorRunId = n
     return data;
 }
 
+export async function fetchSessionEvents(sessionId) {
+    return requestJson(
+        `/api/sessions/${sessionId}/events`,
+        undefined,
+        'Failed to fetch session events',
+    );
+}
+
 export async function fetchSessionAgents(sessionId) {
     return requestJson(`/api/sessions/${sessionId}/agents`, undefined, 'Failed to fetch session agents');
 }

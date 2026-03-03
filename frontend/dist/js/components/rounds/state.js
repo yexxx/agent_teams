@@ -8,6 +8,7 @@ export const roundsState = {
     scrollBound: false,
     activeRunId: null,
     activeVisibility: 0,
+    liveStreamSnapshots: {},
     pageSize: 8,
     paging: {
         hasMore: false,

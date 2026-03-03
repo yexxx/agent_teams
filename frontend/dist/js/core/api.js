@@ -6,6 +6,7 @@ export {
     fetchSessions,
     startNewSession,
     fetchSessionHistory,
+    fetchSessionEvents,
     fetchSessionWorkflows,
     fetchSessionRounds,
     fetchSessionAgents,

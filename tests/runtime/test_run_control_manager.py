@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from agent_teams.runtime.run_control_manager import RunControlManager
 
 
@@ -64,3 +66,30 @@ def test_release_paused_subagent_clears_blocking() -> None:
     assert released is not None
     assert mgr.get_paused_subagent('session-1') is None
     assert mgr.is_subagent_stop_requested(run_id='run-1', instance_id='inst-1') is False
+
+
+def test_context_raises_when_cancelled() -> None:
+    mgr = RunControlManager()
+    mgr.pause_subagent(
+        session_id='session-1',
+        run_id='run-1',
+        instance_id='inst-1',
+        role_id='generalist',
+        task_id='task-1',
+    )
+    ctx = mgr.context(run_id='run-1', instance_id='inst-1')
+    with pytest.raises(asyncio.CancelledError):
+        ctx.raise_if_cancelled()
+
+
+def test_session_guard_blocks_main_input_when_paused() -> None:
+    mgr = RunControlManager()
+    mgr.pause_subagent(
+        session_id='session-1',
+        run_id='run-1',
+        instance_id='inst-1',
+        role_id='generalist',
+        task_id='task-1',
+    )
+    with pytest.raises(RuntimeError):
+        mgr.assert_session_allows_main_input('session-1')

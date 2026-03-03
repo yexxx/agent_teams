@@ -88,6 +88,15 @@ def build_service_components(
     gate_manager = GateManager()
     tool_approval_manager = ToolApprovalManager()
     tool_approval_policy = ToolApprovalPolicy()
+    run_control_manager.bind_runtime(
+        run_event_hub=run_event_hub,
+        injection_manager=injection_manager,
+        agent_repo=agent_repo,
+        task_repo=task_repo,
+        message_repo=message_repo,
+        instance_pool=instance_pool,
+        event_bus=event_log,
+    )
 
     prompt_builder = RuntimePromptBuilder()
     task_execution_service = None

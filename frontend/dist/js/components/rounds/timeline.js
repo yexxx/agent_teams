@@ -3,8 +3,9 @@
  * Session timeline rendering, scroll-sync, and paging orchestration.
  */
 import { els } from '../../utils/dom.js';
+import { fetchSessionEvents } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { clearAllPanels } from '../agentPanel.js';
+import { clearAllPanels, setRoundPendingApprovals } from '../agentPanel.js';
 import { clearAllStreamState, renderHistoricalMessageList } from '../messageRenderer.js';
 import { renderRoundNavigator, setActiveRoundNav } from './navigator.js';
 import { applyRoundPage, fetchInitialRoundsPage, fetchOlderRoundsPage } from './paging.js';
@@ -17,7 +18,11 @@ export let currentRound = null;
 
 export async function loadSessionRounds(sessionId) {
     try {
-        const page = await fetchInitialRoundsPage(sessionId);
+        const [page, events] = await Promise.all([
+            fetchInitialRoundsPage(sessionId),
+            fetchSessionEvents(sessionId).catch(() => []),
+        ]);
+        roundsState.liveStreamSnapshots = buildLiveStreamSnapshots(events);
         applyRoundPage(page, { prepend: false });
         syncExportedState();
         renderSessionTimeline(roundsState.currentRounds, { preserveScroll: false });
@@ -75,6 +80,7 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
         syncExportedState();
         state.instanceRoleMap = {};
         roundsState.activeRunId = null;
+        setRoundPendingApprovals('', [], {});
         renderRoundNavigator([], selectRound);
         updateWorkflowByRound(null);
         container.innerHTML = `
@@ -108,16 +114,25 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
             const roleId = item?.role_id || '';
             return roleId === '' || roleId === 'coordinator_agent';
         });
+        const streamSnapshot = roundsState.liveStreamSnapshots?.[round.run_id] || null;
+        const pendingCoordinatorStreamText = String(streamSnapshot?.coordinatorText || '');
+        const pendingCoordinatorInstanceId = String(streamSnapshot?.coordinatorInstanceId || '');
 
         if (round.coordinator_messages?.length > 0) {
             renderHistoricalMessageList(section, round.coordinator_messages, {
                 pendingToolApprovals: pendingCoordinatorApprovals,
                 runId: round.run_id,
+                pendingStreamText: pendingCoordinatorStreamText,
+                pendingStreamRoleId: 'coordinator_agent',
+                pendingStreamInstanceId: pendingCoordinatorInstanceId,
             });
-        } else if (pendingCoordinatorApprovals.length > 0) {
+        } else if (pendingCoordinatorApprovals.length > 0 || pendingCoordinatorStreamText.trim()) {
             renderHistoricalMessageList(section, [], {
                 pendingToolApprovals: pendingCoordinatorApprovals,
                 runId: round.run_id,
+                pendingStreamText: pendingCoordinatorStreamText,
+                pendingStreamRoleId: 'coordinator_agent',
+                pendingStreamInstanceId: pendingCoordinatorInstanceId,
             });
         } else if (round.run_id !== '__live__') {
             const empty = document.createElement('div');
@@ -202,6 +217,10 @@ function activateRoundSection(section, visibleScore) {
     roundsState.activeRunId = runId;
     roundsState.activeVisibility = visibleScore;
     roundsState.currentRound = roundsState.currentRounds.find(r => r.run_id === runId) || null;
+    const pendingApprovals = roundsState.currentRound?.pending_tool_approvals || [];
+    const snapshot = roundsState.liveStreamSnapshots?.[runId] || null;
+    const pendingStreamsByInstance = snapshot?.byInstance || {};
+    setRoundPendingApprovals(runId, pendingApprovals, pendingStreamsByInstance);
     syncExportedState();
 
     setActiveRoundNav(runId);
@@ -237,4 +256,94 @@ async function loadOlderRounds() {
 function syncExportedState() {
     currentRounds = roundsState.currentRounds;
     currentRound = roundsState.currentRound;
+}
+
+function parseEventPayload(payloadJson) {
+    if (payloadJson && typeof payloadJson === 'object') return payloadJson;
+    if (typeof payloadJson !== 'string' || !payloadJson) return {};
+    try {
+        const parsed = JSON.parse(payloadJson);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function buildLiveStreamSnapshots(events) {
+    if (!Array.isArray(events) || events.length === 0) return {};
+
+    const stepStates = new Map();
+
+    events.forEach(eventItem => {
+        const runId = String(eventItem?.trace_id || '');
+        const eventType = String(eventItem?.event_type || '');
+        if (!runId || !eventType) return;
+
+        const payload = parseEventPayload(eventItem?.payload_json);
+        const eventInstanceId = String(eventItem?.instance_id || '');
+        const instanceId = String(payload?.instance_id || eventInstanceId || '');
+        const roleId = String(payload?.role_id || '');
+        const key = `${runId}::${instanceId || roleId || 'coordinator'}`;
+
+        if (eventType === 'model_step_started') {
+            stepStates.set(key, { runId, instanceId, roleId, text: '' });
+            return;
+        }
+
+        if (eventType === 'text_delta') {
+            const chunk = String(payload?.text || '');
+            if (!chunk) return;
+            const existing = stepStates.get(key) || { runId, instanceId, roleId, text: '' };
+            if (!existing.roleId && roleId) existing.roleId = roleId;
+            existing.text += chunk;
+            stepStates.set(key, existing);
+            return;
+        }
+
+        if (eventType === 'model_step_finished') {
+            stepStates.delete(key);
+            return;
+        }
+
+        if (eventType === 'run_completed' || eventType === 'run_failed' || eventType === 'run_stopped') {
+            for (const [stateKey, step] of stepStates.entries()) {
+                if (step.runId === runId) {
+                    stepStates.delete(stateKey);
+                }
+            }
+        }
+    });
+
+    const snapshots = {};
+    stepStates.forEach(step => {
+        const text = String(step?.text || '');
+        if (!text.trim()) return;
+        const runId = String(step?.runId || '');
+        if (!runId) return;
+
+        if (!snapshots[runId]) {
+            snapshots[runId] = {
+                coordinatorText: '',
+                coordinatorInstanceId: '',
+                byInstance: {},
+            };
+        }
+
+        const roleId = String(step?.roleId || '');
+        const instanceId = String(step?.instanceId || '');
+        const isCoordinator = roleId === 'coordinator_agent' || (!roleId && !instanceId);
+
+        if (isCoordinator) {
+            snapshots[runId].coordinatorText = text;
+            if (instanceId) snapshots[runId].coordinatorInstanceId = instanceId;
+            return;
+        }
+        if (instanceId) {
+            snapshots[runId].byInstance[instanceId] = text;
+            return;
+        }
+        snapshots[runId].coordinatorText = text;
+    });
+
+    return snapshots;
 }

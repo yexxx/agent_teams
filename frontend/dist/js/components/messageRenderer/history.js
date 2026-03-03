@@ -21,9 +21,41 @@ export function renderHistoricalMessageList(container, messages, options = {}) {
         ? options.pendingToolApprovals
         : [];
     const runId = typeof options.runId === 'string' ? options.runId : '';
+    const pendingStreamText = typeof options.pendingStreamText === 'string'
+        ? options.pendingStreamText
+        : '';
+    const pendingStreamRoleId = typeof options.pendingStreamRoleId === 'string'
+        ? options.pendingStreamRoleId
+        : '';
+    const pendingStreamInstanceId = typeof options.pendingStreamInstanceId === 'string'
+        ? options.pendingStreamInstanceId
+        : '';
     const pendingToolBlocks = {};
+    const historyMessages = Array.isArray(messages) ? messages.slice() : [];
+    const pendingStreamPatch = buildPendingStreamPatch(
+        historyMessages,
+        pendingStreamText,
+        pendingStreamRoleId,
+        pendingStreamInstanceId,
+    );
 
-    messages.forEach(msgItem => {
+    if (pendingStreamPatch) {
+        historyMessages.push({
+            role: 'assistant',
+            role_id: pendingStreamRoleId,
+            instance_id: pendingStreamInstanceId,
+            message: {
+                parts: [
+                    {
+                        part_kind: 'text',
+                        content: pendingStreamPatch,
+                    },
+                ],
+            },
+        });
+    }
+
+    historyMessages.forEach(msgItem => {
         const role = msgItem.role;
         const msgObj = msgItem.message;
         if (!msgObj) return;
@@ -55,6 +87,77 @@ export function renderHistoricalMessageList(container, messages, options = {}) {
 
     applyPendingApprovalsToHistory(container, pendingToolApprovals, runId);
     scrollBottom(container);
+}
+
+function buildPendingStreamPatch(messages, pendingText, roleId, instanceId) {
+    const rawPending = String(pendingText || '');
+    if (!rawPending.trim()) return '';
+
+    const historyText = collectHistoryText(messages, roleId, instanceId);
+    const historyNorm = normalizeText(historyText);
+    const pendingNorm = normalizeText(rawPending);
+    if (!pendingNorm) return '';
+    if (!historyNorm) return rawPending;
+    if (historyNorm.includes(pendingNorm)) return '';
+
+    const overlap = longestSuffixPrefixOverlap(historyText, rawPending);
+    if (overlap <= 0) return rawPending;
+
+    const delta = rawPending.slice(overlap);
+    return delta.trim() ? delta : '';
+}
+
+function collectHistoryText(messages, roleId, instanceId) {
+    const targetRole = String(roleId || '');
+    const targetInstance = String(instanceId || '');
+    const matchedChunks = [];
+    const fallbackChunks = [];
+
+    messages.forEach(msgItem => {
+        if (!msgItem || typeof msgItem !== 'object') return;
+        const msgRole = String(msgItem.role || '');
+        const isAssistantLike = msgRole !== 'user';
+        if (!isAssistantLike) return;
+
+        const itemInstance = String(msgItem.instance_id || '');
+        const itemRole = String(msgItem.role_id || '');
+        const matchedByTarget = targetInstance
+            ? itemInstance === targetInstance
+            : (!!targetRole && itemRole === targetRole);
+        const useMatchedBucket = !!targetInstance || !!targetRole;
+
+        const msgObj = msgItem.message;
+        const parts = Array.isArray(msgObj?.parts) ? msgObj.parts : [];
+        parts.forEach(part => {
+            const kind = String(part?.part_kind || '');
+            const content = typeof part?.content === 'string' ? part.content : '';
+            if (!content) return;
+            if (kind !== 'text') return;
+            fallbackChunks.push(content);
+            if (useMatchedBucket && matchedByTarget) {
+                matchedChunks.push(content);
+            }
+        });
+    });
+
+    if (matchedChunks.length > 0) return matchedChunks.join('\n');
+    return fallbackChunks.join('\n');
+}
+
+function normalizeText(text) {
+    return String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function longestSuffixPrefixOverlap(baseText, appendText) {
+    const base = String(baseText || '');
+    const append = String(appendText || '');
+    const max = Math.min(base.length, append.length);
+    for (let len = max; len > 0; len -= 1) {
+        if (base.slice(base.length - len) === append.slice(0, len)) return len;
+    }
+    return 0;
 }
 
 function applyPendingApprovalsToHistory(container, approvals, runId) {

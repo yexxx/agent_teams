@@ -111,49 +111,18 @@ class TaskExecutionService:
             )
             return result
         except asyncio.CancelledError:
-            requested_subagent_stop = (
-                self.run_control_manager is not None
-                and self.run_control_manager.is_subagent_stop_requested(
-                    run_id=task.trace_id,
+            if self.run_control_manager is not None:
+                stopped = self.run_control_manager.handle_instance_cancelled(
+                    task=task,
                     instance_id=instance_id,
                 )
-            )
-            requested_run_stop = (
-                self.run_control_manager is not None
-                and self.run_control_manager.is_run_stop_requested(task.trace_id)
-            )
-            stopped = requested_subagent_stop or requested_run_stop
-            status = TaskStatus.STOPPED if stopped else TaskStatus.FAILED
-            error_message = 'Task stopped by user' if stopped else 'Task cancelled'
-            self.task_repo.update_status(task.task_id, status, error_message=error_message)
-            if stopped:
-                self.instance_pool.mark_stopped(instance_id)
-                self.agent_repo.mark_status(instance_id, InstanceStatus.STOPPED)
-                self.event_bus.emit(
-                    EventEnvelope(
-                        event_type=EventType.TASK_STOPPED,
-                        trace_id=task.trace_id,
-                        session_id=task.session_id,
-                        task_id=task.task_id,
-                        instance_id=instance_id,
-                        payload_json='{}',
-                    )
-                )
-                self.event_bus.emit(
-                    EventEnvelope(
-                        event_type=EventType.INSTANCE_STOPPED,
-                        trace_id=task.trace_id,
-                        session_id=task.session_id,
-                        task_id=task.task_id,
-                        instance_id=instance_id,
-                        payload_json='{}',
-                    )
-                )
-                log_debug(
-                    f'[subagent:stopped] run={task.trace_id} task={task.task_id} '
-                    f'instance={instance_id} role={role_id}'
-                )
             else:
+                stopped = False
+                self.task_repo.update_status(
+                    task.task_id,
+                    TaskStatus.FAILED,
+                    error_message='Task cancelled',
+                )
                 self.instance_pool.mark_failed(instance_id)
                 self.agent_repo.mark_status(instance_id, InstanceStatus.FAILED)
                 self.event_bus.emit(
@@ -166,10 +135,10 @@ class TaskExecutionService:
                         payload_json='{}',
                     )
                 )
-                log_debug(
-                    f'[subagent:cancelled] run={task.trace_id} task={task.task_id} '
-                    f'instance={instance_id} role={role_id}'
-                )
+            log_debug(
+                f"[subagent:{'stopped' if stopped else 'cancelled'}] run={task.trace_id} task={task.task_id} "
+                f'instance={instance_id} role={role_id}'
+            )
             raise
         except TimeoutError:
             self.task_repo.update_status(task.task_id, TaskStatus.TIMEOUT, error_message='Task timeout')

@@ -6,6 +6,7 @@ const panels = new Map();
 let activeInstanceId = null;
 let activeRoundRunId = '';
 let activeRoundPendingApprovals = [];
+let activeRoundPendingStreams = {};
 
 export function getPanels() {
     return panels;
@@ -35,11 +36,14 @@ export function getActiveInstanceId() {
     return activeInstanceId;
 }
 
-export function setActiveRoundContext(runId, pendingApprovals) {
+export function setActiveRoundContext(runId, pendingApprovals, pendingStreamsByInstance = {}) {
     activeRoundRunId = typeof runId === 'string' ? runId : '';
     activeRoundPendingApprovals = Array.isArray(pendingApprovals)
         ? pendingApprovals
         : [];
+    activeRoundPendingStreams = pendingStreamsByInstance && typeof pendingStreamsByInstance === 'object'
+        ? { ...pendingStreamsByInstance }
+        : {};
 }
 
 export function getActiveRoundRunId() {
@@ -53,4 +57,10 @@ export function getPendingApprovalsForPanel(instanceId, roleId) {
         const itemRole = String(item?.role_id || '');
         return !!roleId && itemRole === roleId;
     });
+}
+
+export function getPendingStreamTextForPanel(instanceId) {
+    if (!instanceId) return '';
+    const text = activeRoundPendingStreams[instanceId];
+    return typeof text === 'string' ? text : '';
 }

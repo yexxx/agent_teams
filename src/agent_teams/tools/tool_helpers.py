@@ -147,13 +147,10 @@ def _safe_json(value: object) -> str:
 
 
 def _raise_if_stopped(ctx: ToolContext) -> None:
-    if ctx.deps.run_control_manager.is_run_stop_requested(ctx.deps.run_id):
-        raise asyncio.CancelledError
-    if ctx.deps.run_control_manager.is_subagent_stop_requested(
+    ctx.deps.run_control_manager.raise_if_cancelled(
         run_id=ctx.deps.run_id,
         instance_id=ctx.deps.instance_id,
-    ):
-        raise asyncio.CancelledError
+    )
 
 
 async def _handle_tool_approval(

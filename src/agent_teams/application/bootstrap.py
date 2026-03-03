@@ -17,6 +17,7 @@ from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
 from agent_teams.roles.registry import RoleLoader
 from agent_teams.runtime.gate_manager import GateManager
 from agent_teams.runtime.injection_manager import RunInjectionManager
+from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
@@ -45,6 +46,7 @@ class ServiceComponents:
     session_repo: SessionRepository
     instance_pool: InstancePool
     injection_manager: RunInjectionManager
+    run_control_manager: RunControlManager
     run_event_hub: RunEventHub
     gate_manager: GateManager
     tool_approval_manager: ToolApprovalManager
@@ -81,6 +83,7 @@ def build_service_components(
     session_repo = SessionRepository(runtime.paths.db_path)
     instance_pool = InstancePool.from_repo(agent_repo)
     injection_manager = RunInjectionManager()
+    run_control_manager = RunControlManager()
     run_event_hub = RunEventHub(event_log=event_log)
     gate_manager = GateManager()
     tool_approval_manager = ToolApprovalManager()
@@ -108,6 +111,7 @@ def build_service_components(
         skill_registry=skill_registry,
         message_repo=message_repo,
         role_registry=role_registry,
+        run_control_manager=run_control_manager,
         tool_approval_manager=tool_approval_manager,
         tool_approval_policy=tool_approval_policy,
         get_task_execution_service=get_task_execution_service,
@@ -122,6 +126,7 @@ def build_service_components(
         message_repo=message_repo,
         provider_factory=provider_factory,
         injection_manager=injection_manager,
+        run_control_manager=run_control_manager,
     )
 
     coordinator = CoordinatorGraph(
@@ -134,6 +139,7 @@ def build_service_components(
         prompt_builder=prompt_builder,
         provider_factory=provider_factory,
         task_execution_service=task_execution_service,
+        run_control_manager=run_control_manager,
         gate_manager=gate_manager,
         run_event_hub=run_event_hub,
     )
@@ -154,6 +160,7 @@ def build_service_components(
         session_repo=session_repo,
         instance_pool=instance_pool,
         injection_manager=injection_manager,
+        run_control_manager=run_control_manager,
         run_event_hub=run_event_hub,
         gate_manager=gate_manager,
         tool_approval_manager=tool_approval_manager,

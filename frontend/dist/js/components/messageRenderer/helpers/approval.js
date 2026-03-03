@@ -91,7 +91,7 @@ function formatPendingApprovalResult(approval) {
     if (status === 'approve') {
         return 'Approval approved, but no tool result was recorded. Run may have been interrupted.';
     }
-    return 'Approval requested, but no tool result was recorded yet. Run may have been interrupted.';
+    return 'Approval is pending. Approve or deny to continue.';
 }
 
 function extractApprovalMeta(envelope) {

@@ -17,6 +17,7 @@ from agent_teams.state.task_repo import TaskRepository
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
     from agent_teams.roles.registry import RoleRegistry
+    from agent_teams.runtime.run_control_manager import RunControlManager
     from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
     from agent_teams.tools.policy import ToolApprovalPolicy
 
@@ -39,6 +40,7 @@ class ToolDeps:
     role_id: str
     role_registry: 'RoleRegistry'
     task_execution_service: 'TaskExecutionService'
+    run_control_manager: 'RunControlManager'
     tool_approval_manager: 'ToolApprovalManager'
     tool_approval_policy: 'ToolApprovalPolicy'
 

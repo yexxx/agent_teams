@@ -16,9 +16,11 @@ export {
 export {
     dispatchHumanTask,
     injectMessage,
+    injectSubagentMessage,
     resolveGate,
     resolveToolApproval,
     sendUserPrompt,
+    stopRun,
 } from './runs.js';
 
 export {

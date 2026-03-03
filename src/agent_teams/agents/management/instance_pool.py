@@ -47,6 +47,9 @@ class InstancePool:
     def mark_completed(self, instance_id: str) -> SubAgentInstance:
         return self._replace_status(instance_id, InstanceStatus.COMPLETED, inc_completed=1)
 
+    def mark_stopped(self, instance_id: str) -> SubAgentInstance:
+        return self._replace_status(instance_id, InstanceStatus.STOPPED)
+
     def mark_failed(self, instance_id: str) -> SubAgentInstance:
         return self._replace_status(instance_id, InstanceStatus.FAILED, inc_failed=1)
 

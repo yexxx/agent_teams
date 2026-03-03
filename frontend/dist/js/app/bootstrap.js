@@ -6,6 +6,9 @@ import { initSettings, openSettings } from '../components/settings.js';
 import { toggleWorkflow } from '../components/rounds.js';
 import { handleNewSessionClick, loadSessions } from '../components/sidebar.js';
 import { setupNavbarBindings } from '../components/navbar.js';
+import { stopRun } from '../core/api.js';
+import { state } from '../core/state.js';
+import { endStream } from '../core/stream.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 
@@ -21,6 +24,18 @@ export function setupEventBindings(handleSend) {
         }
     });
     els.sendBtn.onclick = handleSend;
+    if (els.stopBtn) {
+        els.stopBtn.onclick = async () => {
+            if (!state.activeRunId) return;
+            try {
+                await stopRun(state.activeRunId, { scope: 'main' });
+            } catch (e) {
+                sysLog(`Stop failed: ${e.message}`, 'log-error');
+            } finally {
+                endStream();
+            }
+        };
+    }
     if (els.newSessionBtn) els.newSessionBtn.onclick = () => handleNewSessionClick(true);
     if (els.workflowCollapsed) els.workflowCollapsed.onclick = toggleWorkflow;
     if (els.collapseWorkflowBtn) els.collapseWorkflowBtn.onclick = toggleWorkflow;

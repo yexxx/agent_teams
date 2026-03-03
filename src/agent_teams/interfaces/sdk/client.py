@@ -113,6 +113,32 @@ class AgentTeamsClient:
             {"content": content},
         )
 
+    def stop_run(self, run_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "POST",
+            f"/api/runs/{run_id}/stop",
+            {"scope": "main"},
+        )
+
+    def stop_subagent(self, run_id: str, instance_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "POST",
+            f"/api/runs/{run_id}/stop",
+            {"scope": "subagent", "instance_id": instance_id},
+        )
+
+    def inject_subagent_message(
+        self,
+        run_id: str,
+        instance_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "POST",
+            f"/api/runs/{run_id}/subagents/{instance_id}/inject",
+            {"content": content},
+        )
+
     def _request_json(
         self,
         method: str,

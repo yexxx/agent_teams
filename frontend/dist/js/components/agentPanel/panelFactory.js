@@ -2,8 +2,9 @@
  * components/agentPanel/panelFactory.js
  * Panel DOM factory and inject-message bindings.
  */
-import { injectMessage } from '../../core/api.js';
+import { injectSubagentMessage, stopRun } from '../../core/api.js';
 import { state } from '../../core/state.js';
+import { sysLog } from '../../utils/logger.js';
 import { getDrawer } from './dom.js';
 
 export function createPanel(instanceId, roleId, onClose) {
@@ -26,6 +27,7 @@ export function createPanel(instanceId, roleId, onClose) {
                 <span class="panel-role">${friendlyRole}</span>
                 <span class="panel-id">${instanceId.slice(0, 8)}</span>
             </div>
+            <button class="agent-panel-stop" title="Stop this subagent">Stop</button>
             <button class="agent-panel-close" title="Close">x</button>
         </div>
         <div class="agent-panel-scroll"></div>
@@ -41,6 +43,19 @@ export function createPanel(instanceId, roleId, onClose) {
 
     const closeBtn = panelEl.querySelector('.agent-panel-close');
     if (closeBtn) closeBtn.onclick = onClose;
+    const stopBtn = panelEl.querySelector('.agent-panel-stop');
+    if (stopBtn) {
+        stopBtn.onclick = async () => {
+            if (!state.activeRunId) return;
+            try {
+                await stopRun(state.activeRunId, { scope: 'subagent', instanceId });
+                state.pausedSubagent = { runId: state.activeRunId, instanceId, roleId };
+                sysLog(`Subagent paused: ${roleId || instanceId}`, 'log-info');
+            } catch (e) {
+                sysLog(`Failed to pause subagent: ${e.message}`, 'log-error');
+            }
+        };
+    }
 
     const textarea = panelEl.querySelector('.panel-inject-input');
     const sendBtn = panelEl.querySelector('.panel-send-btn');
@@ -50,9 +65,12 @@ export function createPanel(instanceId, roleId, onClose) {
         textarea.value = '';
         textarea.style.height = 'auto';
         try {
-            await injectMessage(state.activeRunId, text);
+            await injectSubagentMessage(state.activeRunId, instanceId, text);
+            if (state.pausedSubagent && state.pausedSubagent.instanceId === instanceId) {
+                state.pausedSubagent = null;
+            }
         } catch (e) {
-            // Keep previous behavior: silently ignore inject failure in drawer.
+            sysLog(`Failed to message subagent: ${e.message}`, 'log-error');
         }
     }
     textarea.addEventListener('input', () => {

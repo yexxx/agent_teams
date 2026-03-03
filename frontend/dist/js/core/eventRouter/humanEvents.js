@@ -33,3 +33,23 @@ export function handleGateResolved(payload, instanceId) {
     removeGateCard(payload.instance_id || instanceId || '', payload.task_id);
     sysLog(`Gate resolved: ${payload.action}`, 'log-info');
 }
+
+export function handleSubagentStopped(payload) {
+    state.pausedSubagent = {
+        runId: state.activeRunId,
+        instanceId: payload.instance_id,
+        roleId: payload.role_id,
+        taskId: payload.task_id || null,
+    };
+    sysLog(
+        `Subagent paused: ${payload.role_id || payload.instance_id}. Send follow-up in subagent panel.`,
+        'log-info',
+    );
+}
+
+export function handleSubagentResumed(payload) {
+    if (state.pausedSubagent && state.pausedSubagent.instanceId === payload.instance_id) {
+        state.pausedSubagent = null;
+    }
+    sysLog(`Subagent resumed: ${payload.role_id || payload.instance_id}`, 'log-info');
+}

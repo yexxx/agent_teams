@@ -11,6 +11,10 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
     state.isGenerating = true;
     if (els.sendBtn) els.sendBtn.disabled = true;
     if (els.promptInput) els.promptInput.disabled = true;
+    if (els.stopBtn) {
+        els.stopBtn.style.display = 'inline-flex';
+        els.stopBtn.disabled = false;
+    }
 
     const panel = document.getElementById('workflow-panel');
     if (panel) panel.classList.add('generating');
@@ -32,11 +36,23 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
                 confirmation_gate: confirmationGate,
             }),
         });
-        if (!createRes.ok) throw new Error('Failed to create run');
+        if (!createRes.ok) {
+            let detail = 'Failed to create run';
+            try {
+                const payload = await createRes.json();
+                if (typeof payload?.detail === 'string' && payload.detail) {
+                    detail = payload.detail;
+                }
+            } catch (_) {
+                // ignore parse error and keep default message
+            }
+            throw new Error(detail);
+        }
         const run = await createRes.json();
         runId = run.run_id;
+        state.activeRunId = runId;
     } catch (err) {
-        console.error(err);
+        sysLog(err.message || 'Failed to create run', 'log-error');
         endStream();
         return;
     }
@@ -67,7 +83,7 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
             const payload = JSON.parse(data.payload_json || '{}');
             routeEvent(evType, payload, data);
 
-            if (evType === 'run_completed' || evType === 'run_failed') {
+            if (evType === 'run_completed' || evType === 'run_failed' || evType === 'run_stopped') {
                 finish();
             }
         } catch (e) {
@@ -76,6 +92,7 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
     };
 
     es.onerror = () => {
+        if (done) return;
         sysLog('SSE closed.', 'log-error');
         finish();
     };
@@ -92,6 +109,10 @@ export function endStream() {
     if (panel) panel.classList.remove('generating');
 
     if (els.sendBtn) els.sendBtn.disabled = false;
+    if (els.stopBtn) {
+        els.stopBtn.disabled = true;
+        els.stopBtn.style.display = 'none';
+    }
     if (els.promptInput) {
         els.promptInput.disabled = false;
         els.promptInput.focus();

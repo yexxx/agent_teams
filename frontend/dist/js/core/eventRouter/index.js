@@ -9,6 +9,7 @@ import {
     handleModelStepStarted,
     handleRunCompleted,
     handleRunFailed,
+    handleRunStopped,
     handleRunStarted,
     handleTextDelta,
 } from './runEvents.js';
@@ -23,6 +24,8 @@ import {
     handleAwaitingHumanDispatch,
     handleGateResolved,
     handleHumanTaskDispatched,
+    handleSubagentResumed,
+    handleSubagentStopped,
     handleSubagentGate,
 } from './humanEvents.js';
 
@@ -43,6 +46,8 @@ export function routeEvent(evType, payload, eventMeta) {
         handleModelStepFinished(instanceId);
     } else if (evType === 'run_completed') {
         handleRunCompleted();
+    } else if (evType === 'run_stopped') {
+        handleRunStopped(payload);
     } else if (evType === 'run_failed') {
         handleRunFailed(payload);
     } else if (evType === 'tool_call') {
@@ -61,6 +66,10 @@ export function routeEvent(evType, payload, eventMeta) {
         handleHumanTaskDispatched(payload);
     } else if (evType === 'subagent_gate') {
         handleSubagentGate(payload);
+    } else if (evType === 'subagent_stopped') {
+        handleSubagentStopped(payload);
+    } else if (evType === 'subagent_resumed') {
+        handleSubagentResumed(payload);
     } else if (evType === 'gate_resolved') {
         handleGateResolved(payload, instanceId);
     } else {

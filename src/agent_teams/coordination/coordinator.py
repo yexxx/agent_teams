@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from json import dumps
 from typing import Callable
@@ -16,6 +17,7 @@ from agent_teams.providers.llm import LLMProvider
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runtime.console import log_debug
 from agent_teams.runtime.gate_manager import GateManager
+from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.shared_store import SharedStore
@@ -38,6 +40,7 @@ class CoordinatorGraph:
     prompt_builder: RuntimePromptBuilder
     provider_factory: Callable[[RoleDefinition], LLMProvider]
     task_execution_service: TaskExecutionService
+    run_control_manager: RunControlManager
     gate_manager: GateManager = field(default_factory=GateManager)
     run_event_hub: RunEventHub | None = None
 
@@ -273,7 +276,7 @@ class CoordinatorGraph:
             # Block until the human dispatches exactly one task via the API.
             # The API handler calls injection_manager.enqueue() with a special
             # JSON payload: {"__human_dispatch__": "<task_id>"}
-            dispatched_task_id = self._wait_for_human_dispatch(
+            dispatched_task_id = await self._wait_for_human_dispatch(
                 run_id=trace_id,
                 coordinator_instance_id=coordinator_instance_id,
                 timeout=HUMAN_DISPATCH_TIMEOUT,
@@ -304,11 +307,23 @@ class CoordinatorGraph:
                 event_type=RunEventType.HUMAN_TASK_DISPATCHED,
                 payload={'task_id': dispatched_task_id, 'role_id': instance.role_id},
             )
-            result = await self._task_executor(
-                instance_id=instance.instance_id,
-                role_id=instance.role_id,
-                task=record.envelope,
-            )
+            try:
+                result = await self._task_executor(
+                    instance_id=instance.instance_id,
+                    role_id=instance.role_id,
+                    task=record.envelope,
+                )
+            except asyncio.CancelledError:
+                if self.run_control_manager.is_subagent_stop_requested(
+                    run_id=trace_id,
+                    instance_id=instance.instance_id,
+                ):
+                    log_debug(
+                        f'[coord:human:task-stopped] run={trace_id} task={dispatched_task_id} '
+                        f'instance={instance.instance_id}'
+                    )
+                    continue
+                raise
             log_debug(f'[coord:human:task-done] run={trace_id} task={dispatched_task_id}')
 
             # Apply confirmation gate if requested
@@ -345,6 +360,15 @@ class CoordinatorGraph:
                 continue
             if record.assigned_instance_id is None:
                 continue
+            if self.run_control_manager.is_subagent_paused(
+                session_id=task.session_id,
+                instance_id=record.assigned_instance_id,
+            ):
+                log_debug(
+                    f'[coord:dispatch-skip-paused] run={trace_id} task={task.task_id} '
+                    f'instance={record.assigned_instance_id}'
+                )
+                continue
             try:
                 instance = self.instance_pool.get(record.assigned_instance_id)
             except KeyError:
@@ -366,11 +390,23 @@ class CoordinatorGraph:
                 f'[coord:dispatch] run={trace_id} task={task.task_id} '
                 f'instance={instance.instance_id} role={instance.role_id} status={record.status.value}'
             )
-            result = await self._task_executor(
-                instance_id=instance.instance_id,
-                role_id=instance.role_id,
-                task=task,
-            )
+            try:
+                result = await self._task_executor(
+                    instance_id=instance.instance_id,
+                    role_id=instance.role_id,
+                    task=task,
+                )
+            except asyncio.CancelledError:
+                if self.run_control_manager.is_subagent_stop_requested(
+                    run_id=trace_id,
+                    instance_id=instance.instance_id,
+                ):
+                    log_debug(
+                        f'[coord:dispatch-stopped] run={trace_id} task={task.task_id} '
+                        f'instance={instance.instance_id}'
+                    )
+                    continue
+                raise
             ran_any = True
 
             # Confirmation gate: pause here and wait for human decision
@@ -390,8 +426,12 @@ class CoordinatorGraph:
         return [
             r for r in self.task_repo.list_by_trace(trace_id)
             if r.envelope.task_id != root_task_id
-            and r.status in (TaskStatus.ASSIGNED, TaskStatus.CREATED)
+            and r.status in (TaskStatus.ASSIGNED, TaskStatus.CREATED, TaskStatus.STOPPED)
             and r.assigned_instance_id is not None
+            and not self.run_control_manager.is_subagent_paused(
+                session_id=r.envelope.session_id,
+                instance_id=str(r.assigned_instance_id),
+            )
         ]
 
     async def _apply_gate(
@@ -466,7 +506,7 @@ class CoordinatorGraph:
             log_debug(f'[coord:gate:revise] run={run_id} task={task.task_id} feedback={feedback[:80]}')
             await self._task_executor(instance_id=instance_id, role_id=role_id, task=task)
 
-    def _wait_for_human_dispatch(
+    async def _wait_for_human_dispatch(
         self,
         run_id: str,
         coordinator_instance_id: str,
@@ -476,34 +516,25 @@ class CoordinatorGraph:
         Block until the human calls the dispatch API (which injects a special
         marker message) or until timeout.  Returns the dispatched task_id or None.
         """
-        import json, threading
-        result_holder: list[str | None] = [None]
-        done = threading.Event()
+        import json
+        import time
 
-        def _poll():
-            import time
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                injections = self.task_execution_service.injection_manager.drain_at_boundary(
-                    run_id, coordinator_instance_id
-                )
-                for msg in injections:
-                    try:
-                        data = json.loads(msg.content)
-                        if '__human_dispatch__' in data:
-                            result_holder[0] = data['__human_dispatch__']
-                            done.set()
-                            return
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                time.sleep(0.5)
-            done.set()
-
-        t = threading.Thread(target=_poll, daemon=True)
-        t.start()
-        done.wait()
-        t.join(timeout=1)
-        return result_holder[0]
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.run_control_manager.is_run_stop_requested(run_id):
+                return None
+            injections = self.task_execution_service.injection_manager.drain_at_boundary(
+                run_id, coordinator_instance_id
+            )
+            for msg in injections:
+                try:
+                    data = json.loads(msg.content)
+                    if '__human_dispatch__' in data:
+                        return data['__human_dispatch__']
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            await asyncio.sleep(0.5)
+        return None
 
     def _role_for_instance(self, instance_id: str) -> str | None:
         try:

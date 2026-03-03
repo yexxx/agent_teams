@@ -12,6 +12,7 @@ import {
     updateToolResult,
 } from '../../components/messageRenderer.js';
 import {
+    getActiveInstanceId,
     getPanelScrollContainer,
     openAgentPanel,
 } from '../../components/agentPanel.js';
@@ -27,7 +28,9 @@ export function handleToolCall(payload, eventMeta, instanceId, roleId) {
     const container = isCoordinator
         ? coordinatorContainerFor(eventMeta)
         : getPanelScrollContainer(instanceId, roleId);
-    if (!isCoordinator) openAgentPanel(instanceId, roleId);
+    if (!isCoordinator && !getActiveInstanceId()) {
+        openAgentPanel(instanceId, roleId);
+    }
     const streamKey = instanceId || 'coordinator';
     appendToolCallBlock(
         container,

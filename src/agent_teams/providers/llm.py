@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
@@ -18,6 +19,7 @@ from agent_teams.core.enums import RunEventType
 from agent_teams.core.models import ModelEndpointConfig, RunEvent
 from agent_teams.runtime.console import close_model_stream, is_debug, log_debug, log_model_output, log_model_stream_chunk
 from agent_teams.runtime.injection_manager import RunInjectionManager
+from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
@@ -78,6 +80,7 @@ class OpenAICompatibleProvider(LLMProvider):
         message_repo: MessageRepository,
         role_registry: 'RoleRegistry',
         task_execution_service: 'TaskExecutionService',
+        run_control_manager: RunControlManager,
         tool_approval_manager: ToolApprovalManager,
         tool_approval_policy: ToolApprovalPolicy,
     ) -> None:
@@ -98,6 +101,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._allowed_skills = allowed_skills
         self._role_registry = role_registry
         self._task_execution_service = task_execution_service
+        self._run_control_manager = run_control_manager
         self._message_repo = message_repo
         self._tool_approval_manager = tool_approval_manager
         self._tool_approval_policy = tool_approval_policy
@@ -153,6 +157,7 @@ class OpenAICompatibleProvider(LLMProvider):
             role_id=request.role_id,
             role_registry=self._role_registry,
             task_execution_service=self._task_execution_service,
+            run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
             tool_approval_policy=self._tool_approval_policy,
         )
@@ -164,6 +169,7 @@ class OpenAICompatibleProvider(LLMProvider):
         restarted = False
 
         while True:
+            self._raise_if_stopped(request)
             restarted = False
             async with agent.iter(
                 request.user_prompt if not history else None,
@@ -171,10 +177,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 message_history=history,
             ) as agent_run:
                 async for node in agent_run:
+                    self._raise_if_stopped(request)
                     if isinstance(node, ModelRequestNode):
                         # Stream text chunks from this model response in real-time
                         async with node.stream(agent_run.ctx) as stream:
                             async for text_delta in stream.stream_text(delta=True):
+                                self._raise_if_stopped(request)
                                 if text_delta:
                                     if is_debug():
                                         print(text_delta, end='', flush=True)
@@ -322,6 +330,15 @@ class OpenAICompatibleProvider(LLMProvider):
             if texts:
                 return ''.join(texts)
         return str(response)
+
+    def _raise_if_stopped(self, request: LLMRequest) -> None:
+        if self._run_control_manager.is_run_stop_requested(request.run_id):
+            raise asyncio.CancelledError
+        if self._run_control_manager.is_subagent_stop_requested(
+            run_id=request.run_id,
+            instance_id=request.instance_id,
+        ):
+            raise asyncio.CancelledError
 
     def _to_json(self, obj: Any) -> str:
         import json

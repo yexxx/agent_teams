@@ -19,6 +19,9 @@ import {
     forEachPanel,
     getPanel,
     getPanels,
+    getPendingApprovalsForPanel,
+    getActiveRoundRunId,
+    setActiveRoundContext,
     setActiveInstanceId,
     setPanel,
 } from './state.js';
@@ -45,7 +48,12 @@ export function openAgentPanel(instanceId, roleId) {
     const panel = ensurePanel(instanceId, roleId);
     if (!panel) return;
     if (!existing && state.currentSessionId) {
-        void loadAgentHistory(instanceId);
+        void loadAgentHistory(instanceId, roleId);
+    } else if (existing && state.currentSessionId) {
+        const approvals = getPendingApprovalsForPanel(instanceId, roleId);
+        if (approvals.length > 0) {
+            void loadAgentHistory(instanceId, roleId);
+        }
     }
 
     panel.panelEl.style.display = 'flex';
@@ -64,6 +72,7 @@ export function clearAllPanels() {
     if (!getDrawer()) return;
     forEachPanel(p => p.panelEl.remove());
     clearPanels();
+    setActiveRoundContext('', []);
     setActiveInstanceId(null);
     closeDrawerUi();
 }
@@ -136,5 +145,9 @@ export function removeGateCard(instanceId, taskId) {
     if (el) el.remove();
 }
 
-export { getActiveInstanceId, getPanels } from './state.js';
+export function setRoundPendingApprovals(runId, pendingApprovals) {
+    setActiveRoundContext(runId, pendingApprovals);
+}
+
+export { getActiveInstanceId, getPanels, getActiveRoundRunId } from './state.js';
 export { loadAgentHistory } from './history.js';

@@ -40,6 +40,7 @@ async def execute_tool(
         log_tool_call(ctx.deps.role_id, tool_name, args_summary)
 
     meta: dict[str, object] = {}
+    _raise_if_stopped(ctx)
     approval_error = await _handle_tool_approval(
         ctx=ctx,
         tool_name=tool_name,
@@ -57,6 +58,7 @@ async def execute_tool(
         )
 
     try:
+        _raise_if_stopped(ctx)
         if callable(action):
             result = action()
         else:
@@ -64,6 +66,7 @@ async def execute_tool(
 
         if inspect.isawaitable(result):
             result = await result
+        _raise_if_stopped(ctx)
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         meta['duration_ms'] = elapsed_ms
@@ -141,6 +144,16 @@ def _safe_json(value: object) -> str:
     if len(text) > 500:
         return text[:500] + '...(truncated)'
     return text
+
+
+def _raise_if_stopped(ctx: ToolContext) -> None:
+    if ctx.deps.run_control_manager.is_run_stop_requested(ctx.deps.run_id):
+        raise asyncio.CancelledError
+    if ctx.deps.run_control_manager.is_subagent_stop_requested(
+        run_id=ctx.deps.run_id,
+        instance_id=ctx.deps.instance_id,
+    ):
+        raise asyncio.CancelledError
 
 
 async def _handle_tool_approval(

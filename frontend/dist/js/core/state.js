@@ -8,7 +8,8 @@ export const state = {
     activeView: 'main',
     activeAgentRoleId: null,
     activeRunId: null,
-    instanceRoleMap: {},  // instanceId → roleId, built from model_step_started SSE events
+    pausedSubagent: null,
+    instanceRoleMap: {}, // instanceId -> roleId, built from model_step_started SSE events
 };
 
 export const els = {
@@ -18,6 +19,7 @@ export const els = {
     chatForm: document.getElementById('chat-form'),
     promptInput: document.getElementById('prompt-input'),
     sendBtn: document.getElementById('send-btn'),
+    stopBtn: document.getElementById('stop-btn'),
     systemLogs: document.getElementById('system-logs'),
     toggleInspector: document.getElementById('toggle-inspector'),
     inspectorPanel: document.getElementById('rail-inspector'),
@@ -35,8 +37,6 @@ marked.setOptions({
         }
 
         return window.hljs ? window.hljs.highlightAuto(code).value : code;
-    }
-
-    ,
+    },
     breaks: true
 });

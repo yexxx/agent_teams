@@ -21,6 +21,14 @@ class _FakeRunEventHub:
         self.events.append(event)
 
 
+class _FakeRunControlManager:
+    def is_run_stop_requested(self, run_id: str) -> bool:
+        return False
+
+    def is_subagent_stop_requested(self, *, run_id: str, instance_id: str) -> bool:
+        return False
+
+
 def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
     config = ModelEndpointConfig(
         model='gpt-test',
@@ -46,6 +54,7 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         message_repo=None,
         role_registry=None,
         task_execution_service=None,
+        run_control_manager=_FakeRunControlManager(),
         tool_approval_manager=None,
         tool_approval_policy=None,
     )

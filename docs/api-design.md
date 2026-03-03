@@ -102,6 +102,8 @@
 - `POST /runs`
 - `GET /runs/{run_id}/events`（SSE）
 - `POST /runs/{run_id}/inject`
+- `POST /runs/{run_id}/subagents/{instance_id}/inject`
+- `POST /runs/{run_id}/stop`
 - `GET /runs/{run_id}/gates`
 - `POST /runs/{run_id}/gates/{task_id}/resolve`
 - `POST /runs/{run_id}/dispatch`
@@ -176,6 +178,8 @@ data: {"event_type":"run_started", ...}
 data: {"event_type":"text_delta","payload_json":"{\"text\":\"Hello\"}", ...}
 
 data: {"event_type":"run_completed", ...}
+
+data: {"event_type":"run_stopped","payload_json":"{\"reason\":\"stopped_by_user\"}", ...}
 ```
 
 说明：
@@ -194,6 +198,29 @@ Content-Type: application/json
   "source": "user",
   "content": "Additional constraint"
 }
+```
+
+子 agent 定向补充消息：
+```http
+POST /api/runs/{run_id}/subagents/{instance_id}/inject
+Content-Type: application/json
+
+{"content":"Please revise with this extra requirement"}
+```
+
+停止运行（主 agent 或 subagent）：
+```http
+POST /api/runs/{run_id}/stop
+Content-Type: application/json
+
+{"scope":"main"}
+```
+
+```http
+POST /api/runs/{run_id}/stop
+Content-Type: application/json
+
+{"scope":"subagent","instance_id":"inst-xxx"}
 ```
 
 ### 5.5 人工调度与确认门
@@ -238,10 +265,13 @@ Content-Type: application/json
 - `tool_result`
 - `injection_enqueued`
 - `injection_applied`
+- `subagent_stopped`
+- `subagent_resumed`
 - `awaiting_human_dispatch`
 - `human_task_dispatched`
 - `subagent_gate`
 - `gate_resolved`
+- `run_stopped`
 - `run_completed`
 - `run_failed`
 

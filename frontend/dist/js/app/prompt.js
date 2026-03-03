@@ -12,6 +12,14 @@ import { sysLog } from '../utils/logger.js';
 export async function handleSend() {
     const text = els.promptInput.value.trim();
     if (!text || state.isGenerating || !state.currentSessionId) return;
+    if (state.pausedSubagent) {
+        const paused = state.pausedSubagent;
+        sysLog(
+            `Subagent is paused (${paused.roleId || paused.instanceId}). Send a follow-up in that subagent panel first.`,
+            'log-error',
+        );
+        return;
+    }
 
     const modeEl = document.getElementById('execution-mode-select');
     const gateEl = document.getElementById('confirmation-gate-check');

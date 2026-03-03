@@ -64,7 +64,7 @@ CREATE INDEX idx_agent_instances_run_status ON agent_instances(run_id, status)
 | `trace_id` | TEXT | 从根任务开始的完整调用链 ID，贯穿整个任务树。 |
 | `session_id` | TEXT | 用户会话 ID，代表一次完整的用户交互。 |
 | `role_id` | TEXT | 该实例所扮演的角色，对应 `.agent_teams/roles/` 下的角色定义文件名。 |
-| `status` | TEXT | 枚举：`idle` / `running` / `completed` / `failed` / `timeout`。进程崩溃后残留的 `running` 状态由 `InstancePool.from_repo()` 在启动时自动修正为 `failed`。 |
+| `status` | TEXT | 枚举：`idle` / `running` / `stopped` / `completed` / `failed` / `timeout`。进程崩溃后残留的 `running` 状态由 `InstancePool.from_repo()` 在启动时自动修正为 `failed`。 |
 | `created_at` | TEXT | 实例创建时间，ISO 8601（UTC）。 |
 | `updated_at` | TEXT | 最后状态变更时间，ISO 8601（UTC）。 |
 
@@ -99,7 +99,7 @@ CREATE INDEX idx_tasks_session ON tasks(session_id)
 | `session_id` | TEXT | 所属用户会话 ID。已建索引。 |
 | `parent_task_id` | TEXT (nullable) | 父任务 ID，根任务为 NULL。 |
 | `envelope_json` | TEXT | 任务完整描述的 JSON（`TaskEnvelope`），包含 `objective`、`dod`、`verification` 等不需要直接查询的字段。 |
-| `status` | TEXT | 枚举：`created` / `assigned` / `running` / `completed` / `failed` / `timeout`。 |
+| `status` | TEXT | 枚举：`created` / `assigned` / `running` / `stopped` / `completed` / `failed` / `timeout`。 |
 | `assigned_instance_id` | TEXT (nullable) | 负责执行该任务的 agent 实例 ID，未分配时为 NULL。 |
 | `result` | TEXT (nullable) | 任务完成后的输出内容，仅 `status=completed` 时有值。 |
 | `error_message` | TEXT (nullable) | 失败或超时时的错误描述。 |
@@ -195,10 +195,12 @@ CREATE INDEX idx_events_session ON events(session_id)
 | `task_created` | 新任务被创建 |
 | `task_assigned` | 任务被分配给某个 agent 实例 |
 | `task_started` | agent 开始执行任务 |
+| `task_stopped` | 任务被用户停止 |
 | `task_completed` | 任务执行成功 |
 | `task_failed` | 任务执行失败 |
 | `task_timeout` | 任务超时 |
 | `instance_created` | 新的 subagent 实例被创建 |
+| `instance_stopped` | subagent 实例被用户停止 |
 | `instance_recycled` | 空闲实例被回收清理 |
 | `verification_passed` | 任务验收通过 |
 | `verification_failed` | 任务验收未通过 |

@@ -112,10 +112,12 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
         if (round.coordinator_messages?.length > 0) {
             renderHistoricalMessageList(section, round.coordinator_messages, {
                 pendingToolApprovals: pendingCoordinatorApprovals,
+                runId: round.run_id,
             });
         } else if (pendingCoordinatorApprovals.length > 0) {
             renderHistoricalMessageList(section, [], {
                 pendingToolApprovals: pendingCoordinatorApprovals,
+                runId: round.run_id,
             });
         } else if (round.run_id !== '__live__') {
             const empty = document.createElement('div');

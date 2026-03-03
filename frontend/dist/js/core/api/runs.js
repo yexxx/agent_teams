@@ -68,3 +68,30 @@ export async function injectMessage(runId, content) {
         'Failed to inject message',
     );
 }
+
+export async function stopRun(runId, { scope = 'main', instanceId = null } = {}) {
+    const payload = scope === 'subagent'
+        ? { scope, instance_id: instanceId }
+        : { scope: 'main' };
+    return requestJson(
+        `/api/runs/${runId}/stop`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        },
+        'Failed to stop run',
+    );
+}
+
+export async function injectSubagentMessage(runId, instanceId, content) {
+    return requestJson(
+        `/api/runs/${runId}/subagents/${instanceId}/inject`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+        },
+        'Failed to send message to subagent',
+    );
+}

@@ -415,6 +415,22 @@
     flex-shrink: 0;
 }
 
+.agent-panel-stop {
+    border: 1px solid var(--border-color);
+    background: var(--bg-2);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    line-height: 1.2;
+}
+
+.agent-panel-stop:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
 .agent-panel-close:hover {
     background: var(--bg-hover-strong);
     color: var(--text-primary);

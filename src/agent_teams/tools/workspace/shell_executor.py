@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import asyncio
 from pathlib import Path
-from typing import AsyncGenerator, IO
+from typing import AsyncGenerator
 
 
 def resolve_bash_path() -> str:
@@ -121,54 +121,68 @@ async def spawn_shell(
     Yields:
         (stream_type, data): stdout 或 stderr 的数据块
     """
-    import select
-    import errno
-
     bash = resolve_bash_path()
 
     shell_env = os.environ.copy()
     if env:
         shell_env.update(env)
 
-    proc = subprocess.Popen(
-        [bash, "-lc", command],
+    proc = await asyncio.create_subprocess_exec(
+        bash,
+        "-lc",
+        command,
         cwd=str(cwd),
         env=shell_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
+    stdout = proc.stdout
+    stderr = proc.stderr
+    if stdout is None or stderr is None:
+        raise RuntimeError("Failed to capture subprocess streams")
 
-    from typing import IO
+    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
 
-    stdout: IO[str] | None = proc.stdout  # type: ignore
-    stderr: IO[str] | None = proc.stderr  # type: ignore
+    async def _pump(stream_name: str, stream) -> None:
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                break
+            await queue.put((stream_name, chunk.decode("utf-8", errors="replace")))
+        await queue.put(None)
+
+    stdout_task = asyncio.create_task(_pump("stdout", stdout))
+    stderr_task = asyncio.create_task(_pump("stderr", stderr))
+    timeout_seconds = max(0.001, timeout_ms / 1000.0)
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    stream_eof = 0
 
     try:
         while True:
-            ready = select.select([stdout, stderr], [], [], 0.1)
-
-            if stdout and stdout in ready[0]:
-                chunk = stdout.read(4096)
-                if chunk:
-                    yield ("stdout", chunk)
-
-            if stderr and stderr in ready[0]:
-                chunk = stderr.read(4096)
-                if chunk:
-                    yield ("stderr", chunk)
-
-            if proc.poll() is not None:
+            if stream_eof >= 2 and proc.returncode is not None:
                 break
-
-    except select.error as e:
-        if e.args[0] != errno.EINTR:
-            raise
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=remaining)
+            except asyncio.TimeoutError as exc:
+                raise asyncio.TimeoutError from exc
+            if item is None:
+                stream_eof += 1
+                continue
+            yield item
     finally:
-        if proc.poll() is None:
+        for task in (stdout_task, stderr_task):
+            if not task.done():
+                task.cancel()
+        if proc.returncode is None:
             proc.terminate()
-            proc.wait(timeout=5)
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
 
 
 def run_git_bash(

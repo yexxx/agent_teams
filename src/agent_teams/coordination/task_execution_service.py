@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Callable
 
@@ -12,6 +13,7 @@ from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
 from agent_teams.providers.llm import LLMProvider
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runtime.console import log_debug
+from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
@@ -34,8 +36,31 @@ class TaskExecutionService:
     prompt_builder: RuntimePromptBuilder
     provider_factory: Callable[[RoleDefinition], LLMProvider]
     injection_manager: RunInjectionManager | None = None
+    run_control_manager: RunControlManager | None = None
 
     async def execute(self, *, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
+        worker = asyncio.create_task(
+            self._execute_inner(instance_id=instance_id, role_id=role_id, task=task)
+        )
+        if self.run_control_manager is not None:
+            self.run_control_manager.register_instance_task(
+                run_id=task.trace_id,
+                session_id=task.session_id,
+                instance_id=instance_id,
+                role_id=role_id,
+                task_id=task.task_id,
+                task=worker,
+            )
+        try:
+            return await worker
+        finally:
+            if self.run_control_manager is not None:
+                self.run_control_manager.unregister_instance_task(
+                    run_id=task.trace_id,
+                    instance_id=instance_id,
+                )
+
+    async def _execute_inner(self, *, instance_id: str, role_id: str, task: TaskEnvelope) -> str:
         log_debug(
             f'[subagent:start] run={task.trace_id} task={task.task_id} '
             f'instance={instance_id} role={role_id}'
@@ -85,6 +110,67 @@ class TaskExecutionService:
                 f'instance={instance_id} role={role_id}'
             )
             return result
+        except asyncio.CancelledError:
+            requested_subagent_stop = (
+                self.run_control_manager is not None
+                and self.run_control_manager.is_subagent_stop_requested(
+                    run_id=task.trace_id,
+                    instance_id=instance_id,
+                )
+            )
+            requested_run_stop = (
+                self.run_control_manager is not None
+                and self.run_control_manager.is_run_stop_requested(task.trace_id)
+            )
+            stopped = requested_subagent_stop or requested_run_stop
+            status = TaskStatus.STOPPED if stopped else TaskStatus.FAILED
+            error_message = 'Task stopped by user' if stopped else 'Task cancelled'
+            self.task_repo.update_status(task.task_id, status, error_message=error_message)
+            if stopped:
+                self.instance_pool.mark_stopped(instance_id)
+                self.agent_repo.mark_status(instance_id, InstanceStatus.STOPPED)
+                self.event_bus.emit(
+                    EventEnvelope(
+                        event_type=EventType.TASK_STOPPED,
+                        trace_id=task.trace_id,
+                        session_id=task.session_id,
+                        task_id=task.task_id,
+                        instance_id=instance_id,
+                        payload_json='{}',
+                    )
+                )
+                self.event_bus.emit(
+                    EventEnvelope(
+                        event_type=EventType.INSTANCE_STOPPED,
+                        trace_id=task.trace_id,
+                        session_id=task.session_id,
+                        task_id=task.task_id,
+                        instance_id=instance_id,
+                        payload_json='{}',
+                    )
+                )
+                log_debug(
+                    f'[subagent:stopped] run={task.trace_id} task={task.task_id} '
+                    f'instance={instance_id} role={role_id}'
+                )
+            else:
+                self.instance_pool.mark_failed(instance_id)
+                self.agent_repo.mark_status(instance_id, InstanceStatus.FAILED)
+                self.event_bus.emit(
+                    EventEnvelope(
+                        event_type=EventType.TASK_FAILED,
+                        trace_id=task.trace_id,
+                        session_id=task.session_id,
+                        task_id=task.task_id,
+                        instance_id=instance_id,
+                        payload_json='{}',
+                    )
+                )
+                log_debug(
+                    f'[subagent:cancelled] run={task.trace_id} task={task.task_id} '
+                    f'instance={instance_id} role={role_id}'
+                )
+            raise
         except TimeoutError:
             self.task_repo.update_status(task.task_id, TaskStatus.TIMEOUT, error_message='Task timeout')
             self.instance_pool.mark_timeout(instance_id)

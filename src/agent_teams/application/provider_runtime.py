@@ -10,6 +10,7 @@ from agent_teams.core.models import RoleDefinition
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
 from agent_teams.providers.llm import EchoProvider, LLMProvider, OpenAICompatibleProvider
 from agent_teams.runtime.injection_manager import RunInjectionManager
+from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
@@ -35,6 +36,7 @@ def create_provider_factory(
     skill_registry,
     message_repo: MessageRepository,
     role_registry,
+    run_control_manager: RunControlManager,
     tool_approval_manager: ToolApprovalManager,
     tool_approval_policy: ToolApprovalPolicy,
     get_task_execution_service: Callable[[], TaskExecutionService],
@@ -64,6 +66,7 @@ def create_provider_factory(
             message_repo=message_repo,
             role_registry=role_registry,
             task_execution_service=get_task_execution_service(),
+            run_control_manager=run_control_manager,
             tool_approval_manager=tool_approval_manager,
             tool_approval_policy=tool_approval_policy,
         )
@@ -82,6 +85,7 @@ def create_task_execution_service(
     message_repo: MessageRepository,
     provider_factory: Callable[[RoleDefinition], LLMProvider],
     injection_manager: RunInjectionManager,
+    run_control_manager: RunControlManager,
 ) -> TaskExecutionService:
     return TaskExecutionService(
         role_registry=role_registry,
@@ -94,4 +98,5 @@ def create_task_execution_service(
         prompt_builder=RuntimePromptBuilder(),
         provider_factory=provider_factory,
         injection_manager=injection_manager,
+        run_control_manager=run_control_manager,
     )

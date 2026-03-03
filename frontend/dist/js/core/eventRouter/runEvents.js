@@ -12,6 +12,7 @@ import {
     getOrCreateStreamBlock,
 } from '../../components/messageRenderer.js';
 import {
+    getActiveInstanceId,
     getPanelScrollContainer,
     openAgentPanel,
 } from '../../components/agentPanel.js';
@@ -49,7 +50,10 @@ export function handleTextDelta(payload, eventMeta, instanceId, roleId) {
         appendStreamChunk(streamKey, payload.text || '');
     } else {
         const container = getPanelScrollContainer(instanceId, roleId);
-        openAgentPanel(instanceId, roleId);
+        // Do not keep stealing focus from user-selected panel during streaming.
+        if (!getActiveInstanceId()) {
+            openAgentPanel(instanceId, roleId);
+        }
         getOrCreateStreamBlock(container, instanceId, roleId, label);
         appendStreamChunk(instanceId, payload.text || '');
     }
@@ -65,6 +69,28 @@ export function handleRunCompleted() {
     state.isGenerating = false;
     state.activeAgentRoleId = null;
     if (els.sendBtn) els.sendBtn.disabled = false;
+    if (els.stopBtn) {
+        els.stopBtn.disabled = true;
+        els.stopBtn.style.display = 'none';
+    }
+    if (els.promptInput) {
+        els.promptInput.disabled = false;
+        els.promptInput.focus();
+    }
+    finalizeStream('coordinator');
+    updateDagActiveNode();
+}
+
+export function handleRunStopped(payload) {
+    sysLog(`Run stopped: ${payload?.reason || 'stopped_by_user'}`, 'log-info');
+    state.isGenerating = false;
+    state.activeAgentRoleId = null;
+    state.pausedSubagent = null;
+    if (els.sendBtn) els.sendBtn.disabled = false;
+    if (els.stopBtn) {
+        els.stopBtn.disabled = true;
+        els.stopBtn.style.display = 'none';
+    }
     if (els.promptInput) {
         els.promptInput.disabled = false;
         els.promptInput.focus();
@@ -77,5 +103,9 @@ export function handleRunFailed(payload) {
     sysLog(`Run failed: ${payload?.error || ''}`, 'log-error');
     state.isGenerating = false;
     if (els.sendBtn) els.sendBtn.disabled = false;
+    if (els.stopBtn) {
+        els.stopBtn.disabled = true;
+        els.stopBtn.style.display = 'none';
+    }
     if (els.promptInput) els.promptInput.disabled = false;
 }

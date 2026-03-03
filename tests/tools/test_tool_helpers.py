@@ -49,6 +49,7 @@ class _FakeDeps:
         self.instance_id = 'inst-1'
         self.role_id = 'spec_coder'
         self.run_event_hub = _FakeRunEventHub()
+        self.run_control_manager = _FakeRunControlManager()
         self.tool_approval_manager = manager
         self.tool_approval_policy = policy
 
@@ -58,6 +59,14 @@ class _FakeCtx:
         self.deps = deps
         self.tool_call_id: str | None = None
         self.retry: int = 0
+
+
+class _FakeRunControlManager:
+    def is_run_stop_requested(self, run_id: str) -> bool:
+        return False
+
+    def is_subagent_stop_requested(self, *, run_id: str, instance_id: str) -> bool:
+        return False
 
 
 def test_execute_tool_returns_standard_envelope() -> None:

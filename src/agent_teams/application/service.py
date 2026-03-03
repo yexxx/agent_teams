@@ -59,6 +59,7 @@ class AgentTeamsService:
         self._role_registry = components.role_registry
         self._workflows: list[WorkflowSpec] = []
         self._injection_manager = components.injection_manager
+        self._run_control_manager = components.run_control_manager
         self._run_event_hub = components.run_event_hub
         self._gate_manager = components.gate_manager
         self._tool_approval_manager = components.tool_approval_manager
@@ -83,7 +84,10 @@ class AgentTeamsService:
             injection_manager=self._injection_manager,
             run_event_hub=self._run_event_hub,
             agent_repo=self._agent_repo,
+            task_repo=self._task_repo,
+            message_repo=self._message_repo,
             gate_manager=self._gate_manager,
+            run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
         )
         self._session_service = SessionService(
@@ -174,6 +178,7 @@ class AgentTeamsService:
             skill_registry=self._skill_registry,
             message_repo=self._message_repo,
             role_registry=self._role_registry,
+            run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
             tool_approval_policy=self._tool_approval_policy,
             get_task_execution_service=get_task_execution_service,
@@ -188,6 +193,7 @@ class AgentTeamsService:
             message_repo=self._message_repo,
             provider_factory=self._provider_factory,
             injection_manager=self._injection_manager,
+            run_control_manager=self._run_control_manager,
         )
 
         self._meta_agent.coordinator.task_execution_service = (
@@ -260,6 +266,24 @@ class AgentTeamsService:
         self, session_id: str, run_id: str, task_id: str
     ) -> None:
         self._run_manager.dispatch_task_human_for_session(session_id, run_id, task_id)
+
+    def stop_run(self, run_id: str) -> None:
+        self._run_manager.stop_run(run_id)
+
+    def stop_subagent(self, run_id: str, instance_id: str) -> dict[str, str]:
+        return self._run_manager.stop_subagent(run_id, instance_id)
+
+    def inject_subagent_message(
+        self,
+        run_id: str,
+        instance_id: str,
+        content: str,
+    ) -> None:
+        self._run_manager.inject_subagent_message(
+            run_id=run_id,
+            instance_id=instance_id,
+            content=content,
+        )
 
     def create_workflow(self, spec: WorkflowSpec) -> str:
         self._workflows.append(spec)

@@ -61,20 +61,36 @@ class DispatchTaskRequest(BaseModel):
     task_id: str = Field(min_length=1)
 
 
+class StopRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal['main', 'subagent'] = 'main'
+    instance_id: str | None = None
+
+
+class InjectSubagentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1)
+
+
 @router.post("", response_model=CreateRunResponse)
 def create_run(
     req: CreateRunRequest,
     service: AgentTeamsService = Depends(get_service),
 ) -> CreateRunResponse:
-    run_id, session_id = service.create_run(
-        IntentInput(
-            session_id=req.session_id,
-            intent=req.intent,
-            execution_mode=req.execution_mode,
-            confirmation_gate=req.confirmation_gate,
+    try:
+        run_id, session_id = service.create_run(
+            IntentInput(
+                session_id=req.session_id,
+                intent=req.intent,
+                execution_mode=req.execution_mode,
+                confirmation_gate=req.confirmation_gate,
+            )
         )
-    )
-    return CreateRunResponse(run_id=run_id, session_id=session_id)
+        return CreateRunResponse(run_id=run_id, session_id=session_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/{run_id}/events")
@@ -173,3 +189,46 @@ def dispatch_task(
         return {"status": "ok", "dispatched_task_id": req.task_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}/stop")
+def stop_run(
+    run_id: str,
+    req: StopRunRequest,
+    service: AgentTeamsService = Depends(get_service),
+) -> dict[str, str]:
+    try:
+        if req.scope == 'main':
+            service.stop_run(run_id)
+            return {"status": "ok", "scope": "main"}
+        if not req.instance_id:
+            raise HTTPException(
+                status_code=422,
+                detail="instance_id is required when scope is subagent",
+            )
+        payload = service.stop_subagent(run_id, req.instance_id)
+        return {"status": "ok", "scope": "subagent", "instance_id": payload["instance_id"]}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}/subagents/{instance_id}/inject")
+def inject_subagent(
+    run_id: str,
+    instance_id: str,
+    req: InjectSubagentRequest,
+    service: AgentTeamsService = Depends(get_service),
+) -> dict[str, str]:
+    try:
+        service.inject_subagent_message(
+            run_id=run_id,
+            instance_id=instance_id,
+            content=req.content,
+        )
+        return {"status": "ok", "instance_id": instance_id}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

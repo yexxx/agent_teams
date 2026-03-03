@@ -14,6 +14,7 @@ export async function selectSession(sessionId) {
     const isSameSession = state.currentSessionId === sessionId;
     state.currentSessionId = sessionId;
     state.instanceRoleMap = {};
+    state.pausedSubagent = null;
 
     document.querySelectorAll('.session-item').forEach(el => {
         const isActive = el.querySelector('.session-id')?.textContent === sessionId;

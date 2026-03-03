@@ -15,6 +15,7 @@ export {
     resolveToolApproval,
     dispatchHumanTask,
     injectMessage,
+    injectSubagentMessage,
     deleteSession,
     fetchConfigStatus,
     fetchModelConfig,
@@ -25,4 +26,5 @@ export {
     reloadModelConfig,
     reloadMcpConfig,
     reloadSkillsConfig,
+    stopRun,
 } from './api/index.js';

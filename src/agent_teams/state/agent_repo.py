@@ -85,6 +85,15 @@ class AgentInstanceRepository:
         ).fetchall()
         return tuple(self._to_record(row) for row in rows)
 
+    def get_instance(self, instance_id: str) -> AgentRuntimeRecord:
+        row = self._conn.execute(
+            'SELECT * FROM agent_instances WHERE instance_id=?',
+            (instance_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f'Unknown instance_id: {instance_id}')
+        return self._to_record(row)
+
     def get_coordinator_instance_id(self, session_id: str) -> str | None:
         """Return the instance_id of the first coordinator_agent created for this session, or None."""
         row = self._conn.execute(

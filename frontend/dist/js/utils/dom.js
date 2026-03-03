@@ -28,5 +28,6 @@ export const els = {
     themeToggleBtn: qs('#toggle-theme'),
     promptInput: qs('#prompt-input'),
     sendBtn: qs('#send-btn'),
+    stopBtn: qs('#stop-btn'),
     chatForm: qs('#chat-form')
 };

@@ -4,6 +4,8 @@
  */
 const panels = new Map();
 let activeInstanceId = null;
+let activeRoundRunId = '';
+let activeRoundPendingApprovals = [];
 
 export function getPanels() {
     return panels;
@@ -31,4 +33,24 @@ export function setActiveInstanceId(instanceId) {
 
 export function getActiveInstanceId() {
     return activeInstanceId;
+}
+
+export function setActiveRoundContext(runId, pendingApprovals) {
+    activeRoundRunId = typeof runId === 'string' ? runId : '';
+    activeRoundPendingApprovals = Array.isArray(pendingApprovals)
+        ? pendingApprovals
+        : [];
+}
+
+export function getActiveRoundRunId() {
+    return activeRoundRunId;
+}
+
+export function getPendingApprovalsForPanel(instanceId, roleId) {
+    return activeRoundPendingApprovals.filter(item => {
+        const itemInstance = String(item?.instance_id || '');
+        if (itemInstance && itemInstance === instanceId) return true;
+        const itemRole = String(item?.role_id || '');
+        return !!roleId && itemRole === roleId;
+    });
 }

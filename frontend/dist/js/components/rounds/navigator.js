@@ -5,7 +5,14 @@
 import { els } from '../../utils/dom.js';
 import { esc } from './utils.js';
 
+let navRounds = [];
+let navActiveRunId = null;
+let navOnSelectRound = null;
+
 export function renderRoundNavigator(rounds, onSelectRound) {
+    navRounds = Array.isArray(rounds) ? rounds : [];
+    navOnSelectRound = onSelectRound;
+
     let nav = document.getElementById('round-nav-float');
     if (!nav) {
         nav = document.createElement('div');
@@ -15,7 +22,7 @@ export function renderRoundNavigator(rounds, onSelectRound) {
         if (chatContainer) chatContainer.appendChild(nav);
     }
 
-    if (!rounds || rounds.length === 0) {
+    if (navRounds.length === 0) {
         nav.style.display = 'none';
         nav.innerHTML = '';
         if (els.workflowPanel) els.workflowPanel.style.display = 'none';
@@ -23,6 +30,24 @@ export function renderRoundNavigator(rounds, onSelectRound) {
         return;
     }
 
+    renderNavigatorDom(nav);
+}
+
+export function setActiveRoundNav(runId) {
+    navActiveRunId = runId || null;
+    const nav = document.getElementById('round-nav-float');
+    if (!nav || navRounds.length === 0) return;
+
+    nav.querySelectorAll('.round-nav-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.runId === runId);
+    });
+    const active = nav.querySelector('.round-nav-item.active');
+    if (active) {
+        active.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+function renderNavigatorDom(nav) {
     nav.style.display = 'flex';
     nav.innerHTML = `
         <div class="round-nav-title">Rounds</div>
@@ -30,22 +55,23 @@ export function renderRoundNavigator(rounds, onSelectRound) {
     `;
 
     const list = nav.querySelector('.round-nav-list');
-    rounds.forEach((round, idx) => {
+    navRounds.forEach((round, idx) => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'round-nav-item';
         item.dataset.runId = round.run_id;
+        if (navActiveRunId && navActiveRunId === round.run_id) {
+            item.classList.add('active');
+        }
         item.innerHTML = `
             <span class="idx">${idx + 1}</span>
             <span class="txt">${esc(round.intent || 'No intent')}</span>
         `;
-        item.onclick = () => onSelectRound(round);
+        item.onclick = () => {
+            navActiveRunId = round.run_id;
+            setActiveRoundNav(round.run_id);
+            if (navOnSelectRound) navOnSelectRound(round);
+        };
         list.appendChild(item);
-    });
-}
-
-export function setActiveRoundNav(runId) {
-    document.querySelectorAll('.round-nav-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.runId === runId);
     });
 }

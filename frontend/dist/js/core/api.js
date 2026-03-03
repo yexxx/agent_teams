@@ -74,6 +74,16 @@ export async function resolveGate(runId, taskId, action, feedback = '') {
     return res.json();
 }
 
+export async function resolveToolApproval(runId, toolCallId, action, feedback = '') {
+    const res = await fetch(`/api/runs/${runId}/tool-approvals/${toolCallId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, feedback }),
+    });
+    if (!res.ok) throw new Error('Failed to resolve tool approval');
+    return res.json();
+}
+
 export async function dispatchHumanTask(sessionId, runId, taskId) {
     const res = await fetch(`/api/runs/${runId}/dispatch`, {
         method: 'POST',

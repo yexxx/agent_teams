@@ -20,7 +20,7 @@ class RuntimePromptBuilder:
             runtime_contract = (
                 'RuntimeContract:\n'
                 '- A coordinator turn can call tools many times, but delegated tasks run after the turn ends.\n'
-                '- Do not claim task started/completed without query_task/get_workflow_status evidence.\n'
+                '- Do not claim task started/completed without get_workflow_status evidence.\n'
                 '- Prefer workflow tools over raw task-by-task creation.\n\n'
             )
         return (

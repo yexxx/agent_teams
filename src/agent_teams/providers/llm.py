@@ -5,7 +5,7 @@ from collections.abc import AsyncIterable  # noqa: F401  kept for type annotatio
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic_ai._agent_graph import ModelRequestNode
 from pydantic_ai.messages import (
@@ -19,9 +19,11 @@ from agent_teams.core.models import ModelEndpointConfig, RunEvent
 from agent_teams.runtime.console import close_model_stream, is_debug, log_debug, log_model_output, log_model_stream_chunk
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_event_hub import RunEventHub
+from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.message_repo import MessageRepository
 from agent_teams.agents.builders.collaboration_agent import build_collaboration_agent
+from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps
 from agent_teams.mcp.registry import McpRegistry
@@ -76,6 +78,8 @@ class OpenAICompatibleProvider(LLMProvider):
         message_repo: MessageRepository,
         role_registry: 'RoleRegistry',
         task_execution_service: 'TaskExecutionService',
+        tool_approval_manager: ToolApprovalManager,
+        tool_approval_policy: ToolApprovalPolicy,
     ) -> None:
         self._config = config
         self._task_repo = task_repo
@@ -95,6 +99,8 @@ class OpenAICompatibleProvider(LLMProvider):
         self._role_registry = role_registry
         self._task_execution_service = task_execution_service
         self._message_repo = message_repo
+        self._tool_approval_manager = tool_approval_manager
+        self._tool_approval_policy = tool_approval_policy
 
     async def generate(self, request: LLMRequest) -> str:
         return await self._generate_async(request)
@@ -147,6 +153,8 @@ class OpenAICompatibleProvider(LLMProvider):
             role_id=request.role_id,
             role_registry=self._role_registry,
             task_execution_service=self._task_execution_service,
+            tool_approval_manager=self._tool_approval_manager,
+            tool_approval_policy=self._tool_approval_policy,
         )
 
         printed_any = False
@@ -222,6 +230,11 @@ class OpenAICompatibleProvider(LLMProvider):
                             elif isinstance(msg, ModelRequest):
                                 for part in msg.parts:
                                     if isinstance(part, ToolReturnPart):
+                                        result_payload = part.content
+                                        is_error = bool(
+                                            isinstance(result_payload, dict)
+                                            and result_payload.get("ok") is False
+                                        )
                                         self._run_event_hub.publish(
                                             RunEvent(
                                                 session_id=request.session_id,
@@ -233,8 +246,8 @@ class OpenAICompatibleProvider(LLMProvider):
                                                 event_type=RunEventType.TOOL_RESULT,
                                                 payload_json=self._to_json({
                                                     "tool_name": part.tool_name,
-                                                    "result": part.content,
-                                                    "error": False, # Basic assumption for now
+                                                    "result": result_payload,
+                                                    "error": is_error,
                                                     "role_id": request.role_id,
                                                     "instance_id": request.instance_id,
                                                 }),

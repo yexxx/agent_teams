@@ -8,6 +8,7 @@ from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.core.enums import EventType, ExecutionMode, InstanceStatus, RunEventType, ScopeType, TaskStatus
 from agent_teams.core.ids import new_task_id, new_trace_id
 from agent_teams.core.models import EventEnvelope, IntentInput, RoleDefinition, RunEvent, TaskEnvelope, VerificationPlan
+from agent_teams.coordination.verification import verify_task
 from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.state.event_log import EventLog
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
@@ -19,7 +20,6 @@ from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
-from agent_teams.tools.verify_task.impl import verify_task
 
 ROLE_COORDINATOR = 'coordinator_agent'
 MAX_ORCHESTRATION_CYCLES = 8

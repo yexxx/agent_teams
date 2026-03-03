@@ -186,8 +186,7 @@ export function updateToolResult(instanceId, toolName, result, isError) {
     const st = _streamState.get(instanceId);
     if (!st) return;
 
-    const blocks = st.contentEl.querySelectorAll(`.tool-block[data-tool-name="${toolName}"]`);
-    const toolBlock = blocks[blocks.length - 1];
+    const toolBlock = _findLatestToolBlock(st.contentEl, toolName);
     if (!toolBlock) return;
 
     const statusEl = toolBlock.querySelector('.tool-status');
@@ -201,7 +200,106 @@ export function updateToolResult(instanceId, toolName, result, isError) {
     }
     const val = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
     resultEl.innerHTML = parseMarkdown(val);
+
+    const approvalEl = toolBlock.querySelector('.tool-approval-inline');
+    if (approvalEl) {
+        const stateEl = approvalEl.querySelector('.tool-approval-state');
+        if (stateEl && !stateEl.textContent?.includes('DENY') && !stateEl.textContent?.includes('TIMEOUT')) {
+            stateEl.textContent = isError ? 'Approval/Execution failed' : 'Approved';
+        }
+        approvalEl.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+    }
     _scrollBottom(st.container);
+}
+
+export function attachToolApprovalControls(instanceId, toolName, payload, handlers) {
+    const st = _streamState.get(instanceId);
+    if (!st) return false;
+
+    const toolBlock = _findLatestToolBlock(st.contentEl, toolName);
+    if (!toolBlock) return false;
+    if (payload?.tool_call_id) {
+        toolBlock.dataset.toolCallId = payload.tool_call_id;
+    }
+
+    let approvalEl = toolBlock.querySelector('.tool-approval-inline');
+    if (!approvalEl) {
+        approvalEl = document.createElement('div');
+        approvalEl.className = 'tool-approval-inline';
+        approvalEl.innerHTML = `
+            <div class="tool-approval-state">Approval required</div>
+            <div class="gate-actions">
+                <button class="gate-approve-btn">Approve</button>
+                <button class="gate-revise-btn">Deny</button>
+            </div>
+        `;
+        const body = toolBlock.querySelector('.tool-body');
+        const resultEl = toolBlock.querySelector('.tool-result');
+        if (body && resultEl) {
+            body.insertBefore(approvalEl, resultEl);
+        } else if (body) {
+            body.appendChild(approvalEl);
+        }
+    }
+
+    const approveBtn = approvalEl.querySelector('.gate-approve-btn');
+    const denyBtn = approvalEl.querySelector('.gate-revise-btn');
+    const stateEl = approvalEl.querySelector('.tool-approval-state');
+    if (stateEl) stateEl.textContent = 'Approval required';
+
+    if (approveBtn) {
+        approveBtn.disabled = false;
+        approveBtn.onclick = async () => {
+            approveBtn.disabled = true;
+            if (denyBtn) denyBtn.disabled = true;
+            try {
+                await handlers.onApprove();
+            } catch (e) {
+                approveBtn.disabled = false;
+                if (denyBtn) denyBtn.disabled = false;
+                if (handlers.onError) handlers.onError(e);
+            }
+        };
+    }
+    if (denyBtn) {
+        denyBtn.disabled = false;
+        denyBtn.onclick = async () => {
+            denyBtn.disabled = true;
+            if (approveBtn) approveBtn.disabled = true;
+            try {
+                await handlers.onDeny();
+            } catch (e) {
+                denyBtn.disabled = false;
+                if (approveBtn) approveBtn.disabled = false;
+                if (handlers.onError) handlers.onError(e);
+            }
+        };
+    }
+
+    _scrollBottom(st.container);
+    return true;
+}
+
+export function markToolApprovalResolved(instanceId, payload) {
+    const st = _streamState.get(instanceId);
+    if (!st) return false;
+    const toolCallId = payload?.tool_call_id;
+    if (!toolCallId) return false;
+
+    let toolBlock = st.contentEl.querySelector(`.tool-block[data-tool-call-id="${toolCallId}"]`);
+    if (!toolBlock && payload?.tool_name) {
+        toolBlock = _findLatestToolBlock(st.contentEl, payload.tool_name);
+        if (toolBlock) toolBlock.dataset.toolCallId = toolCallId;
+    }
+    if (!toolBlock) return false;
+
+    const approvalEl = toolBlock.querySelector('.tool-approval-inline');
+    if (!approvalEl) return false;
+    const action = String(payload.action || 'resolved').toUpperCase();
+    const stateEl = approvalEl.querySelector('.tool-approval-state');
+    if (stateEl) stateEl.textContent = `Approval ${action}`;
+    approvalEl.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+    return true;
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -280,4 +378,9 @@ function _labelFromRole(role, roleId, instanceId) {
 
 function _scrollBottom(container) {
     if (container) container.scrollTop = container.scrollHeight;
+}
+
+function _findLatestToolBlock(contentEl, toolName) {
+    const blocks = contentEl.querySelectorAll(`.tool-block[data-tool-name="${toolName}"]`);
+    return blocks.length > 0 ? blocks[blocks.length - 1] : null;
 }

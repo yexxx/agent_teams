@@ -1,12 +1,5 @@
 # Repository Guidelines (Simplified)
 
-## MVP First
-- 当前项目处于 MVP 阶段，优先快速迭代与验证。
-- **不要做任何适配层 / 兼容层 / 过渡层**。
-- API 可以直接改，不需要保留旧版本兼容（如 `/api/v1`）。
-- 数据库 Schema 可以直接改，不要求向后兼容。
-- 发现不合理设计时，优先直接重构到目标形态。
-
 ## Project Layout
 - Core code: `src/agent_teams/`
 - Main modules:

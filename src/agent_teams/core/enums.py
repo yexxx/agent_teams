@@ -59,6 +59,8 @@ class RunEventType(str, Enum):
     TOOL_RESULT = 'tool_result'
     INJECTION_ENQUEUED = 'injection_enqueued'
     INJECTION_APPLIED = 'injection_applied'
+    TOOL_APPROVAL_REQUESTED = 'tool_approval_requested'
+    TOOL_APPROVAL_RESOLVED = 'tool_approval_resolved'
     RUN_COMPLETED = 'run_completed'
     RUN_FAILED = 'run_failed'
     # Human orchestration mode

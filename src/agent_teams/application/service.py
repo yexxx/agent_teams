@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from json import dumps, loads
 from pathlib import Path
+from typing import cast
 import uuid
 
 from agent_teams.agents.management.instance_pool import InstancePool
@@ -35,6 +36,7 @@ from agent_teams.roles.registry import RoleLoader
 from agent_teams.runtime.gate_manager import GateManager
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_event_hub import RunEventHub
+from agent_teams.runtime.tool_approval_manager import ToolApprovalAction, ToolApprovalManager
 from agent_teams.runtime.console import set_debug
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.message_repo import MessageRepository
@@ -42,6 +44,7 @@ from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.tools.defaults import build_default_registry
+from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.workflow.spec import WorkflowSpec
 from agent_teams.mcp.registry import McpRegistry, McpServerSpec
 from agent_teams.skills.registry import SkillRegistry
@@ -105,6 +108,8 @@ class AgentTeamsService:
         injection_manager = RunInjectionManager()
         run_event_hub = RunEventHub(event_log=event_log)
         gate_manager = GateManager()
+        tool_approval_manager = ToolApprovalManager()
+        tool_approval_policy = ToolApprovalPolicy()
 
         prompt_builder = RuntimePromptBuilder()
 
@@ -135,6 +140,8 @@ class AgentTeamsService:
                     message_repo=message_repo,
                     role_registry=role_registry,
                     task_execution_service=task_execution_service,
+                    tool_approval_manager=tool_approval_manager,
+                    tool_approval_policy=tool_approval_policy,
                 )
             return provider
 
@@ -172,6 +179,8 @@ class AgentTeamsService:
         self._injection_manager = injection_manager
         self._run_event_hub = run_event_hub
         self._gate_manager = gate_manager
+        self._tool_approval_manager = tool_approval_manager
+        self._tool_approval_policy = tool_approval_policy
         self._agent_repo = agent_repo
         self._session_repo = session_repo
         self._message_repo = message_repo
@@ -301,6 +310,8 @@ class AgentTeamsService:
                 message_repo=self._message_repo,
                 role_registry=self._role_registry,
                 task_execution_service=self._task_execution_service,
+                tool_approval_manager=self._tool_approval_manager,
+                tool_approval_policy=self._tool_approval_policy,
             )
 
         self._provider_factory = provider_factory
@@ -481,6 +492,21 @@ class AgentTeamsService:
     def list_open_gates(self, run_id: str) -> list[dict]:
         """Return currently open gate entries for a run."""
         return self._gate_manager.list_open_gates(run_id)
+
+    def resolve_tool_approval(
+        self, run_id: str, tool_call_id: str, action: str, feedback: str = ''
+    ) -> None:
+        if action not in {'approve', 'deny'}:
+            raise ValueError(f'Unsupported action: {action}')
+        self._tool_approval_manager.resolve_approval(
+            run_id=run_id,
+            tool_call_id=tool_call_id,
+            action=cast(ToolApprovalAction, action),
+            feedback=feedback,
+        )
+
+    def list_open_tool_approvals(self, run_id: str) -> list[dict[str, str]]:
+        return self._tool_approval_manager.list_open_approvals(run_id=run_id)
 
     def dispatch_task_human(
         self, run_id: str, task_id: str, coordinator_instance_id: str

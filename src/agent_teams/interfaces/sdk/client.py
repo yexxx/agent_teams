@@ -81,6 +81,24 @@ class AgentTeamsClient:
             {"action": action, "feedback": feedback},
         )
 
+    def list_tool_approvals(self, run_id: str) -> list[dict[str, Any]]:
+        data = self._request_json("GET", f"/api/runs/{run_id}/tool-approvals")
+        if isinstance(data, list):
+            return data
+        items = data.get("data", [])
+        if isinstance(items, list):
+            return items
+        return []
+
+    def resolve_tool_approval(
+        self, run_id: str, tool_call_id: str, action: str, feedback: str = ""
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "POST",
+            f"/api/runs/{run_id}/tool-approvals/{tool_call_id}/resolve",
+            {"action": action, "feedback": feedback},
+        )
+
     def dispatch_task(self, run_id: str, task_id: str, session_id: str) -> dict[str, Any]:
         return self._request_json(
             "POST",

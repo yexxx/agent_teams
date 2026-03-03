@@ -50,8 +50,8 @@ def build_collaboration_agent(
         tools=skill_tools,
         retries=5,
     )
-    specs = tool_registry.require(allowed_tools)
-    for spec in specs:
-        spec.mount(agent)
+    tool_registers = tool_registry.require(allowed_tools)
+    for register in tool_registers:
+        register(agent)
     
     return agent

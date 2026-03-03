@@ -13,6 +13,8 @@ import {
     finalizeStream,
     appendToolCallBlock,
     updateToolResult,
+    attachToolApprovalControls,
+    markToolApprovalResolved,
 } from '../components/messageRenderer.js';
 import {
     openAgentPanel,
@@ -20,7 +22,7 @@ import {
     showGateCard,
     removeGateCard,
 } from '../components/agentPanel.js';
-import { dispatchHumanTask } from './api.js';
+import { dispatchHumanTask, resolveToolApproval } from './api.js';
 
 const COORDINATOR_ROLE = 'coordinator_agent';
 
@@ -104,11 +106,39 @@ export function routeEvent(evType, payload, eventMeta) {
 
     else if (evType === 'tool_result') {
         const streamKey = instanceId || 'coordinator';
-        updateToolResult(streamKey, payload.tool_name, payload.result, !!payload.error);
+        const resultEnvelope = payload.result || {};
+        const isError = typeof resultEnvelope === 'object'
+            ? resultEnvelope.ok === false
+            : !!payload.error;
+        updateToolResult(streamKey, payload.tool_name, resultEnvelope, isError);
 
-        if (payload.tool_name === 'create_workflow_graph' && payload.result) {
-            _tryRenderLiveDAG(payload.result);
+        if (payload.tool_name === 'create_workflow_graph' && resultEnvelope) {
+            _tryRenderLiveDAG(resultEnvelope);
         }
+    }
+
+    else if (evType === 'tool_approval_requested') {
+        const streamKey = instanceId || 'coordinator';
+        const runId = eventMeta?.run_id || eventMeta?.trace_id || state.activeRunId;
+        const bound = attachToolApprovalControls(streamKey, payload.tool_name, payload, {
+            onApprove: async () => {
+                await resolveToolApproval(runId, payload.tool_call_id, 'approve', '');
+            },
+            onDeny: async () => {
+                await resolveToolApproval(runId, payload.tool_call_id, 'deny', '');
+            },
+            onError: (e) => {
+                sysLog(`Tool approval failed: ${e.message}`, 'log-error');
+            },
+        });
+        if (!bound) {
+            sysLog(`Approval requested for ${payload.tool_name}`, 'log-info');
+        }
+    }
+
+    else if (evType === 'tool_approval_resolved') {
+        const streamKey = instanceId || 'coordinator';
+        markToolApprovalResolved(streamKey, payload);
     }
 
     else if (evType === 'awaiting_human_dispatch') {
@@ -142,8 +172,14 @@ export function routeEvent(evType, payload, eventMeta) {
 
 function _tryRenderLiveDAG(result) {
     try {
-        const data = typeof result === 'string' ? JSON.parse(result) : result;
-        if (!data.ok || !data.tasks) return;
+        let envelope = typeof result === 'string' ? JSON.parse(result) : result;
+        if (!envelope) return;
+        if (envelope.ok === false) return;
+        let data = envelope.data !== undefined ? envelope.data : envelope;
+        if (typeof data === 'string') {
+            data = JSON.parse(data);
+        }
+        if (!data || !data.ok || !data.tasks) return;
 
         const taskMap = {};
         const tasksArr = Array.isArray(data.tasks) ? data.tasks : Object.values(data.tasks);

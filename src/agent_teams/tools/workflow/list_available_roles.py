@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+from pydantic_ai import Agent
+
+from agent_teams.tools.runtime import ToolContext, ToolDeps
+from agent_teams.tools.tool_helpers import execute_tool
+
+
+def register(agent: Agent[ToolDeps, str]) -> None:
+    @agent.tool
+    async def list_available_roles(ctx: ToolContext) -> dict[str, object]:
+        def _action() -> dict[str, object]:
+            roles = ctx.deps.role_registry.list_roles()
+            return {
+                'ok': True,
+                'roles': [
+                    {
+                        'role_id': r.role_id,
+                        'name': r.name,
+                        'depends_on': list(r.depends_on),
+                        'tools': list(r.tools),
+                    }
+                    for r in roles
+                ],
+            }
+
+        return await execute_tool(
+            ctx,
+            tool_name='list_available_roles',
+            args_summary={},
+            action=_action,
+        )
+

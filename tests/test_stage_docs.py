@@ -1,8 +1,8 @@
 import pytest
 from pathlib import Path
 
-from agent_teams.tools.stage_docs import current_stage_doc_path, previous_stage_doc_path
-from agent_teams.tools.stage_docs import write_stage_doc_once
+from agent_teams.tools.stage.docs import current_stage_doc_path, previous_stage_doc_path
+from agent_teams.tools.stage.docs import write_stage_doc_once
 
 
 def test_stage_doc_paths() -> None:

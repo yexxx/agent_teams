@@ -1,6 +1,10 @@
 import pytest
 
-from agent_teams.tools.shell.policy import MAX_TIMEOUT_SECONDS, normalize_timeout, validate_shell_command
+from agent_teams.tools.workspace.shell_policy import (
+    MAX_TIMEOUT_SECONDS,
+    normalize_timeout,
+    validate_shell_command,
+)
 
 
 def test_shell_policy_blocks_dangerous_command() -> None:

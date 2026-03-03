@@ -288,5 +288,38 @@ def roles_validate(
     typer.echo(json.dumps(result, ensure_ascii=False))
 
 
+@app.command("tool-approvals-list")
+def tool_approvals_list(
+    run_id: str = typer.Option(..., "--run-id"),
+    base_url: str = typer.Option(DEFAULT_BASE_URL, "--base-url"),
+    autostart: bool = typer.Option(True, "--autostart/--no-autostart"),
+) -> None:
+    _auto_start_if_needed(base_url, autostart=autostart)
+    result = _request_json(base_url, "GET", f"/api/runs/{run_id}/tool-approvals")
+    approvals = result if isinstance(result, list) else result.get("data", [])
+    typer.echo(json.dumps(approvals, ensure_ascii=False))
+
+
+@app.command("tool-approvals-resolve")
+def tool_approvals_resolve(
+    run_id: str = typer.Option(..., "--run-id"),
+    tool_call_id: str = typer.Option(..., "--tool-call-id"),
+    action: str = typer.Option(..., "--action", help="approve or deny"),
+    feedback: str = typer.Option("", "--feedback"),
+    base_url: str = typer.Option(DEFAULT_BASE_URL, "--base-url"),
+    autostart: bool = typer.Option(True, "--autostart/--no-autostart"),
+) -> None:
+    _auto_start_if_needed(base_url, autostart=autostart)
+    if action not in {"approve", "deny"}:
+        raise typer.BadParameter("action must be approve or deny")
+    result = _request_json(
+        base_url,
+        "POST",
+        f"/api/runs/{run_id}/tool-approvals/{tool_call_id}/resolve",
+        {"action": action, "feedback": feedback},
+    )
+    typer.echo(json.dumps(result, ensure_ascii=False))
+
+
 def main() -> None:
     app()

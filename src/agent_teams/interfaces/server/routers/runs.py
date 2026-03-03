@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -43,6 +44,13 @@ class ResolveGateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: str
+    feedback: str = ""
+
+
+class ResolveToolApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal['approve', 'deny']
     feedback: str = ""
 
 
@@ -118,6 +126,33 @@ def resolve_gate(
 ) -> dict[str, str]:
     try:
         service.resolve_gate(run_id=run_id, task_id=task_id, action=req.action, feedback=req.feedback)
+        return {"status": "ok", "action": req.action}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{run_id}/tool-approvals")
+def list_tool_approvals(
+    run_id: str,
+    service: AgentTeamsService = Depends(get_service),
+) -> list[dict]:
+    return service.list_open_tool_approvals(run_id)
+
+
+@router.post("/{run_id}/tool-approvals/{tool_call_id}/resolve")
+def resolve_tool_approval(
+    run_id: str,
+    tool_call_id: str,
+    req: ResolveToolApprovalRequest,
+    service: AgentTeamsService = Depends(get_service),
+) -> dict[str, str]:
+    try:
+        service.resolve_tool_approval(
+            run_id=run_id,
+            tool_call_id=tool_call_id,
+            action=req.action,
+            feedback=req.feedback,
+        )
         return {"status": "ok", "action": req.action}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

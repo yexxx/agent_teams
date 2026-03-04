@@ -6,10 +6,10 @@ import json
 import time
 from collections.abc import Callable
 from json import dumps
-from typing import Any
 from uuid import uuid4
 
 from agent_teams.core.enums import RunEventType
+from agent_teams.core.types import JsonValue
 from agent_teams.core.models import RunEvent
 from agent_teams.runtime.console import is_debug, log_debug, log_tool_call, log_tool_error
 from agent_teams.tools.models import ToolError, ToolResultEnvelope
@@ -21,7 +21,7 @@ async def execute_tool(
     *,
     tool_name: str,
     args_summary: dict[str, object],
-    action: Callable[[], Any] | Any,
+    action: Callable[[], JsonValue] | JsonValue,
 ) -> dict[str, object]:
     """A wrapper for tool execution that handles logging and errors.
 
@@ -271,7 +271,7 @@ def _envelope(
     *,
     ok: bool,
     tool_name: str,
-    data: Any = None,
+    data: JsonValue = None,
     error: ToolError | None = None,
     meta: dict[str, object] | None = None,
 ) -> dict[str, object]:

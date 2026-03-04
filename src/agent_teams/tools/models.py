@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+from agent_teams.core.types import JsonObject
 
 
 class ToolError(BaseModel):
@@ -19,7 +20,7 @@ class ToolResultEnvelope(BaseModel):
 
     ok: bool
     tool: str = Field(min_length=1)
-    data: Any = None
+    data: JsonValue | None = None
     error: ToolError | None = None
-    meta: dict[str, Any] = Field(default_factory=dict)
+    meta: JsonObject = Field(default_factory=dict)
 

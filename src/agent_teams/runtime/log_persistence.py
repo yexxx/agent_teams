@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from queue import Empty, Full, Queue
 from threading import Event, Thread
-from typing import Any
 
+from agent_teams.core.types import JsonObject
 from agent_teams.state.log_repo import LogRepository
 
 
@@ -21,7 +21,7 @@ class PersistentLogHandler(logging.Handler):
     ) -> None:
         super().__init__()
         self._repo = LogRepository(db_path=db_path)
-        self._queue: Queue[dict[str, Any]] = Queue(maxsize=queue_size)
+        self._queue: Queue[JsonObject] = Queue(maxsize=queue_size)
         self._flush_batch_size = flush_batch_size
         self._flush_interval_seconds = flush_interval_seconds
         self._stop = Event()
@@ -31,7 +31,7 @@ class PersistentLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             rendered = self.format(record)
-            parsed: dict[str, Any]
+            parsed: JsonObject
             if isinstance(rendered, str):
                 parsed = json.loads(rendered)
             else:
@@ -54,7 +54,7 @@ class PersistentLogHandler(logging.Handler):
             self._drain_once(force=False)
 
     def _drain_once(self, *, force: bool) -> None:
-        rows: list[dict[str, Any]] = []
+        rows: list[JsonObject] = []
         timeout = 0.0 if force else self._flush_interval_seconds
         try:
             first = self._queue.get(timeout=timeout)

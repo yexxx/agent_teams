@@ -15,12 +15,7 @@ class TestRipgrepFilepath:
 
         key = ripgrep._get_platform_key()
 
-        # Windows 应该是 AMD64-windows
-        assert (
-            key == "AMD64-windows"
-            or key.startswith("AMD64")
-            or "windows" in key.lower()
-        )
+        assert key in ripgrep.PLATFORM_MAP
 
     @pytest.mark.asyncio
     async def test_local_cache(self, tmp_path):
@@ -85,7 +80,7 @@ class TestRipgrepDownload:
         ) as mock_client_cls:
             with patch(
                 "agent_teams.tools.ripgrep._get_platform_key",
-                return_value="AMD64-windows",
+                return_value="x64-windows",
             ):
                 with patch("agent_teams.tools.ripgrep._extract_zip") as mock_extract_zip:
                     with patch("agent_teams.tools.ripgrep.os.chmod"):
@@ -112,7 +107,7 @@ class TestRipgrepDownload:
         with patch("agent_teams.tools.ripgrep.httpx.AsyncClient", return_value=client_cm):
             with patch(
                 "agent_teams.tools.ripgrep._get_platform_key",
-                return_value="AMD64-windows",
+                return_value="x64-windows",
             ):
                 with pytest.raises(DownloadFailedError) as exc:
                     await ripgrep._download_rg(target)

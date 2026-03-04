@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from collections.abc import Callable
 
 from agent_teams.agents.core.meta_agent import MetaAgent
 from agent_teams.agents.management.instance_pool import InstancePool
@@ -11,10 +11,13 @@ from agent_teams.application.provider_runtime import (
     create_provider_factory,
     create_task_execution_service,
 )
+from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.coordination.coordinator import CoordinatorGraph
 from agent_teams.core.config import RuntimeConfig, load_runtime_config
+from agent_teams.core.models import RoleDefinition
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
 from agent_teams.roles.registry import RoleLoader
+from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runtime.gate_manager import GateManager
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_control_manager import RunControlManager
@@ -28,16 +31,20 @@ from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.tools.defaults import build_default_registry
 from agent_teams.tools.policy import ToolApprovalPolicy
+from agent_teams.tools.registry import ToolRegistry
+from agent_teams.mcp.registry import McpRegistry
+from agent_teams.skills.registry import SkillRegistry
+from agent_teams.providers.llm import LLMProvider
 
 
 @dataclass(slots=True)
 class ServiceComponents:
     runtime: RuntimeConfig
     config_manager: ConfigManager
-    role_registry: Any
-    tool_registry: Any
-    mcp_registry: Any
-    skill_registry: Any
+    role_registry: RoleRegistry
+    tool_registry: ToolRegistry
+    mcp_registry: McpRegistry
+    skill_registry: SkillRegistry
     task_repo: TaskRepository
     shared_store: SharedStore
     event_log: EventLog
@@ -51,8 +58,8 @@ class ServiceComponents:
     gate_manager: GateManager
     tool_approval_manager: ToolApprovalManager
     tool_approval_policy: ToolApprovalPolicy
-    provider_factory: Any
-    task_execution_service: Any
+    provider_factory: Callable[[RoleDefinition], LLMProvider]
+    task_execution_service: TaskExecutionService
     meta_agent: MetaAgent
 
 

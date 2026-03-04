@@ -25,14 +25,38 @@ PLATFORM_MAP = {
     "arm64-linux": {"platform": "aarch64-unknown-linux-gnu", "extension": "tar.gz"},
     "x64-darwin": {"platform": "x86_64-apple-darwin", "extension": "tar.gz"},
     "x64-linux": {"platform": "x86_64-unknown-linux-musl", "extension": "tar.gz"},
-    "AMD64-windows": {"platform": "x86_64-pc-windows-msvc", "extension": "zip"},
+    "x64-windows": {"platform": "x86_64-pc-windows-msvc", "extension": "zip"},
 }
+
+
+_ARCH_ALIASES = {
+    "x86_64": "x64",
+    "amd64": "x64",
+    "x64": "x64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+}
+
+_SYSTEM_ALIASES = {
+    "darwin": "darwin",
+    "linux": "linux",
+    "windows": "windows",
+}
+
 
 
 def _get_platform_key() -> str:
     import platform
 
-    return f"{platform.machine()}-{platform.system().lower()}"
+    raw_arch = platform.machine().strip().lower()
+    raw_system = platform.system().strip().lower()
+
+    arch = _ARCH_ALIASES.get(raw_arch, raw_arch)
+    system = _SYSTEM_ALIASES.get(raw_system, raw_system)
+    if system.startswith("mingw") or system.startswith("msys") or system.startswith("cygwin"):
+        system = "windows"
+
+    return f"{arch}-{system}"
 
 
 async def get_rg_path() -> Path:

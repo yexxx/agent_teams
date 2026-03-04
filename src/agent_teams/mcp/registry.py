@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from pydantic_ai.toolsets.fastmcp import FastMCPToolset
+
+from agent_teams.core.types import JsonObject
 
 @dataclass(frozen=True)
 class McpServerSpec:
     name: str
-    config: Any
+    config: JsonObject
 
 class McpRegistry:
     def __init__(self, specs: tuple[McpServerSpec, ...] = ()) -> None:

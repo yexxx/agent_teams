@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-import uuid
 
 from agent_teams.core.config import load_runtime_config
 from agent_teams.core.enums import InjectionSource
@@ -17,12 +16,10 @@ from agent_teams.core.models import (
     TaskEnvelope,
     TaskRecord,
 )
-from agent_teams.application.bootstrap import build_service_components
+from agent_teams.composition.bootstrap import build_service_components
 from agent_teams.application.rounds_projection import (
     collect_pending_stream_snapshots,
     collect_pending_tool_approvals,
-    find_round_by_run_id,
-    paginate_rounds,
 )
 from agent_teams.application.provider_runtime import (
     create_provider_factory,
@@ -31,6 +28,7 @@ from agent_teams.application.provider_runtime import (
 from agent_teams.application.run_manager import RunManager
 from agent_teams.application.session_service import SessionService
 from agent_teams.application.task_service import TaskService
+from agent_teams.application.use_cases import RunUseCases, SessionUseCases, TaskUseCases
 from agent_teams.runtime.console import set_debug
 from agent_teams.workflow.spec import WorkflowSpec
 
@@ -101,20 +99,16 @@ class AgentTeamsService:
             instance_pool=self._instance_pool,
             role_registry=self._role_registry,
         )
-
-    def _ensure_session(self, session_id: str | None) -> str:
-        if not session_id:
-            new_id = f"session-{uuid.uuid4().hex[:8]}"
-            self._session_repo.create(session_id=new_id)
-            return new_id
-        try:
-            # check if exists
-            self._session_repo.get(session_id)
-            return session_id
-        except KeyError:
-            # create if not found
-            self._session_repo.create(session_id=session_id)
-            return session_id
+        self._run_use_cases = RunUseCases(
+            run_manager=self._run_manager,
+            session_repo=self._session_repo,
+        )
+        self._session_use_cases = SessionUseCases(
+            session_service=self._session_service,
+        )
+        self._task_use_cases = TaskUseCases(
+            task_service=self._task_service,
+        )
 
     def get_config_status(self) -> dict:
         return {
@@ -209,67 +203,61 @@ class AgentTeamsService:
             self._skill_registry.validate_known(role.skills)
 
     async def run_intent(self, intent: IntentInput) -> RunResult:
-        return await self._run_manager.run_intent(
-            intent,
-            ensure_session=self._ensure_session,
-        )
+        return await self._run_use_cases.run_intent(intent)
 
     def create_run(self, intent: IntentInput) -> tuple[str, str]:
-        return self._run_manager.create_run(intent, ensure_session=self._ensure_session)
+        return self._run_use_cases.create_run(intent)
 
     def _ensure_run_started(self, run_id: str) -> None:
-        self._run_manager.ensure_run_started(run_id)
+        self._run_use_cases.ensure_run_started(run_id)
 
     async def stream_run_events(self, run_id: str):
-        async for event in self._run_manager.stream_run_events(run_id):
+        async for event in self._run_use_cases.stream_run_events(run_id):
             yield event
 
     async def run_intent_stream(self, intent: IntentInput):
-        async for event in self._run_manager.run_intent_stream(
-            intent,
-            ensure_session=self._ensure_session,
-        ):
+        async for event in self._run_use_cases.run_intent_stream(intent):
             yield event
 
     def inject_message(
         self, run_id: str, source: InjectionSource, content: str
     ) -> InjectionMessage:
-        return self._run_manager.inject_message(run_id, source, content)
+        return self._run_use_cases.inject_message(run_id, source, content)
 
     def resolve_gate(
         self, run_id: str, task_id: str, action: str, feedback: str = ""
     ) -> None:
-        self._run_manager.resolve_gate(run_id, task_id, action, feedback)
+        self._run_use_cases.resolve_gate(run_id, task_id, action, feedback)
 
     def list_open_gates(self, run_id: str) -> list[dict]:
-        return self._run_manager.list_open_gates(run_id)
+        return self._run_use_cases.list_open_gates(run_id)
 
     def resolve_tool_approval(
         self, run_id: str, tool_call_id: str, action: str, feedback: str = ''
     ) -> None:
-        self._run_manager.resolve_tool_approval(run_id, tool_call_id, action, feedback)
+        self._run_use_cases.resolve_tool_approval(run_id, tool_call_id, action, feedback)
 
     def list_open_tool_approvals(self, run_id: str) -> list[dict[str, str]]:
-        return self._run_manager.list_open_tool_approvals(run_id)
+        return self._run_use_cases.list_open_tool_approvals(run_id)
 
     def dispatch_task_human(
         self, run_id: str, task_id: str, coordinator_instance_id: str
     ) -> None:
-        self._run_manager.dispatch_task_human(run_id, task_id, coordinator_instance_id)
+        self._run_use_cases.dispatch_task_human(run_id, task_id, coordinator_instance_id)
 
     def get_coordinator_instance_id(self, session_id: str) -> str | None:
-        return self._run_manager.get_coordinator_instance_id(session_id)
+        return self._run_use_cases.get_coordinator_instance_id(session_id)
 
     def dispatch_task_human_for_session(
         self, session_id: str, run_id: str, task_id: str
     ) -> None:
-        self._run_manager.dispatch_task_human_for_session(session_id, run_id, task_id)
+        self._run_use_cases.dispatch_task_human_for_session(session_id, run_id, task_id)
 
     def stop_run(self, run_id: str) -> None:
-        self._run_manager.stop_run(run_id)
+        self._run_use_cases.stop_run(run_id)
 
     def stop_subagent(self, run_id: str, instance_id: str) -> dict[str, str]:
-        return self._run_manager.stop_subagent(run_id, instance_id)
+        return self._run_use_cases.stop_subagent(run_id, instance_id)
 
     def inject_subagent_message(
         self,
@@ -277,11 +265,7 @@ class AgentTeamsService:
         instance_id: str,
         content: str,
     ) -> None:
-        self._run_manager.inject_subagent_message(
-            run_id=run_id,
-            instance_id=instance_id,
-            content=content,
-        )
+        self._run_use_cases.inject_subagent_message(run_id, instance_id, content)
 
     def create_workflow(self, spec: WorkflowSpec) -> str:
         self._workflows.append(spec)
@@ -290,51 +274,49 @@ class AgentTeamsService:
     def create_session(
         self, session_id: str | None = None, metadata: dict[str, str] | None = None
     ) -> SessionRecord:
-        return self._session_service.create_session(
-            session_id=session_id, metadata=metadata
-        )
+        return self._session_use_cases.create_session(session_id=session_id, metadata=metadata)
 
     def update_session(self, session_id: str, metadata: dict[str, str]) -> None:
-        self._session_service.update_session(session_id, metadata)
+        self._session_use_cases.update_session(session_id, metadata)
 
     def delete_session(self, session_id: str) -> None:
-        self._session_service.delete_session(session_id)
+        self._session_use_cases.delete_session(session_id)
 
     def get_session(self, session_id: str) -> SessionRecord:
-        return self._session_service.get_session(session_id)
+        return self._session_use_cases.get_session(session_id)
 
     def list_sessions(self) -> tuple[SessionRecord, ...]:
-        return self._session_service.list_sessions()
+        return self._session_use_cases.list_sessions()
 
     def submit_task(self, task: TaskEnvelope) -> str:
-        return self._task_service.submit_task(task)
+        return self._task_use_cases.submit_task(task)
 
     def query_task(self, task_id: str) -> TaskRecord:
-        return self._task_service.query_task(task_id)
+        return self._task_use_cases.query_task(task_id)
 
     def list_tasks(self) -> tuple[TaskRecord, ...]:
-        return self._task_service.list_tasks()
+        return self._task_use_cases.list_tasks()
 
     def create_subagent(self, role_id: str) -> SubAgentInstance:
-        return self._task_service.create_subagent(role_id)
+        return self._task_use_cases.create_subagent(role_id)
 
     def list_roles(self) -> tuple[RoleDefinition, ...]:
-        return self._task_service.list_roles()
+        return self._task_use_cases.list_roles()
 
     def list_agents_in_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
-        return self._session_service.list_agents_in_session(session_id)
+        return self._session_use_cases.list_agents_in_session(session_id)
 
     def get_agent_messages(self, session_id: str, instance_id: str) -> list[dict]:
-        return self._session_service.get_agent_messages(session_id, instance_id)
+        return self._session_use_cases.get_agent_messages(session_id, instance_id)
 
     def get_global_events(self, session_id: str) -> list[dict]:
-        return self._session_service.get_global_events(session_id)
+        return self._session_use_cases.get_global_events(session_id)
 
     def get_session_messages(self, session_id: str) -> list[dict]:
-        return self._session_service.get_session_messages(session_id)
+        return self._session_use_cases.get_session_messages(session_id)
 
     def get_session_workflows(self, session_id: str) -> list[dict]:
-        return self._session_service.get_session_workflows(session_id)
+        return self._session_use_cases.get_session_workflows(session_id)
 
     @staticmethod
     def _collect_pending_tool_approvals(
@@ -355,7 +337,7 @@ class AgentTeamsService:
         )
 
     def _build_session_rounds(self, session_id: str) -> list[dict]:
-        return self._session_service.build_session_rounds(session_id)
+        return self._session_use_cases.build_session_rounds(session_id)
 
     def get_session_rounds(
         self,
@@ -364,13 +346,11 @@ class AgentTeamsService:
         limit: int = 8,
         cursor_run_id: str | None = None,
     ) -> dict[str, object]:
-        rounds = self._build_session_rounds(session_id)
-        return paginate_rounds(
-            rounds,
+        return self._session_use_cases.get_session_rounds(
+            session_id,
             limit=limit,
             cursor_run_id=cursor_run_id,
         )
 
     def get_round(self, session_id: str, run_id: str) -> dict:
-        rounds = self._build_session_rounds(session_id)
-        return find_round_by_run_id(rounds, session_id=session_id, run_id=run_id)
+        return self._session_use_cases.get_round(session_id, run_id)

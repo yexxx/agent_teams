@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from agent_teams.application.rounds_projection import build_session_rounds
 from agent_teams.core.enums import RunEventType
 
 
 class _FakeEventLog:
-    def __init__(self, events: list[dict]) -> None:
+    def __init__(self, events: list[dict[str, object]]) -> None:
         self._events = tuple(events)
 
-    def list_by_session(self, session_id: str) -> tuple[dict, ...]:
+    def list_by_session(self, session_id: str) -> tuple[dict[str, object], ...]:
         return self._events
 
 
@@ -34,7 +35,7 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
     run_id = "run-1"
     role_id = "spec_coder"
 
-    events = [
+    events: list[dict[str, object]] = [
         {
             "event_type": RunEventType.MODEL_STEP_STARTED.value,
             "trace_id": run_id,
@@ -76,8 +77,10 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
 
     assert len(rounds) == 1
     round_item = rounds[0]
-    assert round_item["instance_role_map"] == {
+    instance_role_map = cast(dict[str, str], round_item["instance_role_map"])
+    role_instance_map = cast(dict[str, str], round_item["role_instance_map"])
+    assert instance_role_map == {
         "inst-old": role_id,
         "inst-new": role_id,
     }
-    assert round_item["role_instance_map"][role_id] == "inst-new"
+    assert role_instance_map[role_id] == "inst-new"

@@ -150,7 +150,7 @@ def inject_message(
     run_id: str,
     req: InjectMessageRequest,
     service: AgentTeamsService = Depends(get_service),
-) -> dict:
+) -> dict[str, object]:
     try:
         result = service.inject_message(run_id=run_id, source=req.source, content=req.content)
         with bind_trace_context(trace_id=run_id, run_id=run_id):
@@ -170,7 +170,7 @@ def inject_message(
 def list_tool_approvals(
     run_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, str]]:
     with bind_trace_context(trace_id=run_id, run_id=run_id):
         result = service.list_open_tool_approvals(run_id)
         log_event(

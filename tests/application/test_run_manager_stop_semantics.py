@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import pytest
 
 from agent_teams.application.run_manager import RunManager
 from agent_teams.core.enums import RunEventType
 from agent_teams.core.models import IntentInput
+from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
+from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.event_log import EventLog
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.task_repo import TaskRepository
 
 
 class _MetaAgent:
@@ -65,11 +71,11 @@ def _make_run_manager(control: RunControlManager) -> RunManager:
     control.bind_runtime(
         run_event_hub=hub,
         injection_manager=injection,
-        agent_repo=_AgentRepo(),
-        task_repo=_TaskRepo(),
-        message_repo=_MessageRepo(),
-        instance_pool=_InstancePool(),
-        event_bus=_EventBus(),
+        agent_repo=cast(AgentInstanceRepository, cast(object, _AgentRepo())),
+        task_repo=cast(TaskRepository, cast(object, _TaskRepo())),
+        message_repo=cast(MessageRepository, cast(object, _MessageRepo())),
+        instance_pool=cast(InstancePool, cast(object, _InstancePool())),
+        event_bus=cast(EventLog, cast(object, _EventBus())),
     )
     return RunManager(
         meta_agent=_MetaAgent(),
@@ -105,11 +111,11 @@ def test_stop_pending_run_emits_run_stopped_event() -> None:
     control.bind_runtime(
         run_event_hub=hub,
         injection_manager=injection,
-        agent_repo=_AgentRepo(),
-        task_repo=_TaskRepo(),
-        message_repo=_MessageRepo(),
-        instance_pool=_InstancePool(),
-        event_bus=_EventBus(),
+        agent_repo=cast(AgentInstanceRepository, cast(object, _AgentRepo())),
+        task_repo=cast(TaskRepository, cast(object, _TaskRepo())),
+        message_repo=cast(MessageRepository, cast(object, _MessageRepo())),
+        instance_pool=cast(InstancePool, cast(object, _InstancePool())),
+        event_bus=cast(EventLog, cast(object, _EventBus())),
     )
     manager = RunManager(
         meta_agent=_MetaAgent(),

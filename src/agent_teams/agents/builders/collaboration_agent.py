@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from openai import max_retries
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.usage import UsageLimits
 
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps

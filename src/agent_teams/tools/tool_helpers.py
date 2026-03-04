@@ -4,12 +4,13 @@ import asyncio
 import inspect
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from json import dumps
+from typing import cast
 from uuid import uuid4
 
 from agent_teams.core.enums import RunEventType
-from agent_teams.core.types import JsonValue
+from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.core.models import RunEvent
 from agent_teams.runtime.console import is_debug, log_debug, log_tool_call, log_tool_error
 from agent_teams.tools.models import ToolError, ToolResultEnvelope
@@ -20,9 +21,9 @@ async def execute_tool(
     ctx: ToolContext,
     *,
     tool_name: str,
-    args_summary: dict[str, object],
-    action: Callable[[], JsonValue] | JsonValue,
-) -> dict[str, object]:
+    args_summary: JsonObject,
+    action: Callable[[], object | Awaitable[object]] | object,
+) -> JsonObject:
     """A wrapper for tool execution that handles logging and errors.
 
     NOTE: Event publication (TOOL_CALL, TOOL_RESULT) is now handled
@@ -39,7 +40,7 @@ async def execute_tool(
     else:
         log_tool_call(ctx.deps.role_id, tool_name, args_summary)
 
-    meta: dict[str, object] = {}
+    meta: JsonObject = {}
     _raise_if_stopped(ctx)
     approval_error = await _handle_tool_approval(
         ctx=ctx,
@@ -67,6 +68,7 @@ async def execute_tool(
         if inspect.isawaitable(result):
             result = await result
         _raise_if_stopped(ctx)
+        normalized_result = _normalize_json_value(result)
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         meta['duration_ms'] = elapsed_ms
@@ -77,7 +79,7 @@ async def execute_tool(
         return _envelope(
             ok=True,
             tool_name=tool_name,
-            data=result,
+            data=normalized_result,
             meta=meta,
         )
     except Exception as exc:
@@ -146,6 +148,19 @@ def _safe_json(value: object) -> str:
     return text
 
 
+def _normalize_json_value(value: object) -> JsonValue:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_normalize_json_value(item) for item in value]
+    if isinstance(value, dict):
+        normalized: JsonObject = {}
+        for key, item in value.items():
+            normalized[str(key)] = _normalize_json_value(item)
+        return normalized
+    return str(value)
+
+
 def _raise_if_stopped(ctx: ToolContext) -> None:
     ctx.deps.run_control_manager.raise_if_cancelled(
         run_id=ctx.deps.run_id,
@@ -157,8 +172,8 @@ async def _handle_tool_approval(
     *,
     ctx: ToolContext,
     tool_name: str,
-    args_summary: dict[str, object],
-    meta: dict[str, object],
+    args_summary: JsonObject,
+    meta: JsonObject,
 ) -> ToolError | None:
     approval_required = ctx.deps.tool_approval_policy.requires_approval(tool_name)
     meta['approval_required'] = approval_required
@@ -251,7 +266,7 @@ def _publish_tool_approval_event(
     *,
     ctx: ToolContext,
     event_type: RunEventType,
-    payload: dict[str, object],
+    payload: JsonObject,
 ) -> None:
     ctx.deps.run_event_hub.publish(
         RunEvent(
@@ -273,8 +288,8 @@ def _envelope(
     tool_name: str,
     data: JsonValue = None,
     error: ToolError | None = None,
-    meta: dict[str, object] | None = None,
-) -> dict[str, object]:
+    meta: JsonObject | None = None,
+) -> JsonObject:
     envelope = ToolResultEnvelope(
         ok=ok,
         tool=tool_name,
@@ -282,4 +297,4 @@ def _envelope(
         error=error,
         meta=meta or {},
     )
-    return envelope.model_dump()
+    return cast(JsonObject, envelope.model_dump(mode='json'))

@@ -28,9 +28,9 @@ def _request_json(
     base_url: str,
     method: str,
     path: str,
-    payload: dict | None = None,
+    payload: dict[str, object] | None = None,
     timeout_seconds: float = 30.0,
-) -> dict:
+) -> dict[str, object]:
     body = None
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -80,16 +80,23 @@ def _start_server_daemon(host: str, port: int) -> None:
         str(port),
     ]
 
-    creationflags = 0
-    kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
-
     if sys.platform.startswith("win"):
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-        kwargs["creationflags"] = creationflags
+        subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
     else:
-        kwargs["start_new_session"] = True
-
-    subprocess.Popen(command, **kwargs)
+        subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
 
 def _wait_until_healthy(base_url: str, timeout_seconds: float = 20.0) -> bool:
@@ -169,7 +176,7 @@ def prompt(
 
     if not session_id:
         created = _request_json(base_url, "POST", "/api/sessions", {})
-        session_id = created["session_id"]
+        session_id = _require_str_field(created, "session_id")
 
     run = _request_json(
         base_url,
@@ -181,7 +188,7 @@ def prompt(
             "execution_mode": execution_mode,
         },
     )
-    run_id = run["run_id"]
+    run_id = _require_str_field(run, "run_id")
 
     _stream_events(base_url, run_id, debug=debug)
     if not debug:
@@ -234,7 +241,7 @@ def chat(
     _auto_start_if_needed(base_url, autostart=autostart)
     if not session_id:
         created = _request_json(base_url, "POST", "/api/sessions", {})
-        session_id = created["session_id"]
+        session_id = _require_str_field(created, "session_id")
 
     typer.echo(f"Starting interactive chat (Session: {session_id}). Type 'exit' or 'quit' to stop.")
 
@@ -318,3 +325,10 @@ def tool_approvals_resolve(
 
 def main() -> None:
     app()
+
+
+def _require_str_field(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if isinstance(value, str):
+        return value
+    raise RuntimeError(f"Field '{key}' must be a string")

@@ -21,7 +21,7 @@ DEFAULT_CONFIG_DIR = _get_project_root() / ".agent_teams"
 
 
 @router.get("")
-def list_roles(service: AgentTeamsService = Depends(get_service)) -> list[dict]:
+def list_roles(service: AgentTeamsService = Depends(get_service)) -> list[dict[str, object]]:
     return [role.model_dump() for role in service.list_roles()]
 
 

@@ -67,18 +67,18 @@ class SessionService:
     def list_agents_in_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
         return self._agent_repo.list_by_session(session_id)
 
-    def get_agent_messages(self, session_id: str, instance_id: str) -> list[dict]:
+    def get_agent_messages(self, session_id: str, instance_id: str) -> list[dict[str, object]]:
         return self._message_repo.get_messages_for_instance(session_id, instance_id)
 
-    def get_global_events(self, session_id: str) -> list[dict]:
+    def get_global_events(self, session_id: str) -> list[dict[str, object]]:
         events = self._event_log.list_by_session(session_id)
         return list(events)
 
-    def get_session_messages(self, session_id: str) -> list[dict]:
+    def get_session_messages(self, session_id: str) -> list[dict[str, object]]:
         return self._message_repo.get_messages_by_session(session_id)
 
-    def get_session_workflows(self, session_id: str) -> list[dict]:
-        workflows: list[dict] = []
+    def get_session_workflows(self, session_id: str) -> list[dict[str, object]]:
+        workflows: list[dict[str, object]] = []
         tasks = self._task_repo.list_by_session(session_id)
         for task in tasks:
             scope = ScopeRef(scope_type=ScopeType.TASK, scope_id=task.envelope.task_id)
@@ -87,7 +87,7 @@ class SessionService:
                 workflows.append(json.loads(obj))
         return workflows
 
-    def build_session_rounds(self, session_id: str) -> list[dict]:
+    def build_session_rounds(self, session_id: str) -> list[dict[str, object]]:
         return build_session_rounds(
             session_id=session_id,
             event_log=self._event_log,
@@ -111,6 +111,6 @@ class SessionService:
             cursor_run_id=cursor_run_id,
         )
 
-    def get_round(self, session_id: str, run_id: str) -> dict:
+    def get_round(self, session_id: str, run_id: str) -> dict[str, object]:
         rounds = self.build_session_rounds(session_id)
         return find_round_by_run_id(rounds, session_id=session_id, run_id=run_id)

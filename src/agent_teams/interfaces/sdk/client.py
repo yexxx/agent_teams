@@ -6,7 +6,7 @@ from collections.abc import Generator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from agent_teams.core.types import JsonObject
+from agent_teams.core.types import JsonObject, JsonValue
 
 
 @dataclass(frozen=True)
@@ -34,10 +34,14 @@ class AgentTeamsClient:
     def create_session(
         self, session_id: str | None = None, metadata: dict[str, str] | None = None
     ) -> JsonObject:
+        metadata_payload: JsonObject | None = None
+        if metadata is not None:
+            metadata_payload = {key: value for key, value in metadata.items()}
+        payload: JsonObject = {"session_id": session_id, "metadata": metadata_payload}
         return self._request_json(
             "POST",
             "/api/sessions",
-            {"session_id": session_id, "metadata": metadata},
+            payload,
         )
 
     def create_run(
@@ -46,13 +50,16 @@ class AgentTeamsClient:
         session_id: str | None = None,
         execution_mode: str = "ai",
     ) -> RunHandle:
-        payload = {
+        payload: JsonObject = {
             "session_id": session_id,
             "intent": intent,
             "execution_mode": execution_mode,
         }
         data = self._request_json("POST", "/api/runs", payload)
-        return RunHandle(run_id=data["run_id"], session_id=data["session_id"])
+        return RunHandle(
+            run_id=_expect_str(data.get("run_id"), "run_id"),
+            session_id=_expect_str(data.get("session_id"), "session_id"),
+        )
 
     def stream_run_events(self, run_id: str) -> Generator[JsonObject, None, None]:
         url = f"{self._base_url}/api/runs/{run_id}/events"
@@ -76,11 +83,9 @@ class AgentTeamsClient:
 
     def list_tool_approvals(self, run_id: str) -> list[JsonObject]:
         data = self._request_json("GET", f"/api/runs/{run_id}/tool-approvals")
-        if isinstance(data, list):
-            return data
         items = data.get("data", [])
         if isinstance(items, list):
-            return items
+            return [item for item in items if isinstance(item, dict)]
         return []
 
     def resolve_tool_approval(
@@ -97,12 +102,20 @@ class AgentTeamsClient:
         run_id: str,
         objective: str,
         workflow_type: str = 'custom',
-        tasks: list[dict[str, object]] | None = None,
+        tasks: list[JsonObject] | None = None,
     ) -> JsonObject:
+        tasks_payload: list[JsonValue] | None = None
+        if tasks is not None:
+            tasks_payload = [task for task in tasks]
+        payload: JsonObject = {
+            "objective": objective,
+            "workflow_type": workflow_type,
+            "tasks": tasks_payload,
+        }
         return self._request_json(
             "POST",
             f"/api/workflows/runs/{run_id}",
-            {"objective": objective, "workflow_type": workflow_type, "tasks": tasks},
+            payload,
         )
 
     def get_workflow_status(self, run_id: str, workflow_id: str) -> JsonObject:
@@ -162,7 +175,7 @@ class AgentTeamsClient:
         self,
         method: str,
         path: str,
-        payload: JsonObject | None = None,
+        payload: object | None = None,
     ) -> JsonObject:
         request_body = None
         headers: dict[str, str] = {"Accept": "application/json"}
@@ -195,3 +208,9 @@ class AgentTeamsClient:
 
 # Backward-compatible alias.
 AgentTeamsApp = AgentTeamsClient
+
+
+def _expect_str(value: JsonValue | None, field_name: str) -> str:
+    if isinstance(value, str):
+        return value
+    raise RuntimeError(f"Expected string field '{field_name}' in server response")

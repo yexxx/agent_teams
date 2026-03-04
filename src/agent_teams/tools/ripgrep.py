@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import io
 import os
@@ -18,7 +18,7 @@ from agent_teams.tools.ripgrep_types import GrepMatch, GrepResult
 
 VERSION = "14.1.1"
 BIN_DIR = Path.home() / ".agent-teams" / "bin"
-_RG_PATH_CACHE: Path | None = None
+_rg_path_cache: Path | None = None
 
 PLATFORM_MAP = {
     "arm64-darwin": {"platform": "aarch64-apple-darwin", "extension": "tar.gz"},
@@ -60,59 +60,56 @@ def _get_platform_key() -> str:
 
 
 async def get_rg_path() -> Path:
-    """获取 ripgrep 可执行文件路径 (带缓存)
+    """鑾峰彇 ripgrep 鍙墽琛屾枃浠惰矾寰?(甯︾紦瀛?
 
-    优先级:
-    1. 系统 ripgrep (shutil.which)
-    2. 本地缓存 (~/.agent-teams/bin/rg)
-    3. 自动下载
+    浼樺厛绾?
+    1. 绯荤粺 ripgrep (shutil.which)
+    2. 鏈湴缂撳瓨 (~/.agent-teams/bin/rg)
+    3. 鑷姩涓嬭浇
 
     Returns:
-        Path: ripgrep 可执行文件路径
+        Path: ripgrep 鍙墽琛屾枃浠惰矾寰?
 
     Raises:
-        UnsupportedPlatformError: 不支持的平台
-        DownloadFailedError: 下载失败
-        ExtractionFailedError: 解压失败
+        UnsupportedPlatformError: 涓嶆敮鎸佺殑骞冲彴
+        DownloadFailedError: 涓嬭浇澶辫触
+        ExtractionFailedError: 瑙ｅ帇澶辫触
     """
-    # 1. 系统 ripgrep
-    global _RG_PATH_CACHE
+    # 1. 绯荤粺 ripgrep
+    global _rg_path_cache
 
-    if _RG_PATH_CACHE and _RG_PATH_CACHE.is_file():
-        return _RG_PATH_CACHE
+    if _rg_path_cache and _rg_path_cache.is_file():
+        return _rg_path_cache
 
     system_rg = shutil.which("rg")
     if system_rg:
         p = Path(system_rg)
         if p.is_file():
-            _RG_PATH_CACHE = p
+            _rg_path_cache = p
             return p
 
-    # 2. 本地缓存
+    # 2. 鏈湴缂撳瓨
     BIN_DIR.mkdir(parents=True, exist_ok=True)
     ext = ".exe" if os.name == "nt" else ""
     local_path = BIN_DIR / f"rg{ext}"
 
     if local_path.exists() and local_path.is_file():
-        _RG_PATH_CACHE = local_path
+        _rg_path_cache = local_path
         return local_path
 
-    # 3. 下载
+    # 3. 涓嬭浇
     await _download_rg(local_path)
-    _RG_PATH_CACHE = local_path
+    _rg_path_cache = local_path
     return local_path
 
 
-def _clear_get_rg_path_cache() -> None:
-    global _RG_PATH_CACHE
-    _RG_PATH_CACHE = None
-
-
-get_rg_path.cache_clear = _clear_get_rg_path_cache  # type: ignore[attr-defined]
+def clear_rg_path_cache() -> None:
+    global _rg_path_cache
+    _rg_path_cache = None
 
 
 async def _download_rg(target: Path) -> None:
-    """下载并解压 ripgrep"""
+    """涓嬭浇骞惰В鍘?ripgrep"""
     key = _get_platform_key()
     config = PLATFORM_MAP.get(key)
     if not config:
@@ -139,7 +136,7 @@ async def _download_rg(target: Path) -> None:
 
 
 def _extract_tarball(content: bytes, target: Path) -> None:
-    """解压 tar.gz"""
+    """瑙ｅ帇 tar.gz"""
     with tarfile.open(fileobj=io.BytesIO(content)) as tar:
         for member in tar.getmembers():
             name = member.name
@@ -151,7 +148,7 @@ def _extract_tarball(content: bytes, target: Path) -> None:
 
 
 def _extract_zip(content: bytes, target: Path) -> None:
-    """解压 zip"""
+    """瑙ｅ帇 zip"""
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         for name in zf.namelist():
             if name.endswith("rg.exe"):
@@ -171,18 +168,18 @@ async def grep_search(
     case_sensitive: bool = True,
     limit: int = 100,
 ) -> GrepResult:
-    """执行 grep 搜索
+    """鎵ц grep 鎼滅储
 
     Args:
-        cwd: 搜索目录
-        pattern: 正则表达式模式
-        glob: 文件名过滤 (如 "*.py")
-        hidden: 是否包含隐藏文件
-        case_sensitive: 是否大小写敏感
-        limit: 最大结果数
+        cwd: 鎼滅储鐩綍
+        pattern: 姝ｅ垯琛ㄨ揪寮忔ā寮?
+        glob: 鏂囦欢鍚嶈繃婊?(濡?"*.py")
+        hidden: 鏄惁鍖呭惈闅愯棌鏂囦欢
+        case_sensitive: 鏄惁澶у皬鍐欐晱鎰?
+        limit: 鏈€澶х粨鏋滄暟
 
     Returns:
-        GrepResult: 搜索结果
+        GrepResult: 鎼滅储缁撴灉
     """
     rg = await get_rg_path()
 
@@ -241,17 +238,17 @@ async def enumerate_files(
     follow: bool = False,
     limit: int = 100,
 ) -> tuple[list[Path], bool]:
-    """枚举匹配 glob 模式的文件
+    """鏋氫妇鍖归厤 glob 妯″紡鐨勬枃浠?
 
     Args:
-        cwd: 搜索目录
-        pattern: glob 模式
-        hidden: 是否包含隐藏文件
-        follow: 是否跟随符号链接
-        limit: 最大文件数
+        cwd: 鎼滅储鐩綍
+        pattern: glob 妯″紡
+        hidden: 鏄惁鍖呭惈闅愯棌鏂囦欢
+        follow: 鏄惁璺熼殢绗﹀彿閾炬帴
+        limit: 鏈€澶ф枃浠舵暟
 
     Returns:
-        (files, truncated): 文件列表和是否截断
+        (files, truncated): 鏂囦欢鍒楄〃鍜屾槸鍚︽埅鏂?
     """
     rg = await get_rg_path()
 
@@ -289,3 +286,5 @@ async def enumerate_files(
 
     proc.wait()
     return files, truncated
+
+

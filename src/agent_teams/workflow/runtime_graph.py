@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from agent_teams.core.enums import ScopeType, TaskStatus
 from agent_teams.core.models import ScopeRef, StateMutation, TaskRecord
@@ -56,10 +57,10 @@ def get_task_by_name(graph: dict[str, object], task_name: str) -> dict[str, obje
 
 def get_ready_tasks(graph: dict[str, object], task_records: dict[str, TaskRecord]) -> list[tuple[str, dict[str, object]]]:
     tasks = get_tasks_from_graph(graph)
-    ready = []
+    ready: list[tuple[str, dict[str, object]]] = []
     for task_name, task_info in tasks.items():
         task_id = task_info.get('task_id')
-        if not task_id:
+        if not isinstance(task_id, str) or not task_id:
             continue
         record = task_records.get(task_id)
         if record is None:
@@ -69,12 +70,22 @@ def get_ready_tasks(graph: dict[str, object], task_records: dict[str, TaskRecord
         depends_on = task_info.get('depends_on', [])
         if not isinstance(depends_on, list):
             depends_on = []
-        dep_ids = [tasks.get(dep, {}).get('task_id', '') for dep in depends_on if dep in tasks]
-        all_deps_completed = all(
-            task_records.get(dep_id).status == TaskStatus.COMPLETED
-            for dep_id in dep_ids
-            if dep_id in task_records
-        )
+        dep_ids: list[str] = []
+        for dep in depends_on:
+            if not isinstance(dep, str):
+                continue
+            dep_info = tasks.get(dep)
+            if not isinstance(dep_info, dict):
+                continue
+            dep_id = dep_info.get('task_id')
+            if isinstance(dep_id, str) and dep_id:
+                dep_ids.append(dep_id)
+        all_deps_completed = True
+        for dep_id in dep_ids:
+            dep_record = task_records.get(dep_id)
+            if dep_record is None or dep_record.status != TaskStatus.COMPLETED:
+                all_deps_completed = False
+                break
         if all_deps_completed:
-            ready.append((task_name, task_info))
+            ready.append((task_name, cast(dict[str, object], task_info)))
     return ready

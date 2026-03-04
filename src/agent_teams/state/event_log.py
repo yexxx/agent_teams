@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agent_teams.core.enums import EventType
 from agent_teams.core.models import EventEnvelope, RunEvent
+from agent_teams.core.types import JsonObject
 from agent_teams.state.db import open_sqlite
 
 
@@ -76,7 +77,7 @@ class EventLog:
         )
         self._conn.commit()
 
-    def list_by_trace(self, trace_id: str) -> tuple[dict, ...]:
+    def list_by_trace(self, trace_id: str) -> tuple[JsonObject, ...]:
         rows = self._conn.execute(
             'SELECT event_type, trace_id, session_id, task_id, instance_id, payload_json, occurred_at '
             'FROM events WHERE trace_id=? ORDER BY id ASC',
@@ -84,7 +85,7 @@ class EventLog:
         ).fetchall()
         return tuple(self._row_to_dict(row) for row in rows)
 
-    def list_by_session(self, session_id: str) -> tuple[dict, ...]:
+    def list_by_session(self, session_id: str) -> tuple[JsonObject, ...]:
         rows = self._conn.execute(
             'SELECT event_type, trace_id, session_id, task_id, instance_id, payload_json, occurred_at '
             'FROM events WHERE session_id=? ORDER BY id ASC',
@@ -96,8 +97,7 @@ class EventLog:
         self._conn.execute('DELETE FROM events WHERE session_id=?', (session_id,))
         self._conn.commit()
 
-    def _row_to_dict(self, row: sqlite3.Row) -> dict:
-        import json
+    def _row_to_dict(self, row: sqlite3.Row) -> JsonObject:
         return {
             "event_type": str(row['event_type']),
             "trace_id": str(row['trace_id']),

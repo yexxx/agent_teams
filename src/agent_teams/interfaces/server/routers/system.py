@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from agent_teams.application.service import AgentTeamsService
+from agent_teams.core.types import JsonObject
 from agent_teams.interfaces.server.deps import get_service
 
 router = APIRouter(prefix="/system", tags=["System"])
@@ -15,17 +16,17 @@ def health_check() -> dict[str, str]:
 
 
 @router.get("/configs")
-def get_config_status(service: AgentTeamsService = Depends(get_service)) -> dict:
+def get_config_status(service: AgentTeamsService = Depends(get_service)) -> JsonObject:
     return service.get_config_status()
 
 
 @router.get("/configs/model")
-def get_model_config(service: AgentTeamsService = Depends(get_service)) -> dict:
+def get_model_config(service: AgentTeamsService = Depends(get_service)) -> JsonObject:
     return service.get_model_config()
 
 
 @router.get("/configs/model/profiles")
-def get_model_profiles(service: AgentTeamsService = Depends(get_service)) -> dict:
+def get_model_profiles(service: AgentTeamsService = Depends(get_service)) -> dict[str, JsonObject]:
     return service.get_model_profiles()
 
 
@@ -78,7 +79,7 @@ def delete_model_profile(
 class ModelConfigRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    config: dict
+    config: JsonObject
 
 
 @router.put("/configs/model")

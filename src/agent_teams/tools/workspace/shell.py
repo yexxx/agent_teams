@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from pydantic_ai import Agent
 
+from agent_teams.core.types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
 from agent_teams.tools.workspace.shell_executor import (
@@ -26,8 +27,8 @@ def register(Agent: Agent[ToolDeps, str]) -> None:
         timeout_ms: int | None = None,
         workdir: str | None = None,
         description: str | None = None,
-    ) -> dict[str, object]:
-        async def _action() -> dict[str, object]:
+    ) -> JsonObject:
+        async def _action() -> JsonObject:
             validate_shell_command(command)
 
             if workdir:

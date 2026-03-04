@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_teams.core.types import JsonObject
 from agent_teams.runtime.logging import get_logger, log_event
 from agent_teams.runtime.trace import bind_trace_context, generate_trace_id
 
@@ -26,7 +27,7 @@ class FrontendLogEvent(BaseModel):
     task_id: str | None = None
     instance_id: str | None = None
     role_id: str | None = None
-    payload: dict[str, object] = Field(default_factory=dict)
+    payload: JsonObject = Field(default_factory=dict)
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

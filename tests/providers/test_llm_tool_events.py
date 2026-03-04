@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from typing import cast
 
 from pydantic_ai.messages import (
     ModelRequest,
@@ -11,6 +13,18 @@ from pydantic_ai.messages import (
 from agent_teams.core.enums import RunEventType
 from agent_teams.core.models import ModelEndpointConfig
 from agent_teams.providers.llm import LLMRequest, OpenAICompatibleProvider
+from agent_teams.runtime.injection_manager import RunInjectionManager
+from agent_teams.runtime.run_control_manager import RunControlManager
+from agent_teams.runtime.run_event_hub import RunEventHub
+from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
+from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.tools.policy import ToolApprovalPolicy
+from agent_teams.tools.registry import ToolRegistry
+from agent_teams.mcp.registry import McpRegistry
+from agent_teams.roles.registry import RoleRegistry
+from agent_teams.skills.registry import SkillRegistry
+from agent_teams.coordination.task_execution_service import TaskExecutionService
 
 
 class _FakeRunEventHub:
@@ -41,22 +55,22 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         instance_pool=None,
         shared_store=None,
         event_bus=None,
-        injection_manager=None,
-        run_event_hub=hub,
-        agent_repo=None,
-        workspace_root=None,
-        tool_registry=None,
-        mcp_registry=None,
-        skill_registry=None,
+        injection_manager=cast(RunInjectionManager, object()),
+        run_event_hub=cast(RunEventHub, cast(object, hub)),
+        agent_repo=cast(AgentInstanceRepository, object()),
+        workspace_root=Path("."),
+        tool_registry=cast(ToolRegistry, object()),
+        mcp_registry=cast(McpRegistry, object()),
+        skill_registry=cast(SkillRegistry, object()),
         allowed_tools=(),
         allowed_mcp_servers=(),
         allowed_skills=(),
-        message_repo=None,
-        role_registry=None,
-        task_execution_service=None,
-        run_control_manager=_FakeRunControlManager(),
-        tool_approval_manager=None,
-        tool_approval_policy=None,
+        message_repo=cast(MessageRepository, object()),
+        role_registry=cast(RoleRegistry, object()),
+        task_execution_service=cast(TaskExecutionService, object()),
+        run_control_manager=cast(RunControlManager, cast(object, _FakeRunControlManager())),
+        tool_approval_manager=cast(ToolApprovalManager, object()),
+        tool_approval_policy=cast(ToolApprovalPolicy, object()),
     )
 
 

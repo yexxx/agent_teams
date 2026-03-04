@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic_ai import Agent
 
 from agent_teams.core.enums import InjectionSource, InstanceStatus, TaskStatus
 from agent_teams.core.models import TaskRecord
+from agent_teams.core.types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
 from agent_teams.workflow.runtime_graph import get_ready_tasks, load_graph
@@ -21,7 +23,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         action: DispatchAction,
         feedback: str = '',
         max_dispatch: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         async def _action() -> dict[str, object]:
             graph = load_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id)
             if graph is None:
@@ -143,9 +145,11 @@ async def _dispatch_next(
 
     ready = get_ready_tasks(graph, records)
     for task_name, task_info in ready:
-        task_id = task_info.get('task_id', '')
-        role_id = task_info.get('role_id', '')
-        if not task_id or not role_id:
+        task_id = task_info.get('task_id')
+        role_id = task_info.get('role_id')
+        if not isinstance(task_id, str) or not task_id:
+            continue
+        if not isinstance(role_id, str) or not role_id:
             continue
         await _ensure_and_execute(task_id, task_name, role_id)
 
@@ -245,7 +249,7 @@ def _records_by_task_id(ctx: ToolContext) -> dict[str, TaskRecord]:
 
 def _latest_completed_task(
     *,
-    tasks: dict[str, dict[str, object]],
+    tasks: Mapping[str, Mapping[str, object]],
     records: dict[str, TaskRecord],
 ) -> tuple[str, str] | None:
     ordered_task_names = list(tasks.keys())
@@ -262,14 +266,23 @@ def _latest_completed_task(
     return None
 
 
-def _progress(*, tasks: dict[str, dict[str, object]], records: dict[str, TaskRecord]) -> dict[str, int]:
+def _progress(
+    *,
+    tasks: Mapping[str, Mapping[str, object]],
+    records: dict[str, TaskRecord],
+) -> dict[str, int]:
     all_tasks = list(tasks.keys())
-    completed_tasks = [
-        name
-        for name in all_tasks
-        if records.get(tasks[name].get('task_id', ''))
-        and records[tasks[name].get('task_id', '')].status == TaskStatus.COMPLETED
-    ]
+    completed_tasks: list[str] = []
+    for name in all_tasks:
+        task_info = tasks.get(name)
+        if task_info is None:
+            continue
+        task_id = task_info.get('task_id')
+        if not isinstance(task_id, str) or not task_id:
+            continue
+        record = records.get(task_id)
+        if record is not None and record.status == TaskStatus.COMPLETED:
+            completed_tasks.append(name)
     return {'completed': len(completed_tasks), 'total': len(all_tasks)}
 
 

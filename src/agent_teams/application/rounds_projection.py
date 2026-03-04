@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from typing import Callable
 
 from agent_teams.core.enums import RunEventType, ScopeType
@@ -9,12 +10,15 @@ from agent_teams.core.models import ScopeRef
 
 
 def collect_pending_tool_approvals(
-    parsed_events: list[tuple[dict, JsonObject]],
+    parsed_events: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
 ) -> dict[str, list[dict[str, str]]]:
     by_run_call: dict[str, dict[str, JsonObject]] = {}
 
     for ev, payload in parsed_events:
-        run_id = ev["trace_id"]
+        run_id_value = ev.get("trace_id")
+        if not isinstance(run_id_value, str) or not run_id_value:
+            continue
+        run_id = run_id_value
         event_type = ev.get("event_type")
         tool_call_id = payload.get("tool_call_id")
         if not isinstance(tool_call_id, str) or not tool_call_id:
@@ -84,8 +88,8 @@ def collect_pending_tool_approvals(
 
 
 def collect_pending_stream_snapshots(
-    parsed_events: list[tuple[dict, JsonObject]],
-    session_messages: list[JsonObject],
+    parsed_events: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
+    session_messages: Sequence[Mapping[str, object]],
     by_run_instance_role: dict[str, dict[str, str]],
 ) -> dict[str, JsonObject]:
     persisted_by_run_actor: dict[str, dict[str, str]] = {}
@@ -211,7 +215,10 @@ def collect_pending_stream_snapshots(
                 entry["coordinator_instance_id"] = instance_id
             continue
         if instance_id:
-            by_instance = entry["by_instance"]
+            by_instance = entry.get("by_instance")
+            if not isinstance(by_instance, dict):
+                by_instance = {}
+                entry["by_instance"] = by_instance
             by_instance[instance_id] = delta
             continue
         entry["coordinator_text"] = delta
@@ -219,7 +226,7 @@ def collect_pending_stream_snapshots(
     return snapshots
 
 
-def _extract_text_from_message(message: JsonValue) -> str:
+def _extract_text_from_message(message: object) -> str:
     if not isinstance(message, dict):
         return ""
     parts = message.get("parts")
@@ -278,10 +285,10 @@ def build_session_rounds(
     agent_repo,
     task_repo,
     shared_store,
-    get_session_messages: Callable[[str], list[dict]],
-) -> list[dict]:
+    get_session_messages: Callable[[str], list[dict[str, object]]],
+) -> list[dict[str, object]]:
     events = event_log.list_by_session(session_id)
-    parsed_events: list[tuple[dict, JsonObject]] = []
+    parsed_events: list[tuple[dict[str, object], dict[str, object]]] = []
     for ev in events:
         try:
             payload = json.loads(ev["payload_json"])
@@ -291,12 +298,15 @@ def build_session_rounds(
             payload = {}
         parsed_events.append((ev, payload))
 
-    rounds_map: dict[str, dict] = {}
+    rounds_map: dict[str, dict[str, object]] = {}
     by_run_instance_role: dict[str, dict[str, str]] = {}
     by_run_role_instance: dict[str, dict[str, str]] = {}
 
     for ev, payload in parsed_events:
-        run_id = ev["trace_id"]
+        run_id_value = ev.get("trace_id")
+        if not isinstance(run_id_value, str) or not run_id_value:
+            continue
+        run_id = run_id_value
         ev_instance = ev.get("instance_id") or payload.get("instance_id")
         ev_role = payload.get("role_id")
         if isinstance(ev_instance, str) and isinstance(ev_role, str):
@@ -328,7 +338,10 @@ def build_session_rounds(
     )
 
     for ev in events:
-        run_id = ev["trace_id"]
+        run_id_value = ev.get("trace_id")
+        if not isinstance(run_id_value, str) or not run_id_value:
+            continue
+        run_id = run_id_value
         if run_id not in rounds_map:
             rounds_map[run_id] = {
                 "run_id": run_id,
@@ -352,14 +365,18 @@ def build_session_rounds(
             rounds_map[run_id]["created_at"] = ev["occurred_at"]
 
     for msg in messages:
-        run_id = msg["trace_id"]
+        run_id = msg.get("trace_id")
+        if not isinstance(run_id, str) or not run_id:
+            continue
         round_data = rounds_map.get(run_id)
         if round_data is None:
             continue
-        role_id = msg.get("role_id") or by_run_instance_role.get(run_id, {}).get(msg["instance_id"])
+        instance_id = msg.get("instance_id")
+        instance_key = instance_id if isinstance(instance_id, str) else ""
+        role_id = msg.get("role_id") or by_run_instance_role.get(run_id, {}).get(instance_key)
         msg["role_id"] = role_id
 
-        if msg["role"] == "user":
+        if msg.get("role") == "user":
             content = msg.get("message", {})
             parts = content.get("parts", []) if isinstance(content, dict) else []
             for pt in parts:
@@ -370,7 +387,9 @@ def build_session_rounds(
                     break
 
         if role_id == "coordinator_agent":
-            round_data["coordinator_messages"].append(msg)
+            coordinator_messages = round_data.get("coordinator_messages")
+            if isinstance(coordinator_messages, list):
+                coordinator_messages.append(msg)
 
     for task in task_repo.list_by_session(session_id):
         run_id = task.envelope.trace_id
@@ -380,13 +399,19 @@ def build_session_rounds(
         scope = ScopeRef(scope_type=ScopeType.TASK, scope_id=task.envelope.task_id)
         wf_str = shared_store.get_state(scope, "workflow_graph")
         if wf_str:
-            round_data["workflows"].append(json.loads(wf_str))
+            workflows = round_data.get("workflows")
+            if isinstance(workflows, list):
+                workflows.append(json.loads(wf_str))
 
-    return sorted(list(rounds_map.values()), key=lambda x: x["created_at"], reverse=True)
+    return sorted(
+        list(rounds_map.values()),
+        key=lambda item: str(item.get("created_at") or ""),
+        reverse=True,
+    )
 
 
 def paginate_rounds(
-    rounds: list[dict],
+    rounds: list[dict[str, object]],
     *,
     limit: int = 8,
     cursor_run_id: str | None = None,
@@ -412,11 +437,11 @@ def paginate_rounds(
 
 
 def find_round_by_run_id(
-    rounds: list[dict],
+    rounds: list[dict[str, object]],
     *,
     session_id: str,
     run_id: str,
-) -> dict:
+) -> dict[str, object]:
     for round_item in rounds:
         if round_item["run_id"] == run_id:
             return round_item

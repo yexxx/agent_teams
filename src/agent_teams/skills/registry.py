@@ -5,12 +5,11 @@ import inspect
 import importlib.util
 from contextlib import redirect_stdout
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
 from pydantic_ai import Tool
 
+from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.skills.discovery import SkillsDirectory
-from agent_teams.tools.runtime import ToolContext
+from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
 
 from agent_teams.skills.models import SkillMetadata
@@ -22,9 +21,9 @@ class SkillRegistry:
 
     def get_toolset_tools(
         self, skill_names: tuple[str, ...]
-    ) -> list[Tool[ToolContext]]:
+    ) -> list[Tool[ToolDeps]]:
         # This returns the core tools for managing skills, not the skills themselves
-        tools: list[Tool[ToolContext]] = [
+        tools: list[Tool[ToolDeps]] = [
             Tool(
                 self.list_skills,
                 name="list_skills",
@@ -71,20 +70,22 @@ class SkillRegistry:
                 results.append(f"## Skill: {name}\n{skill.metadata.instructions}")
         return "\n\n".join(results)
 
-    async def list_skills(self, ctx: ToolContext) -> list[SkillMetadata]:
+    async def list_skills(self, ctx: ToolContext) -> JsonObject:
         return await execute_tool(
             ctx,
             tool_name="list_skills",
             args_summary={},
-            action=lambda: [s.metadata for s in self.directory.list_skills()],
+            action=lambda: [
+                _skill_metadata_to_json(s.metadata) for s in self.directory.list_skills()
+            ],
         )
 
-    async def load_skill(self, ctx: ToolContext, name: str) -> SkillMetadata:
-        async def _action():
+    async def load_skill(self, ctx: ToolContext, name: str) -> JsonObject:
+        async def _action() -> JsonValue:
             skill = self.directory.get_skill(name)
             if not skill:
                 raise KeyError(f"Skill not found: {name}")
-            return skill.metadata
+            return _skill_metadata_to_json(skill.metadata)
 
         return await execute_tool(
             ctx, tool_name="load_skill", args_summary={"name": name}, action=_action
@@ -92,8 +93,8 @@ class SkillRegistry:
 
     async def read_skill_resource(
         self, ctx: ToolContext, skill_name: str, resource_path: str
-    ) -> str:
-        async def _action():
+    ) -> JsonObject:
+        async def _action() -> JsonValue:
             skill = self.directory.get_skill(skill_name)
             if not skill:
                 raise KeyError(f"Skill not found: {skill_name}")
@@ -117,9 +118,9 @@ class SkillRegistry:
         ctx: ToolContext,
         skill_name: str,
         script_name: str,
-        args: dict[str, object] | None = None,
-    ) -> object:
-        async def _action():
+        args: JsonObject | None = None,
+    ) -> JsonObject:
+        async def _action() -> JsonValue:
             skill = self.directory.get_skill(skill_name)
             if not skill:
                 raise KeyError(f"Skill not found: {skill_name}")
@@ -164,7 +165,9 @@ class SkillRegistry:
                         ret = run_fn()
 
             output = f.getvalue().strip()
-            return output if output else ret
+            if output:
+                return output
+            return _normalize_script_result(ret)
 
         return await execute_tool(
             ctx,
@@ -172,3 +175,41 @@ class SkillRegistry:
             args_summary=args or {},
             action=_action,
         )
+
+
+def _skill_metadata_to_json(metadata: SkillMetadata) -> JsonObject:
+    return {
+        "name": metadata.name,
+        "description": metadata.description,
+        "instructions": metadata.instructions,
+        "resources": {
+            name: {
+                "name": resource.name,
+                "description": resource.description,
+                "path": str(resource.path) if resource.path is not None else None,
+                "content": resource.content,
+            }
+            for name, resource in metadata.resources.items()
+        },
+        "scripts": {
+            name: {
+                "name": script.name,
+                "description": script.description,
+                "path": str(script.path),
+            }
+            for name, script in metadata.scripts.items()
+        },
+    }
+
+
+def _normalize_script_result(value: object) -> JsonValue:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_normalize_script_result(item) for item in value]
+    if isinstance(value, dict):
+        normalized: JsonObject = {}
+        for key, item in value.items():
+            normalized[str(key)] = _normalize_script_result(item)
+        return normalized
+    return str(value)

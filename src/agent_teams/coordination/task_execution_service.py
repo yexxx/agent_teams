@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Callable
+from collections.abc import Callable
 
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.agents.core.subagent import SubAgentRunner
@@ -10,7 +10,6 @@ from agent_teams.core.enums import EventType, InstanceStatus, ScopeType, TaskSta
 from agent_teams.core.models import EventEnvelope, RoleDefinition, ScopeRef, TaskEnvelope
 from agent_teams.state.event_log import EventLog
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
-from agent_teams.providers.llm import LLMProvider
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runtime.console import log_debug
 from agent_teams.runtime.run_control_manager import RunControlManager
@@ -34,7 +33,7 @@ class TaskExecutionService:
     agent_repo: AgentInstanceRepository
     message_repo: MessageRepository
     prompt_builder: RuntimePromptBuilder
-    provider_factory: Callable[[RoleDefinition], LLMProvider]
+    provider_factory: Callable[[RoleDefinition], object]
     injection_manager: RunInjectionManager | None = None
     run_control_manager: RunControlManager | None = None
 

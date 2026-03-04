@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from pydantic_ai._agent_graph import ModelRequestNode
@@ -170,6 +171,7 @@ class OpenAICompatibleProvider(LLMProvider):
         history = self._message_repo.get_history(request.instance_id)
         saved_count = 0
         restarted = False
+        result = None
 
         while True:
             control_ctx.raise_if_cancelled()
@@ -261,9 +263,12 @@ class OpenAICompatibleProvider(LLMProvider):
 
             if not restarted:
                 # Normal completion
-                result = agent_run.result
+                run_result = agent_run.result
+                if run_result is None:
+                    raise RuntimeError('Model run finished without a result object')
+                result = run_result
                 # Flush any remaining messages (e.g. final tool results)
-                all_new = result.new_messages()
+                all_new = run_result.new_messages()
                 to_save = list(all_new)[saved_count:]
                 if to_save:
                     self._message_repo.append(
@@ -275,6 +280,8 @@ class OpenAICompatibleProvider(LLMProvider):
                     )
                 break  # done
 
+        if result is None:
+            raise RuntimeError('Model run completed without a result')
 
         if printed_any and is_debug():
             print()
@@ -345,7 +352,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self,
         *,
         request: LLMRequest,
-        messages: list[object],
+        messages: Sequence[ModelResponse | ModelRequest],
     ) -> None:
         for msg in messages:
             if isinstance(msg, ModelResponse):

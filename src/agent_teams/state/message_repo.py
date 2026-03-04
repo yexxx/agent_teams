@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 
+from agent_teams.core.types import JsonObject
 from agent_teams.state.db import open_sqlite
 
 
@@ -86,20 +88,19 @@ class MessageRepository:
             result.extend(msgs)
         return result
 
-    def get_messages_by_session(self, session_id: str) -> list[dict]:
+    def get_messages_by_session(self, session_id: str) -> list[JsonObject]:
         """Return all messages for an entire session with their DB metadata."""
         rows = self._conn.execute(
             'SELECT instance_id, task_id, trace_id, role, message_json, created_at '
             'FROM messages WHERE session_id=? ORDER BY id ASC',
             (session_id,),
         ).fetchall()
-        
-        import json
-        results = []
+
+        results: list[JsonObject] = []
         for row in rows:
             # message_json is a list [ { ... } ]
             msg_list = json.loads(str(row['message_json']))
-            msg = msg_list[0] if msg_list else {}
+            msg = msg_list[0] if msg_list and isinstance(msg_list[0], dict) else {}
             results.append({
                 "instance_id": str(row["instance_id"]),
                 "task_id": str(row["task_id"]),
@@ -112,7 +113,7 @@ class MessageRepository:
 
     def get_messages_for_instance(
         self, session_id: str, instance_id: str
-    ) -> list[dict]:
+    ) -> list[JsonObject]:
         """Return all messages for a single instance scoped to one session."""
         rows = self._conn.execute(
             'SELECT instance_id, task_id, trace_id, role, message_json, created_at '
@@ -120,11 +121,10 @@ class MessageRepository:
             (session_id, instance_id),
         ).fetchall()
 
-        import json
-        results = []
+        results: list[JsonObject] = []
         for row in rows:
             msg_list = json.loads(str(row['message_json']))
-            msg = msg_list[0] if msg_list else {}
+            msg = msg_list[0] if msg_list and isinstance(msg_list[0], dict) else {}
             results.append(
                 {
                     "instance_id": str(row["instance_id"]),

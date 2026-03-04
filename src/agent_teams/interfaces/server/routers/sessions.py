@@ -78,7 +78,7 @@ def get_session_rounds(
     limit: int = 8,
     cursor_run_id: str | None = None,
     service: AgentTeamsService = Depends(get_service),
-) -> dict:
+) -> dict[str, object]:
     return service.get_session_rounds(
         session_id,
         limit=limit,
@@ -91,7 +91,7 @@ def get_round(
     session_id: str,
     run_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> dict:
+) -> dict[str, object]:
     try:
         return service.get_round(session_id, run_id)
     except KeyError as exc:
@@ -102,7 +102,7 @@ def get_round(
 def list_session_agents(
     session_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, object]]:
     return [record.model_dump() for record in service.list_agents_in_session(session_id)]
 
 
@@ -110,7 +110,7 @@ def list_session_agents(
 def get_session_events(
     session_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, object]]:
     return service.get_global_events(session_id)
 
 
@@ -118,7 +118,7 @@ def get_session_events(
 def get_session_messages(
     session_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, object]]:
     return service.get_session_messages(session_id)
 
 
@@ -127,7 +127,7 @@ def get_agent_messages(
     session_id: str,
     instance_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, object]]:
     return service.get_agent_messages(session_id, instance_id)
 
 
@@ -135,5 +135,5 @@ def get_agent_messages(
 def get_session_workflows(
     session_id: str,
     service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
+) -> list[dict[str, object]]:
     return service.get_session_workflows(session_id)

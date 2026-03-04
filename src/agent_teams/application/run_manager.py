@@ -42,10 +42,11 @@ class RunManager:
         *,
         ensure_session: Callable[[str | None], str],
     ) -> RunResult:
-        intent.session_id = ensure_session(intent.session_id)
-        self._run_control_manager.assert_session_allows_main_input(intent.session_id)
+        session_id = ensure_session(intent.session_id)
+        intent.session_id = session_id
+        self._run_control_manager.assert_session_allows_main_input(session_id)
         run_id = new_trace_id().value
-        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
             log_event(logger, logging.INFO, event='run.started.direct', message='Direct run started')
             self._injection_manager.activate(run_id)
             try:
@@ -67,13 +68,14 @@ class RunManager:
         *,
         ensure_session: Callable[[str | None], str],
     ) -> tuple[str, str]:
-        intent.session_id = ensure_session(intent.session_id)
-        self._run_control_manager.assert_session_allows_main_input(intent.session_id)
+        session_id = ensure_session(intent.session_id)
+        intent.session_id = session_id
+        self._run_control_manager.assert_session_allows_main_input(session_id)
         run_id = new_trace_id().value
         self._pending_runs[run_id] = intent
-        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
             log_event(logger, logging.INFO, event='run.queued', message='Run queued for streaming execution')
-        return run_id, intent.session_id
+        return run_id, session_id
 
     def ensure_run_started(self, run_id: str) -> None:
         if run_id in self._running_run_ids:
@@ -84,16 +86,19 @@ class RunManager:
 
         self._running_run_ids.add(run_id)
         self._injection_manager.activate(run_id)
-        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+        session_id = intent.session_id
+        if session_id is None:
+            raise RuntimeError(f'Run {run_id} is missing session id')
+        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
             log_event(logger, logging.INFO, event='run.started', message='Run worker started')
         self._run_event_hub.publish(
             RunEvent(
-                session_id=intent.session_id,
+                session_id=session_id,
                 run_id=run_id,
                 trace_id=run_id,
                 task_id=None,
                 event_type=RunEventType.RUN_STARTED,
-                payload_json=dumps({'session_id': intent.session_id}),
+                payload_json=dumps({'session_id': session_id}),
             )
         )
 
@@ -102,7 +107,7 @@ class RunManager:
                 result = await self._meta_agent.handle_intent(intent, trace_id=run_id)
                 self._run_event_hub.publish(
                     RunEvent(
-                        session_id=intent.session_id,
+                        session_id=session_id,
                         run_id=run_id,
                         trace_id=result.trace_id,
                         task_id=result.root_task_id,
@@ -110,7 +115,7 @@ class RunManager:
                         payload_json=dumps(result.model_dump()),
                     )
                 )
-                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
                     log_event(
                         logger,
                         logging.INFO,
@@ -120,11 +125,11 @@ class RunManager:
                     )
             except asyncio.CancelledError:
                 self._run_control_manager.publish_run_stopped(
-                    session_id=intent.session_id,
+                    session_id=session_id,
                     run_id=run_id,
                     reason='stopped_by_user',
                 )
-                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
                     log_event(
                         logger,
                         logging.WARNING,
@@ -135,7 +140,7 @@ class RunManager:
             except Exception as exc:
                 self._run_event_hub.publish(
                     RunEvent(
-                        session_id=intent.session_id,
+                        session_id=session_id,
                         run_id=run_id,
                         trace_id=run_id,
                         task_id=None,
@@ -143,7 +148,7 @@ class RunManager:
                         payload_json=dumps({'error': str(exc)}),
                     )
                 )
-                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=intent.session_id):
+                with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
                     log_event(
                         logger,
                         logging.ERROR,
@@ -160,7 +165,7 @@ class RunManager:
         task = asyncio.create_task(_worker())
         self._run_control_manager.register_run_task(
             run_id=run_id,
-            session_id=intent.session_id,
+            session_id=session_id,
             task=task,
         )
 
@@ -205,8 +210,11 @@ class RunManager:
         self._run_control_manager.clear_paused_subagent_for_run(run_id)
         if run_id in self._pending_runs and run_id not in self._running_run_ids:
             intent = self._pending_runs.pop(run_id)
+            session_id = intent.session_id
+            if session_id is None:
+                raise RuntimeError(f'Run {run_id} is missing session id')
             self._run_control_manager.publish_run_stopped(
-                session_id=intent.session_id,
+                session_id=session_id,
                 run_id=run_id,
                 reason='stopped_before_start',
             )

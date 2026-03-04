@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 import uuid
 
 from agent_teams.core.config import load_runtime_config
-from agent_teams.core.types import JsonObject
+from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.core.enums import InjectionSource
 from agent_teams.core.models import (
     InjectionMessage,
@@ -130,7 +131,7 @@ class AgentTeamsService:
             self._session_repo.create(session_id=session_id)
             return session_id
 
-    def get_config_status(self) -> dict:
+    def get_config_status(self) -> JsonObject:
         return {
             "model": {
                 "loaded": True,
@@ -146,13 +147,13 @@ class AgentTeamsService:
             },
         }
 
-    def get_model_config(self) -> dict:
+    def get_model_config(self) -> JsonObject:
         return self._config_manager.get_model_config()
 
-    def get_model_profiles(self) -> dict:
+    def get_model_profiles(self) -> dict[str, JsonObject]:
         return self._config_manager.get_model_profiles()
 
-    def save_model_profile(self, name: str, profile: dict) -> None:
+    def save_model_profile(self, name: str, profile: JsonObject) -> None:
         self._config_manager.save_model_profile(name, profile)
         self.reload_model_config()
 
@@ -160,7 +161,7 @@ class AgentTeamsService:
         self._config_manager.delete_model_profile(name)
         self.reload_model_config()
 
-    def save_model_config(self, config: dict) -> None:
+    def save_model_config(self, config: JsonObject) -> None:
         self._config_manager.save_model_config(config)
         self.reload_model_config()
 
@@ -326,16 +327,16 @@ class AgentTeamsService:
     def list_agents_in_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
         return self._session_service.list_agents_in_session(session_id)
 
-    def get_agent_messages(self, session_id: str, instance_id: str) -> list[dict]:
+    def get_agent_messages(self, session_id: str, instance_id: str) -> list[dict[str, object]]:
         return self._session_service.get_agent_messages(session_id, instance_id)
 
-    def get_global_events(self, session_id: str) -> list[dict]:
+    def get_global_events(self, session_id: str) -> list[dict[str, object]]:
         return self._session_service.get_global_events(session_id)
 
-    def get_session_messages(self, session_id: str) -> list[dict]:
+    def get_session_messages(self, session_id: str) -> list[dict[str, object]]:
         return self._session_service.get_session_messages(session_id)
 
-    def get_session_workflows(self, session_id: str) -> list[dict]:
+    def get_session_workflows(self, session_id: str) -> list[dict[str, object]]:
         return self._session_service.get_session_workflows(session_id)
 
     def create_workflow_graph_for_run(
@@ -378,14 +379,14 @@ class AgentTeamsService:
 
     @staticmethod
     def _collect_pending_tool_approvals(
-        parsed_events: list[tuple[dict, JsonObject]],
+        parsed_events: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
     ) -> dict[str, list[dict[str, str]]]:
         return collect_pending_tool_approvals(parsed_events)
 
     @staticmethod
     def _collect_pending_stream_snapshots(
-        parsed_events: list[tuple[dict, JsonObject]],
-        session_messages: list[JsonObject],
+        parsed_events: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
+        session_messages: Sequence[Mapping[str, object]],
         by_run_instance_role: dict[str, dict[str, str]],
     ) -> dict[str, JsonObject]:
         return collect_pending_stream_snapshots(
@@ -394,7 +395,7 @@ class AgentTeamsService:
             by_run_instance_role,
         )
 
-    def _build_session_rounds(self, session_id: str) -> list[dict]:
+    def _build_session_rounds(self, session_id: str) -> list[dict[str, object]]:
         return self._session_service.build_session_rounds(session_id)
 
     def get_session_rounds(
@@ -411,6 +412,6 @@ class AgentTeamsService:
             cursor_run_id=cursor_run_id,
         )
 
-    def get_round(self, session_id: str, run_id: str) -> dict:
+    def get_round(self, session_id: str, run_id: str) -> dict[str, object]:
         rounds = self._build_session_rounds(session_id)
         return find_round_by_run_id(rounds, session_id=session_id, run_id=run_id)

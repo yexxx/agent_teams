@@ -77,7 +77,11 @@ class ToolApprovalManager:
             raise TimeoutError(
                 f'Tool approval timed out after {timeout}s: run={run_id} tool_call_id={tool_call_id}'
             )
-        return entry.action, entry.feedback  # type: ignore[return-value]
+        if entry.action is None:
+            raise RuntimeError(
+                f'Tool approval resolved without action: run={run_id} tool_call_id={tool_call_id}'
+            )
+        return entry.action, entry.feedback
 
     def close_approval(self, *, run_id: str, tool_call_id: str) -> None:
         with self._lock:
@@ -101,4 +105,3 @@ class ToolApprovalManager:
                     }
                 )
         return result
-

@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 
+from agent_teams.core.types import JsonObject
 from agent_teams.runtime.logging import get_logger, log_event
 
-_DEBUG_ENABLED = False
-_OPEN_MODEL_STREAM_ROLE_ID: str | None = None
+_debug_enabled = False
+_open_model_stream_role_id: str | None = None
 logger = get_logger(__name__)
 
 ROLE_LABELS = {
@@ -19,12 +20,12 @@ ROLE_LABELS = {
 
 
 def set_debug(enabled: bool) -> None:
-    global _DEBUG_ENABLED
-    _DEBUG_ENABLED = enabled
+    global _debug_enabled
+    _debug_enabled = enabled
 
 
 def is_debug() -> bool:
-    return _DEBUG_ENABLED
+    return _debug_enabled
 
 
 def role_label(role_id: str) -> str:
@@ -34,7 +35,7 @@ def role_label(role_id: str) -> str:
 
 
 def log_debug(message: str) -> None:
-    if _DEBUG_ENABLED:
+    if _debug_enabled:
         close_model_stream()
         print(message)
     log_event(logger, logging.DEBUG, event='runtime.debug', message=message)
@@ -42,7 +43,7 @@ def log_debug(message: str) -> None:
 
 def log_model_output(role_id: str, message: str) -> None:
     close_model_stream()
-    if _DEBUG_ENABLED:
+    if _debug_enabled:
         print(f'[{role_label(role_id)}] {message}')
     log_event(
         logger,
@@ -53,10 +54,10 @@ def log_model_output(role_id: str, message: str) -> None:
     )
 
 
-def log_tool_call(role_id: str, tool_name: str, params: dict[str, object]) -> None:
+def log_tool_call(role_id: str, tool_name: str, params: JsonObject) -> None:
     close_model_stream()
     short = _safe_json(params)
-    if _DEBUG_ENABLED:
+    if _debug_enabled:
         print(f'[{role_label(role_id)}] tool call [{tool_name} {short}]')
     log_event(
         logger,
@@ -69,7 +70,7 @@ def log_tool_call(role_id: str, tool_name: str, params: dict[str, object]) -> No
 
 def log_tool_error(role_id: str, payload: str) -> None:
     close_model_stream()
-    if _DEBUG_ENABLED:
+    if _debug_enabled:
         print(f'[{role_label(role_id)}] tool error {payload}')
     log_event(
         logger,
@@ -81,20 +82,20 @@ def log_tool_error(role_id: str, payload: str) -> None:
 
 
 def log_model_stream_chunk(role_id: str, text: str) -> None:
-    global _OPEN_MODEL_STREAM_ROLE_ID
-    if _DEBUG_ENABLED:
-        if _OPEN_MODEL_STREAM_ROLE_ID != role_id:
+    global _open_model_stream_role_id
+    if _debug_enabled:
+        if _open_model_stream_role_id != role_id:
             close_model_stream()
             print(f'[{role_label(role_id)}] ', end='', flush=True)
-            _OPEN_MODEL_STREAM_ROLE_ID = role_id
+            _open_model_stream_role_id = role_id
         print(text, end='', flush=True)
 
 
 def close_model_stream() -> None:
-    global _OPEN_MODEL_STREAM_ROLE_ID
-    if _OPEN_MODEL_STREAM_ROLE_ID is not None:
+    global _open_model_stream_role_id
+    if _open_model_stream_role_id is not None:
         print()
-        _OPEN_MODEL_STREAM_ROLE_ID = None
+        _open_model_stream_role_id = None
 
 
 def _safe_json(value: object) -> str:

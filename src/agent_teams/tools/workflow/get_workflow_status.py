@@ -12,7 +12,7 @@ from agent_teams.workflow.runtime_graph import load_graph
 
 def register(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    async def get_workflow_status(ctx: ToolContext, workflow_id: str) -> dict[str, object]:
+    async def get_workflow_status(ctx: ToolContext, workflow_id: str) -> JsonObject:
         def _action() -> dict[str, object]:
             graph = load_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id)
             if graph is None:

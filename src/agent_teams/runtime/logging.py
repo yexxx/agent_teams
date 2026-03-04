@@ -103,7 +103,7 @@ def log_event(
     message: str,
     payload: JsonObject | None = None,
     duration_ms: int | None = None,
-    exc_info: tuple[type[BaseException], BaseException, object] | tuple[None, None, None] | None = None,
+    exc_info: logging._ExcInfoType = None,
 ) -> None:
     logger.log(
         level,

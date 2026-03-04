@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TypeAlias
 
-JsonPrimitive: TypeAlias = str | int | float | bool | None
-JsonValue: TypeAlias = JsonPrimitive | dict[str, 'JsonValue'] | list['JsonValue']
-JsonObject: TypeAlias = dict[str, JsonValue]
-JsonArray: TypeAlias = list[JsonValue]
+type JsonPrimitive = str | int | float | bool | None
+type JsonValue = JsonPrimitive | dict[str, JsonValue] | list[JsonValue]
+type JsonObject = dict[str, JsonValue]
+type JsonArray = list[JsonValue]
 
-ReadonlyJsonObject: TypeAlias = Mapping[str, JsonValue]
-ReadonlyJsonArray: TypeAlias = Sequence[JsonValue]
+type ReadonlyJsonObject = Mapping[str, JsonValue]
+type ReadonlyJsonArray = Sequence[JsonValue]

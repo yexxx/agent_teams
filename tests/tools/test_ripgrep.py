@@ -1,29 +1,24 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestRipgrepFilepath:
-    """测试 ripgrep 二进制路径解析"""
-
-    def test_platform_detection(self):
-        """测试平台检测"""
+    def test_platform_detection(self) -> None:
         from agent_teams.tools import ripgrep
 
         key = ripgrep._get_platform_key()
-
         assert key in ripgrep.PLATFORM_MAP
 
     @pytest.mark.asyncio
-    async def test_local_cache(self, tmp_path):
-        """本地缓存存在时使用缓存"""
+    async def test_local_cache(self, tmp_path: Path) -> None:
         cache_dir = tmp_path / "bin"
         cache_dir.mkdir()
 
-        # Windows 使用 .exe
         rg_name = "rg.exe" if os.name == "nt" else "rg"
         rg = cache_dir / rg_name
         rg.write_bytes(b"fake")
@@ -32,14 +27,12 @@ class TestRipgrepFilepath:
             with patch("agent_teams.tools.ripgrep.BIN_DIR", cache_dir):
                 from agent_teams.tools import ripgrep
 
-                ripgrep.get_rg_path.cache_clear()
+                ripgrep.clear_rg_path_cache()
                 path = await ripgrep.get_rg_path()
-
                 assert path == rg
 
     @pytest.mark.asyncio
-    async def test_get_rg_path_can_be_awaited_multiple_times(self, tmp_path):
-        """同一进程内多次 await 不应复用已完成 coroutine"""
+    async def test_get_rg_path_can_be_awaited_multiple_times(self, tmp_path: Path) -> None:
         cache_dir = tmp_path / "bin"
         cache_dir.mkdir()
 
@@ -51,7 +44,7 @@ class TestRipgrepFilepath:
             with patch("agent_teams.tools.ripgrep.BIN_DIR", cache_dir):
                 from agent_teams.tools import ripgrep
 
-                ripgrep.get_rg_path.cache_clear()
+                ripgrep.clear_rg_path_cache()
                 first = await ripgrep.get_rg_path()
                 second = await ripgrep.get_rg_path()
 
@@ -60,11 +53,8 @@ class TestRipgrepFilepath:
 
 
 class TestRipgrepDownload:
-    """测试 ripgrep 下载流程"""
-
     @pytest.mark.asyncio
-    async def test_download_enables_redirect_following(self, tmp_path):
-        """下载时应跟随 GitHub 302 重定向"""
+    async def test_download_enables_redirect_following(self, tmp_path: Path) -> None:
         from agent_teams.tools import ripgrep
 
         target = tmp_path / "rg.exe"
@@ -91,8 +81,7 @@ class TestRipgrepDownload:
         mock_extract_zip.assert_called_once_with(b"fake-zip", target)
 
     @pytest.mark.asyncio
-    async def test_download_non_200_raises(self, tmp_path):
-        """下载状态非 200 时抛出异常"""
+    async def test_download_non_200_raises(self, tmp_path: Path) -> None:
         from agent_teams.tools import ripgrep
         from agent_teams.tools.ripgrep_errors import DownloadFailedError
 
@@ -116,16 +105,11 @@ class TestRipgrepDownload:
 
 
 class TestGrepSearch:
-    """测试 grep 搜索功能 - 直接测试底层逻辑"""
-
-    def test_grep_result_parsing(self):
-        """测试 grep 输出解析 (使用 | 分隔符)"""
+    def test_grep_result_parsing(self) -> None:
         from agent_teams.tools.ripgrep_types import GrepMatch
 
-        # 模拟 ripgrep 输出格式 (使用 --field-match-separator=|)
         stdout = "file1.py|1|def foo\nfile2.py|5|def bar\n"
-
-        matches = []
+        matches: list[GrepMatch] = []
         for line in stdout.strip().splitlines():
             if not line:
                 continue
@@ -145,9 +129,8 @@ class TestGrepSearch:
         assert matches[0].line_num == 1
         assert matches[0].line_text == "def foo"
 
-    def test_grep_args_case_sensitive(self):
-        """测试大小写敏感参数"""
-        args = []
+    def test_grep_args_case_sensitive(self) -> None:
+        args: list[str] = []
         pattern = "test"
         case_sensitive = True
 
@@ -159,10 +142,8 @@ class TestGrepSearch:
 
         assert "-i" not in args
 
-        # 测试不敏感
         args = []
         case_sensitive = False
-
         args.extend(["-nH"])
         if not case_sensitive:
             args.append("-i")
@@ -171,9 +152,8 @@ class TestGrepSearch:
 
         assert "-i" in args
 
-    def test_grep_args_with_glob(self):
-        """测试带 glob 参数"""
-        args = []
+    def test_grep_args_with_glob(self) -> None:
+        args: list[str] = []
         pattern = "test"
         glob = "*.py"
 
@@ -186,9 +166,7 @@ class TestGrepSearch:
         assert "--glob" in args
         assert "*.py" in args
 
-    def test_grep_limit(self):
-        """测试结果限制"""
-        # 模拟 200 条结果
+    def test_grep_limit(self) -> None:
         matches = list(range(200))
         limit = 100
 
@@ -200,14 +178,10 @@ class TestGrepSearch:
 
 
 class TestEnumerateFiles:
-    """测试文件枚举功能"""
-
-    def test_enumerate_args(self):
-        """测试枚举参数构建"""
+    def test_enumerate_args(self) -> None:
         pattern = "*.py"
         hidden = True
         follow = False
-        limit = 100
 
         args = ["--files", "--glob=!.git/*"]
         if hidden:
@@ -221,8 +195,7 @@ class TestEnumerateFiles:
         assert "--glob" in args
         assert "*.py" in args
 
-    def test_enumerate_truncation(self):
-        """测试截断逻辑"""
+    def test_enumerate_truncation(self) -> None:
         files = list(range(200))
         limit = 100
 
@@ -234,17 +207,13 @@ class TestEnumerateFiles:
 
 
 class TestGrepResultFormat:
-    """测试结果格式化"""
-
-    def test_format_empty(self):
-        """空结果格式化"""
+    def test_format_empty(self) -> None:
         from agent_teams.tools.ripgrep_types import GrepResult
 
         result = GrepResult(matches=[], truncated=False, total=0)
         assert result.format() == "No matches found"
 
-    def test_format_with_matches(self):
-        """有结果格式化"""
+    def test_format_with_matches(self) -> None:
         from agent_teams.tools.ripgrep_types import GrepMatch, GrepResult
 
         matches = [
@@ -258,8 +227,7 @@ class TestGrepResultFormat:
         assert "file1.py:" in formatted
         assert "Line 1: def foo" in formatted
 
-    def test_format_truncated(self):
-        """截断结果格式化"""
+    def test_format_truncated(self) -> None:
         from agent_teams.tools.ripgrep_types import GrepMatch, GrepResult
 
         matches = [
@@ -271,8 +239,7 @@ class TestGrepResultFormat:
         formatted = result.format()
         assert "Results truncated" in formatted
 
-    def test_format_multiple_files(self):
-        """多文件格式化"""
+    def test_format_multiple_files(self) -> None:
         from agent_teams.tools.ripgrep_types import GrepMatch, GrepResult
 
         matches = [
@@ -288,10 +255,8 @@ class TestGrepResultFormat:
 
 
 class TestRipgrepSubprocessEncoding:
-    """测试子进程输出解码参数"""
-
     @pytest.mark.asyncio
-    async def test_grep_search_uses_utf8_replace(self):
+    async def test_grep_search_uses_utf8_replace(self) -> None:
         from agent_teams.tools import ripgrep
 
         mock_result = MagicMock(stdout="", returncode=0)
@@ -305,7 +270,7 @@ class TestRipgrepSubprocessEncoding:
         assert kwargs["errors"] == "replace"
 
     @pytest.mark.asyncio
-    async def test_enumerate_files_uses_utf8_replace(self):
+    async def test_enumerate_files_uses_utf8_replace(self) -> None:
         from agent_teams.tools import ripgrep
 
         proc = MagicMock()

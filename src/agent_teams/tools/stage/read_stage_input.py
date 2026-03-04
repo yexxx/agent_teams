@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic_ai import Agent
 
+from agent_teams.core.types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.stage.docs import previous_stage_doc_path
 from agent_teams.tools.tool_helpers import execute_tool
@@ -9,7 +10,7 @@ from agent_teams.tools.tool_helpers import execute_tool
 
 def register(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
-    async def read_stage_input(ctx: ToolContext) -> dict[str, object]:
+    async def read_stage_input(ctx: ToolContext) -> JsonObject:
         def _action() -> str:
             if ctx.deps.role_id == 'spec_spec':
                 task = ctx.deps.task_repo.get(ctx.deps.task_id)
@@ -38,4 +39,3 @@ def register(agent: Agent[ToolDeps, str]) -> None:
             args_summary={'role_id': ctx.deps.role_id},
             action=_action,
         )
-

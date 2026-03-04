@@ -81,7 +81,9 @@ class GateManager:
         triggered = entry.event.wait(timeout=timeout)
         if not triggered:
             raise TimeoutError(f'Gate timed out after {timeout}s: run={run_id} task={task_id}')
-        return entry.action, entry.feedback  # type: ignore[return-value]
+        if entry.action is None:
+            raise RuntimeError(f'Gate resolved without action: run={run_id} task={task_id}')
+        return entry.action, entry.feedback
 
     def close_gate(self, run_id: str, task_id: str) -> None:
         """Remove a gate entry after it has been resolved."""
@@ -89,11 +91,11 @@ class GateManager:
             run_gates = self._gates.get(run_id, {})
             run_gates.pop(task_id, None)
 
-    def list_open_gates(self, run_id: str) -> list[dict]:
+    def list_open_gates(self, run_id: str) -> list[dict[str, str]]:
         """Return metadata about currently open gates for a run (for API use)."""
         with self._lock:
             entries = dict(self._gates.get(run_id, {}))
-        result = []
+        result: list[dict[str, str]] = []
         for task_id, entry in entries.items():
             if not entry.event.is_set():
                 result.append({

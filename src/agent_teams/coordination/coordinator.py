@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from json import dumps
-from typing import Callable
+from typing import Callable, Literal
 
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.core.enums import EventType, ExecutionMode, InstanceStatus, RunEventType, TaskStatus
@@ -42,16 +42,23 @@ class CoordinatorGraph:
     gate_manager: GateManager = field(default_factory=GateManager)
     run_event_hub: RunEventHub | None = None
 
-    async def run(self, intent: IntentInput, trace_id: str | None = None) -> tuple[str, str, str, str]:
+    async def run(
+        self,
+        intent: IntentInput,
+        trace_id: str | None = None,
+    ) -> tuple[str, str, Literal['completed', 'failed'], str]:
         trace_id = trace_id or new_trace_id().value
+        session_id = intent.session_id
+        if session_id is None:
+            raise ValueError('IntentInput.session_id is required before coordinator run')
         log_debug(
             f'[coord:start] run={trace_id} mode={intent.execution_mode.value} '
-            f'session={intent.session_id} intent={intent.intent[:120]}'
+            f'session={session_id} intent={intent.intent[:120]}'
         )
 
         root_task = TaskEnvelope(
             task_id=new_task_id().value,
-            session_id=intent.session_id,
+            session_id=session_id,
             parent_task_id=None,
             trace_id=trace_id,
             objective=intent.intent,
@@ -62,7 +69,7 @@ class CoordinatorGraph:
             EventEnvelope(
                 event_type=EventType.TASK_CREATED,
                 trace_id=trace_id,
-                session_id=intent.session_id,
+                session_id=session_id,
                 task_id=root_task.task_id,
                 payload_json='{}',
             )
@@ -73,7 +80,7 @@ class CoordinatorGraph:
             result = self._initialize_manual_mode(intent=intent, trace_id=trace_id, root_task=root_task)
         elif mode == ExecutionMode.AI:
             coordinator_instance_id = self._ensure_coordinator_instance(
-                session_id=intent.session_id,
+                session_id=session_id,
                 trace_id=trace_id,
                 root_task=root_task,
             )
@@ -86,7 +93,7 @@ class CoordinatorGraph:
             raise ValueError(f'Unknown execution mode: {mode}')
 
         verification = verify_task(self.task_repo, self.event_bus, root_task.task_id)
-        status = 'completed' if verification.passed else 'failed'
+        status: Literal['completed', 'failed'] = 'completed' if verification.passed else 'failed'
         log_debug(f'[coord:finish] run={trace_id} mode={mode.value} status={status} root_task={root_task.task_id}')
         return trace_id, root_task.task_id, status, result
 
@@ -95,18 +102,19 @@ class CoordinatorGraph:
             'Manual orchestration initialized. Use workflow APIs or tools to create a workflow and '
             'drive dispatch_tasks(action="revise"|"next").'
         )
+        session_id = root_task.session_id
         self.task_repo.update_status(root_task.task_id, TaskStatus.COMPLETED, result=result)
         self.event_bus.emit(
             EventEnvelope(
                 event_type=EventType.TASK_COMPLETED,
                 trace_id=trace_id,
-                session_id=intent.session_id,
+                session_id=session_id,
                 task_id=root_task.task_id,
                 payload_json='{}',
             )
         )
         self._publish_run_event(
-            session_id=intent.session_id,
+            session_id=session_id,
             run_id=trace_id,
             trace_id=trace_id,
             task_id=root_task.task_id,

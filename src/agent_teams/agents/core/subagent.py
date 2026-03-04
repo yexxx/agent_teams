@@ -1,17 +1,29 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import cast
 
 from agent_teams.core.models import RoleDefinition, TaskEnvelope
 from agent_teams.prompting.runtime_prompt_builder import PromptBuildInput, RuntimePromptBuilder
-from agent_teams.providers.llm import LLMProvider, LLMRequest
 
+
+@dataclass(frozen=True)
+class SubAgentRequest:
+    run_id: str
+    trace_id: str
+    task_id: str
+    session_id: str
+    instance_id: str
+    role_id: str
+    system_prompt: str
+    user_prompt: str
 
 @dataclass
 class SubAgentRunner:
     role: RoleDefinition
     prompt_builder: RuntimePromptBuilder
-    provider: LLMProvider
+    provider: object
 
     async def run(
         self,
@@ -26,8 +38,9 @@ class SubAgentRunner:
                 shared_state_snapshot=shared_state_snapshot,
             )
         )
-        return await self.provider.generate(
-            LLMRequest(
+        generate = cast(Callable[[object], Awaitable[str]], getattr(self.provider, "generate"))
+        return await generate(
+            SubAgentRequest(
                 run_id=task.trace_id,
                 trace_id=task.trace_id,
                 task_id=task.task_id,

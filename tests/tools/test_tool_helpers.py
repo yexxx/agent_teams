@@ -1,7 +1,10 @@
 import asyncio
 from dataclasses import dataclass
+from typing import cast
 
 from agent_teams.core.enums import RunEventType
+from agent_teams.core.types import JsonObject
+from agent_teams.tools.runtime import ToolContext
 from agent_teams.tools.tool_helpers import execute_tool
 
 
@@ -80,17 +83,18 @@ def test_execute_tool_returns_standard_envelope() -> None:
     ctx = _FakeCtx(deps)
     result = asyncio.run(
         execute_tool(
-            ctx,
+            cast(ToolContext, cast(object, ctx)),
             tool_name='read',
             args_summary={'path': 'README.md'},
             action=lambda: 'hello',
         )
     )
+    meta = cast(JsonObject, result['meta'])
     assert result['ok'] is True
     assert result['tool'] == 'read'
     assert result['data'] == 'hello'
     assert result['error'] is None
-    assert result['meta']['approval_required'] is False
+    assert meta['approval_required'] is False
 
 
 def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
@@ -101,16 +105,18 @@ def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
     ctx = _FakeCtx(deps)
     result = asyncio.run(
         execute_tool(
-            ctx,
+            cast(ToolContext, cast(object, ctx)),
             tool_name='write',
             args_summary={'path': 'a.txt'},
             action=lambda: 'should_not_run',
         )
     )
+    error = cast(JsonObject, result['error'])
+    meta = cast(JsonObject, result['meta'])
     assert result['ok'] is False
-    assert result['error']['type'] == 'approval_denied'
-    assert result['meta']['approval_required'] is True
-    assert result['meta']['approval_status'] == 'deny'
+    assert error['type'] == 'approval_denied'
+    assert meta['approval_required'] is True
+    assert meta['approval_status'] == 'deny'
     assert any(e.event_type == RunEventType.TOOL_APPROVAL_REQUESTED for e in deps.run_event_hub.events)
     assert any(e.event_type == RunEventType.TOOL_APPROVAL_RESOLVED for e in deps.run_event_hub.events)
 
@@ -123,15 +129,17 @@ def test_execute_tool_returns_timeout_error_when_approval_times_out() -> None:
     ctx = _FakeCtx(deps)
     result = asyncio.run(
         execute_tool(
-            ctx,
+            cast(ToolContext, cast(object, ctx)),
             tool_name='shell',
             args_summary={'command': 'echo hi'},
             action=lambda: 'should_not_run',
         )
     )
+    error = cast(JsonObject, result['error'])
+    meta = cast(JsonObject, result['meta'])
     assert result['ok'] is False
-    assert result['error']['type'] == 'approval_timeout'
-    assert result['meta']['approval_status'] == 'timeout'
+    assert error['type'] == 'approval_timeout'
+    assert meta['approval_status'] == 'timeout'
 
 
 def test_execute_tool_approval_uses_model_tool_call_id_when_present() -> None:
@@ -144,7 +152,7 @@ def test_execute_tool_approval_uses_model_tool_call_id_when_present() -> None:
     ctx.tool_call_id = 'call-model-123'
     result = asyncio.run(
         execute_tool(
-            ctx,
+            cast(ToolContext, cast(object, ctx)),
             tool_name='write',
             args_summary={'path': 'a.txt'},
             action=lambda: 'ok',

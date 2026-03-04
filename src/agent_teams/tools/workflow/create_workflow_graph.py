@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 
 from agent_teams.core.models import TaskEnvelope, VerificationPlan
+from agent_teams.core.types import JsonObject
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
@@ -31,7 +32,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         objective: str,
         workflow_type: WorkflowType = 'custom',
         tasks: list[TaskSpecModel] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         def _action() -> dict[str, object]:
             parsed_tasks = tasks
             existing = load_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id)

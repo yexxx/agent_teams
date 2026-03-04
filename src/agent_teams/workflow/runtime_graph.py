@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from agent_teams.core.enums import ScopeType, TaskStatus
 from agent_teams.core.models import ScopeRef, StateMutation, TaskRecord
 from agent_teams.state.shared_store import SharedStore
 
 WORKFLOW_GRAPH_KEY = 'workflow_graph'
+
+OrchestratorType = Literal['ai', 'human']
+PlanningMode = Literal['sop', 'freeform']
+ReviewState = Literal['review', 'replan', 'finish']
 
 
 def workflow_scope(task_id: str) -> ScopeRef:
@@ -31,6 +36,68 @@ def save_graph(store: SharedStore, *, task_id: str, graph: dict[str, object]) ->
             value_json=json.dumps(graph, ensure_ascii=False),
         )
     )
+
+
+def normalize_strategy(graph: dict[str, object]) -> dict[str, str]:
+    orchestrator_raw = graph.get('orchestrator')
+    planning_mode_raw = graph.get('planning_mode')
+    review_state_raw = graph.get('review_state')
+
+    orchestrator: OrchestratorType = 'human' if orchestrator_raw == 'human' else 'ai'
+    planning_mode: PlanningMode = 'freeform' if planning_mode_raw == 'freeform' else 'sop'
+    review_state: ReviewState = (
+        review_state_raw
+        if review_state_raw in ('review', 'replan', 'finish')
+        else 'review'
+    )
+    return {
+        'orchestrator': orchestrator,
+        'planning_mode': planning_mode,
+        'review_state': review_state,
+    }
+
+
+def decide_review_action(
+    *,
+    graph: dict[str, object],
+    task_records: dict[str, TaskRecord],
+) -> str:
+    strategy = normalize_strategy(graph)
+    review_state = strategy['review_state']
+    if review_state in ('replan', 'finish'):
+        return review_state
+
+    tasks = get_tasks_from_graph(graph)
+    if not tasks:
+        return 'replan'
+
+    total = 0
+    completed = 0
+    failed = 0
+    active = 0
+
+    for task_info in tasks.values():
+        task_id_raw = task_info.get('task_id')
+        if not isinstance(task_id_raw, str) or not task_id_raw:
+            continue
+        total += 1
+        record = task_records.get(task_id_raw)
+        if record is None:
+            continue
+        if record.status == TaskStatus.COMPLETED:
+            completed += 1
+        elif record.status in (TaskStatus.FAILED, TaskStatus.TIMEOUT):
+            failed += 1
+        elif record.status in (TaskStatus.RUNNING, TaskStatus.ASSIGNED, TaskStatus.CREATED):
+            active += 1
+
+    if failed > 0:
+        return 'replan'
+    if total > 0 and completed == total:
+        return 'finish'
+    if active > 0:
+        return 'review'
+    return 'replan'
 
 
 def node_ready(*, node_depends_on: tuple[str, ...], task_map: dict[str, TaskRecord]) -> bool:

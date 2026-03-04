@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from json import dumps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic_ai._agent_graph import ModelRequestNode
 from pydantic_ai.messages import (
@@ -334,7 +334,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 return ''.join(texts)
         return str(response)
 
-    def _to_json(self, obj: Any) -> str:
+    def _to_json(self, obj: object) -> str:
         import json
         try:
             return json.dumps(obj, ensure_ascii=False, default=str)

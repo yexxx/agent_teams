@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Generator
+from collections.abc import Generator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from agent_teams.core.types import JsonObject
 
 
 @dataclass(frozen=True)
@@ -26,12 +28,12 @@ class AgentTeamsClient:
         self._timeout_seconds = timeout_seconds
         self._stream_timeout_seconds = stream_timeout_seconds
 
-    def health(self) -> dict[str, Any]:
+    def health(self) -> JsonObject:
         return self._request_json("GET", "/api/system/health")
 
     def create_session(
         self, session_id: str | None = None, metadata: dict[str, str] | None = None
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         return self._request_json(
             "POST",
             "/api/sessions",
@@ -54,7 +56,7 @@ class AgentTeamsClient:
         data = self._request_json("POST", "/api/runs", payload)
         return RunHandle(run_id=data["run_id"], session_id=data["session_id"])
 
-    def stream_run_events(self, run_id: str) -> Generator[dict[str, Any], None, None]:
+    def stream_run_events(self, run_id: str) -> Generator[JsonObject, None, None]:
         url = f"{self._base_url}/api/runs/{run_id}/events"
         request = Request(url=url, method="GET", headers={"Accept": "text/event-stream"})
 
@@ -74,14 +76,14 @@ class AgentTeamsClient:
         except URLError as exc:
             raise RuntimeError(f"Failed to connect to server: {exc}") from exc
 
-    def resolve_gate(self, run_id: str, task_id: str, action: str, feedback: str = "") -> dict[str, Any]:
+    def resolve_gate(self, run_id: str, task_id: str, action: str, feedback: str = "") -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/gates/{task_id}/resolve",
             {"action": action, "feedback": feedback},
         )
 
-    def list_tool_approvals(self, run_id: str) -> list[dict[str, Any]]:
+    def list_tool_approvals(self, run_id: str) -> list[JsonObject]:
         data = self._request_json("GET", f"/api/runs/{run_id}/tool-approvals")
         if isinstance(data, list):
             return data
@@ -92,35 +94,35 @@ class AgentTeamsClient:
 
     def resolve_tool_approval(
         self, run_id: str, tool_call_id: str, action: str, feedback: str = ""
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/tool-approvals/{tool_call_id}/resolve",
             {"action": action, "feedback": feedback},
         )
 
-    def dispatch_task(self, run_id: str, task_id: str, session_id: str) -> dict[str, Any]:
+    def dispatch_task(self, run_id: str, task_id: str, session_id: str) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/dispatch",
             {"task_id": task_id, "session_id": session_id},
         )
 
-    def inject_message(self, run_id: str, content: str) -> dict[str, Any]:
+    def inject_message(self, run_id: str, content: str) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/inject",
             {"content": content},
         )
 
-    def stop_run(self, run_id: str) -> dict[str, Any]:
+    def stop_run(self, run_id: str) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/stop",
             {"scope": "main"},
         )
 
-    def stop_subagent(self, run_id: str, instance_id: str) -> dict[str, Any]:
+    def stop_subagent(self, run_id: str, instance_id: str) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/stop",
@@ -132,7 +134,7 @@ class AgentTeamsClient:
         run_id: str,
         instance_id: str,
         content: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         return self._request_json(
             "POST",
             f"/api/runs/{run_id}/subagents/{instance_id}/inject",
@@ -143,8 +145,8 @@ class AgentTeamsClient:
         self,
         method: str,
         path: str,
-        payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        payload: JsonObject | None = None,
+    ) -> JsonObject:
         request_body = None
         headers: dict[str, str] = {"Accept": "application/json"}
         if payload is not None:

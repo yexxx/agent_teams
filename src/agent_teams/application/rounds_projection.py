@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Callable
 
 from agent_teams.core.enums import RunEventType, ScopeType
+from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.core.models import ScopeRef
 
 
 def collect_pending_tool_approvals(
-    parsed_events: list[tuple[dict, dict[str, Any]]],
+    parsed_events: list[tuple[dict, JsonObject]],
 ) -> dict[str, list[dict[str, str]]]:
-    by_run_call: dict[str, dict[str, dict[str, Any]]] = {}
+    by_run_call: dict[str, dict[str, JsonObject]] = {}
 
     for ev, payload in parsed_events:
         run_id = ev["trace_id"]
@@ -83,10 +84,10 @@ def collect_pending_tool_approvals(
 
 
 def collect_pending_stream_snapshots(
-    parsed_events: list[tuple[dict, dict[str, Any]]],
-    session_messages: list[dict[str, Any]],
+    parsed_events: list[tuple[dict, JsonObject]],
+    session_messages: list[JsonObject],
     by_run_instance_role: dict[str, dict[str, str]],
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, JsonObject]:
     persisted_by_run_actor: dict[str, dict[str, str]] = {}
     for msg in session_messages:
         if str(msg.get("role") or "") == "user":
@@ -171,7 +172,7 @@ def collect_pending_stream_snapshots(
             for key in stale_keys:
                 active_steps.pop(key, None)
 
-    snapshots: dict[str, dict[str, Any]] = {}
+    snapshots: dict[str, JsonObject] = {}
     for state in active_steps.values():
         run_id = str(state.get("run_id") or "")
         if not run_id:
@@ -218,7 +219,7 @@ def collect_pending_stream_snapshots(
     return snapshots
 
 
-def _extract_text_from_message(message: Any) -> str:
+def _extract_text_from_message(message: JsonValue) -> str:
     if not isinstance(message, dict):
         return ""
     parts = message.get("parts")
@@ -280,7 +281,7 @@ def build_session_rounds(
     get_session_messages: Callable[[str], list[dict]],
 ) -> list[dict]:
     events = event_log.list_by_session(session_id)
-    parsed_events: list[tuple[dict, dict[str, Any]]] = []
+    parsed_events: list[tuple[dict, JsonObject]] = []
     for ev in events:
         try:
             payload = json.loads(ev["payload_json"])

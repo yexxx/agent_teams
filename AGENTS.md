@@ -17,7 +17,7 @@ Database schema and API changes do not need to maintain backward compatibility; 
 - Tests: `tests/` (mirrors `src/agent_teams/` structure)
 
 ## Dev Commands
-- Install deps: `uv sync`
+- Install deps: `uv sync --extra dev`（至少在运行测试前使用该命令，确保 pytest/pytest-asyncio 已安装）
 - Start server: `uv run agent-teams serve`
 - CLI prompt: `uv run agent-teams prompt -m "hello"`
 - Validate roles: `uv run agent-teams roles-validate`
@@ -28,7 +28,7 @@ Database schema and API changes do not need to maintain backward compatibility; 
 - Prefer Pydantic models/enums over loose dicts.
 - `from __future__ import annotations` in Python modules.
 - Imports order: stdlib / third-party / local.
-- Avoid `Any` in core flow unless absolutely necessary.
+- 禁止在项目代码中使用 `typing.Any`（包括参数、返回值、字段、局部变量）；必须使用强类型（如 Pydantic 模型、具体类、`JsonValue/JsonObject` 等）。
 - Logging via runtime logger; avoid `print()` in production paths.
 
 ## API & Data Contracts

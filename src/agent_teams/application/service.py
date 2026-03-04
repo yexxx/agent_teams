@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 import uuid
 
 from agent_teams.core.config import load_runtime_config
+from agent_teams.core.types import JsonObject
 from agent_teams.core.enums import InjectionSource
 from agent_teams.core.models import (
     InjectionMessage,
@@ -338,16 +338,16 @@ class AgentTeamsService:
 
     @staticmethod
     def _collect_pending_tool_approvals(
-        parsed_events: list[tuple[dict, dict[str, Any]]],
+        parsed_events: list[tuple[dict, JsonObject]],
     ) -> dict[str, list[dict[str, str]]]:
         return collect_pending_tool_approvals(parsed_events)
 
     @staticmethod
     def _collect_pending_stream_snapshots(
-        parsed_events: list[tuple[dict, dict[str, Any]]],
-        session_messages: list[dict[str, Any]],
+        parsed_events: list[tuple[dict, JsonObject]],
+        session_messages: list[JsonObject],
         by_run_instance_role: dict[str, dict[str, str]],
-    ) -> dict[str, dict[str, Any]]:
+    ) -> dict[str, JsonObject]:
         return collect_pending_stream_snapshots(
             parsed_events,
             session_messages,

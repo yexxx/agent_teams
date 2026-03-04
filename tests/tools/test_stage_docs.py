@@ -9,24 +9,24 @@ def test_stage_doc_paths() -> None:
     root = Path('D:/workspace/agent_teams')
     run_id = 'run123'
 
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_spec')).endswith(
-        '.agent_teams/stage_docs/run123/spec.md'.replace('/', '\\')
+    assert current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_spec') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'spec.md'
     )
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design')).endswith(
-        '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
+    assert current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'design.md'
     )
-    assert str(current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify')).endswith(
-        '.agent_teams/stage_docs/run123/verify.md'.replace('/', '\\')
+    assert current_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'verify.md'
     )
 
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design')).endswith(
-        '.agent_teams/stage_docs/run123/spec.md'.replace('/', '\\')
+    assert previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_design') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'spec.md'
     )
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_coder')).endswith(
-        '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
+    assert previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_coder') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'design.md'
     )
-    assert str(previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify')).endswith(
-        '.agent_teams/stage_docs/run123/design.md'.replace('/', '\\')
+    assert previous_stage_doc_path(workspace_root=root, run_id=run_id, role_id='spec_verify') == (
+        root / '.agent_teams' / 'stage_docs' / run_id / 'design.md'
     )
 
 

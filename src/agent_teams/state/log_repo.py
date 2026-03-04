@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
 
+from agent_teams.core.types import JsonObject
 from agent_teams.state.db import open_sqlite
 
 
@@ -46,7 +46,7 @@ class LogRepository:
         self._conn.execute('CREATE INDEX IF NOT EXISTS idx_system_logs_request ON system_logs(request_id)')
         self._conn.commit()
 
-    def append_many(self, rows: list[dict[str, Any]]) -> None:
+    def append_many(self, rows: list[JsonObject]) -> None:
         if not rows:
             return
         values: list[tuple[object, ...]] = []

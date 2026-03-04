@@ -7,8 +7,8 @@ import traceback
 from datetime import UTC, datetime
 
 from pathlib import Path
-from typing import Any
 
+from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.runtime.log_persistence import PersistentLogHandler
 from agent_teams.runtime.trace import get_trace_context
 
@@ -17,7 +17,7 @@ SERVICE_NAME = 'agent_teams'
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, Any] = {
+        payload: JsonObject = {
             'ts': datetime.now(UTC).isoformat(),
             'level': record.levelname,
             'service': SERVICE_NAME,
@@ -101,9 +101,9 @@ def log_event(
     *,
     event: str,
     message: str,
-    payload: dict[str, Any] | None = None,
+    payload: JsonObject | None = None,
     duration_ms: int | None = None,
-    exc_info: Any = None,
+    exc_info: tuple[type[BaseException], BaseException, object] | tuple[None, None, None] | None = None,
 ) -> None:
     logger.log(
         level,
@@ -117,7 +117,7 @@ def log_event(
     )
 
 
-def sanitize_payload(payload: Any) -> Any:
+def sanitize_payload(payload: JsonValue) -> JsonValue:
     if isinstance(payload, dict):
         return {str(k): sanitize_payload(v) for k, v in payload.items()}
     if isinstance(payload, list):

@@ -83,6 +83,7 @@
 - `POST /system/configs/model:reload`
 - `POST /system/configs/mcp:reload`
 - `POST /system/configs/skills:reload`
+- `POST /system/configs/model:probe`
 
 ### 4.2 Sessions
 
@@ -111,6 +112,8 @@
 - `GET /runs/{run_id}/tool-approvals`
 - `POST /runs/{run_id}/tool-approvals/{tool_call_id}/resolve`
 - `POST /runs/{run_id}/dispatch`
+- `POST /runs/{run_id}:resume`
+- `POST /runs/{run_id}/subagents/{instance_id}:resume`
 
 ### 4.4 Tasks
 
@@ -194,6 +197,7 @@ data: {"event_type":"run_stopped","payload_json":"{\"reason\":\"stopped_by_user\
 
 - 第一个订阅者会触发该 run 执行。
 - `run_completed` 或 `run_failed` 后流结束。
+- 网络波动重试相关事件包含：`model_retry_scheduled`、`model_retry_attempt`、`model_retry_exhausted`、`run_paused`、`run_resumed`。
 
 ### 5.4 运行中注入消息
 

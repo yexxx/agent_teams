@@ -10,7 +10,7 @@ from agent_teams.core.models import TaskEnvelope, VerificationPlan
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
-from agent_teams.workflow.runtime_graph import load_graph, normalize_strategy, save_graph
+from agent_teams.workflow.runtime_graph import load_graph, save_graph
 
 
 class TaskSpecModel(BaseModel):
@@ -22,8 +22,6 @@ class TaskSpecModel(BaseModel):
 
 
 WorkflowType = Literal['spec_flow', 'custom']
-OrchestratorType = Literal['ai', 'human']
-PlanningMode = Literal['sop', 'freeform']
 
 
 def register(agent: Agent[ToolDeps, str]) -> None:
@@ -33,8 +31,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         objective: str,
         workflow_type: WorkflowType = 'custom',
         tasks: list[TaskSpecModel] | None = None,
-        orchestrator: OrchestratorType = 'ai',
-        planning_mode: PlanningMode = 'sop',
     ) -> dict[str, object]:
         def _action() -> dict[str, object]:
             parsed_tasks = tasks
@@ -51,7 +47,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                     'workflow_id': existing.get('workflow_id'),
                     'workflow_type': existing.get('workflow_type'),
                     'existing_tasks': _format_tasks_for_response(existing),
-                    'strategy': normalize_strategy(existing),
                 }
 
             workflow_id = f'workflow_{uuid4().hex[:8]}'
@@ -89,9 +84,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 'objective': objective,
                 'trace_id': ctx.deps.trace_id,
                 'session_id': ctx.deps.session_id,
-                'orchestrator': orchestrator,
-                'planning_mode': planning_mode,
-                'review_state': 'review',
                 'tasks': {
                     spec.task_name: {
                         'task_id': name_to_task_id[spec.task_name],
@@ -126,11 +118,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 ),
                 'workflow_id': workflow_id,
                 'workflow_type': workflow_type,
-                'strategy': {
-                    'orchestrator': orchestrator,
-                    'planning_mode': planning_mode,
-                    'review_state': 'review',
-                },
                 'tasks': task_list,
                 'next_action': 'Call dispatch_ready_tasks with this workflow_id to start executing tasks.',
             }
@@ -140,8 +127,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
             tool_name='create_workflow_graph',
             args_summary={
                 'workflow_type': workflow_type,
-                'orchestrator': orchestrator,
-                'planning_mode': planning_mode,
                 'objective_len': len(objective),
                 'has_tasks': tasks is not None,
                 'task_count': 4 if workflow_type == 'spec_flow' else (len(tasks) if tasks else 0),

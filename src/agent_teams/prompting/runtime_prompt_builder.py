@@ -21,8 +21,6 @@ class RuntimePromptBuilder:
                 'RuntimeContract:\n'
                 '- A coordinator turn can call tools many times, but delegated tasks run after the turn ends.\n'
                 '- Do not claim task started/completed without get_workflow_status evidence.\n'
-                '- Select an explicit strategy: entry (AI/human) + planning mode (SOP/freeform).\n'
-                '- Every execution cycle must make a review decision: continue_dispatch / adjust_plan / finalize.\n'
                 '- Prefer workflow tools over raw task-by-task creation.\n\n'
             )
         return (

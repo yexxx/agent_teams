@@ -11,8 +11,6 @@ def test_coordinator_uses_workflow_tools_and_not_emit_event() -> None:
     assert 'create_workflow_graph' in tools
     assert 'dispatch_ready_tasks' in tools
     assert 'get_workflow_status' in tools
-    assert 'set_workflow_strategy' in tools
-    assert 'review_workflow_progress' in tools
     assert 'materialize_code_shards_from_design' not in tools
     assert 'manage_state' not in tools
     assert 'query_task' not in tools

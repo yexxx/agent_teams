@@ -20,8 +20,6 @@ def test_registry_contains_only_role_mounted_tools() -> None:
         'list_available_roles',
         'read',
         'read_stage_input',
-        'review_workflow_progress',
-        'set_workflow_strategy',
         'shell',
         'write',
         'write_stage_doc',

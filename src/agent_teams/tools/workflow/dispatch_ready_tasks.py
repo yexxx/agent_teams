@@ -6,7 +6,7 @@ from agent_teams.core.enums import InstanceStatus, TaskStatus
 from agent_teams.core.models import TaskRecord
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
-from agent_teams.workflow.runtime_graph import decide_review_action, get_ready_tasks, load_graph, normalize_strategy
+from agent_teams.workflow.runtime_graph import get_ready_tasks, load_graph
 
 
 def register(agent: Agent[ToolDeps, str]) -> None:
@@ -123,8 +123,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
             else:
                 converged_stage = 'no_progress'
 
-            review_action = decide_review_action(graph=graph, task_records=records)
-
             return {
                 'ok': True,
                 'workflow_id': workflow_id,
@@ -132,9 +130,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 'executed': executed,
                 'failed': failed,
                 'converged_stage': converged_stage,
-                'strategy': normalize_strategy(graph),
-                'review_action': review_action,
-                'next_action': _next_action(converged_stage, failed, review_action),
+                'next_action': _next_action(converged_stage, failed),
                 'remaining_budget': max(0, bounded_dispatch - len(dispatched)),
                 'progress': {'completed': completed_count, 'total': total_tasks},
             }
@@ -147,13 +143,9 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         )
 
 
-def _next_action(converged_stage: str, failed: list[dict[str, str]], review_action: str) -> str:
-    if review_action == 'finish':
-        return 'finalize'
+def _next_action(converged_stage: str, failed: list[dict[str, str]]) -> str:
     if failed:
         return 'review_failures'
-    if review_action == 'replan':
-        return 'adjust_plan'
     if converged_stage == 'all_completed':
         return 'finalize'
     if converged_stage == 'no_progress':

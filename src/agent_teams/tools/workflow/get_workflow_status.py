@@ -7,7 +7,7 @@ from agent_teams.core.types import JsonObject
 
 from agent_teams.tools.runtime import ToolContext, ToolDeps
 from agent_teams.tools.tool_helpers import execute_tool
-from agent_teams.workflow.runtime_graph import decide_review_action, load_graph, normalize_strategy
+from agent_teams.workflow.runtime_graph import load_graph
 
 
 def register(agent: Agent[ToolDeps, str]) -> None:
@@ -58,8 +58,6 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 'workflow_id': workflow_id,
                 'workflow_type': graph.get('workflow_type'),
                 'objective': graph.get('objective'),
-                'strategy': normalize_strategy(graph),
-                'review_action': decide_review_action(graph=graph, task_records=records),
                 'task_status': task_status,
             }
 

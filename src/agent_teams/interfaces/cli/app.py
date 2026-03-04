@@ -162,7 +162,6 @@ def prompt(
     session_id: str | None = typer.Option(None, "--session-id"),
     base_url: str = typer.Option(DEFAULT_BASE_URL, "--base-url"),
     execution_mode: str = typer.Option("ai", "--mode"),
-    confirmation_gate: bool = typer.Option(False, "--confirmation-gate"),
     autostart: bool = typer.Option(True, "--autostart/--no-autostart"),
     debug: bool = typer.Option(False, "--debug"),
 ) -> None:
@@ -180,7 +179,6 @@ def prompt(
             "session_id": session_id,
             "intent": message,
             "execution_mode": execution_mode,
-            "confirmation_gate": confirmation_gate,
         },
     )
     run_id = run["run_id"]
@@ -203,7 +201,6 @@ def run_intent(
         session_id=session_id,
         base_url=base_url,
         execution_mode="ai",
-        confirmation_gate=False,
         autostart=autostart,
         debug=debug,
     )
@@ -222,7 +219,6 @@ def run_intent_stream(
         session_id=session_id,
         base_url=base_url,
         execution_mode="ai",
-        confirmation_gate=False,
         autostart=autostart,
         debug=debug,
     )
@@ -259,7 +255,6 @@ def chat(
             session_id=session_id,
             base_url=base_url,
             execution_mode="ai",
-            confirmation_gate=False,
             autostart=autostart,
             debug=debug,
         )

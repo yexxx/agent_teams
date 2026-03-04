@@ -8,7 +8,6 @@ from typing import Callable, cast
 from agent_teams.core.enums import InjectionSource, RunEventType
 from agent_teams.core.ids import new_trace_id
 from agent_teams.core.models import IntentInput, RunEvent, RunResult
-from agent_teams.runtime.gate_manager import GateManager
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.logging import get_logger, log_event
 from agent_teams.runtime.run_control_manager import RunControlManager
@@ -26,14 +25,12 @@ class RunManager:
         meta_agent,
         injection_manager: RunInjectionManager,
         run_event_hub: RunEventHub,
-        gate_manager: GateManager,
         run_control_manager: RunControlManager,
         tool_approval_manager: ToolApprovalManager,
     ) -> None:
         self._meta_agent = meta_agent
         self._injection_manager = injection_manager
         self._run_event_hub = run_event_hub
-        self._gate_manager = gate_manager
         self._run_control_manager = run_control_manager
         self._tool_approval_manager = tool_approval_manager
         self._pending_runs: dict[str, IntentInput] = {}
@@ -238,20 +235,6 @@ class RunManager:
             content=content,
         )
 
-    def resolve_gate(
-        self,
-        run_id: str,
-        task_id: str,
-        action: str,
-        feedback: str = '',
-    ) -> None:
-        self._gate_manager.resolve_gate(
-            run_id, task_id, action=action, feedback=feedback
-        )  # type: ignore[arg-type]
-
-    def list_open_gates(self, run_id: str) -> list[dict]:
-        return self._gate_manager.list_open_gates(run_id)
-
     def resolve_tool_approval(
         self,
         run_id: str,
@@ -270,33 +253,3 @@ class RunManager:
 
     def list_open_tool_approvals(self, run_id: str) -> list[dict[str, str]]:
         return self._tool_approval_manager.list_open_approvals(run_id=run_id)
-
-    def dispatch_task_human(
-        self,
-        run_id: str,
-        task_id: str,
-        coordinator_instance_id: str,
-    ) -> None:
-        self._run_control_manager.dispatch_task_human(
-            run_id=run_id,
-            task_id=task_id,
-            coordinator_instance_id=coordinator_instance_id,
-        )
-
-    def get_coordinator_instance_id(self, session_id: str) -> str | None:
-        return self._run_control_manager.get_coordinator_instance_id(session_id)
-
-    def dispatch_task_human_for_session(
-        self,
-        session_id: str,
-        run_id: str,
-        task_id: str,
-    ) -> None:
-        coordinator_instance_id = self.get_coordinator_instance_id(session_id)
-        if coordinator_instance_id is None:
-            raise KeyError(f'No coordinator instance found for session={session_id}')
-        self.dispatch_task_human(
-            run_id=run_id,
-            task_id=task_id,
-            coordinator_instance_id=coordinator_instance_id,
-        )

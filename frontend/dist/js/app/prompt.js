@@ -22,9 +22,7 @@ export async function handleSend() {
     }
 
     const modeEl = document.getElementById('execution-mode-select');
-    const gateEl = document.getElementById('confirmation-gate-check');
     const executionMode = modeEl ? modeEl.value : 'ai';
-    const confirmationGate = gateEl ? gateEl.checked : false;
 
     els.promptInput.value = '';
     els.promptInput.style.height = 'auto';
@@ -49,12 +47,11 @@ export async function handleSend() {
     }
     els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 
-    sysLog(`Sending (mode=${executionMode} gate=${confirmationGate})`);
+    sysLog(`Sending (mode=${executionMode})`);
     await startIntentStream(
         text,
         state.currentSessionId,
         executionMode,
-        confirmationGate,
         async (sid) => {
             await loadSessionRounds(sid);
         },

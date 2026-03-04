@@ -13,7 +13,7 @@ def test_registry_contains_only_role_mounted_tools() -> None:
     registry = build_default_registry()
     assert registry.list_names() == (
         'create_workflow_graph',
-        'dispatch_ready_tasks',
+        'dispatch_tasks',
         'get_workflow_status',
         'glob',
         'grep',

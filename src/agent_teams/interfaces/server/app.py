@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from agent_teams.application.service import AgentTeamsService
-from agent_teams.interfaces.server.routers import logs, roles, runs, sessions, system, tasks
+from agent_teams.interfaces.server.routers import logs, roles, runs, sessions, system, tasks, workflows
 from agent_teams.runtime.logging import configure_logging, get_logger, log_event
 from agent_teams.runtime.trace import bind_trace_context, generate_request_id
 
@@ -46,6 +46,7 @@ app = FastAPI(
 app.include_router(system.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
+app.include_router(workflows.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(roles.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")

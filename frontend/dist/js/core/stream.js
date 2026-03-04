@@ -7,7 +7,7 @@ import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 import { routeEvent } from './eventRouter.js';
 
-export async function startIntentStream(promptText, sessionId, executionMode, confirmationGate, onCompleted) {
+export async function startIntentStream(promptText, sessionId, executionMode, onCompleted) {
     state.isGenerating = true;
     if (els.sendBtn) els.sendBtn.disabled = true;
     if (els.promptInput) els.promptInput.disabled = true;
@@ -33,7 +33,6 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
                 intent: promptText,
                 session_id: sessionId,
                 execution_mode: executionMode,
-                confirmation_gate: confirmationGate,
             }),
         });
         if (!createRes.ok) {
@@ -58,7 +57,7 @@ export async function startIntentStream(promptText, sessionId, executionMode, co
     }
 
     resumeRunStream(runId, sessionId, onCompleted, {
-        reason: `start mode=${executionMode} gate=${confirmationGate}`,
+        reason: `start mode=${executionMode}`,
         makeUiBusy: false,
     });
 }

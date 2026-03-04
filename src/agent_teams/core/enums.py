@@ -2,9 +2,8 @@ from enum import Enum
 
 
 class ExecutionMode(str, Enum):
-    AI    = 'ai'      # default: Coordinator LLM drives dispatch
-    HUMAN = 'human'   # human manually selects which sub-task to run
-    AUTO  = 'auto'    # run all sub-tasks to completion without returning to Coordinator
+    AI = 'ai'          # Coordinator LLM fully drives orchestration.
+    MANUAL = 'manual'  # Human fully drives orchestration.
 
 
 class TaskStatus(str, Enum):
@@ -72,8 +71,4 @@ class RunEventType(str, Enum):
     RUN_COMPLETED = 'run_completed'
     RUN_FAILED = 'run_failed'
     # Human orchestration mode
-    AWAITING_HUMAN_DISPATCH = 'awaiting_human_dispatch'  # human mode: waiting for user to pick next task
-    HUMAN_TASK_DISPATCHED   = 'human_task_dispatched'    # human mode: user dispatched a task
-    # Confirmation gate
-    SUBAGENT_GATE   = 'subagent_gate'    # gate open: waiting for user to approve or request revision
-    GATE_RESOLVED   = 'gate_resolved'    # gate closed: user chose approve or revise
+    AWAITING_MANUAL_ACTION = 'awaiting_manual_action'

@@ -118,10 +118,6 @@ class TaskRepository:
 
     def _to_record(self, row: sqlite3.Row) -> TaskRecord:
         envelope_data = json.loads(str(row['envelope_json']))
-        if isinstance(envelope_data, dict):
-            envelope_data.pop('parent_instruction', None)
-            envelope_data.pop('scope', None)
-            envelope_data.pop('dod', None)
         return TaskRecord(
             envelope=TaskEnvelope.model_validate(envelope_data),
             status=TaskStatus(str(row['status'])),

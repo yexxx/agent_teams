@@ -453,16 +453,6 @@ class RunControlManager:
     def get_coordinator_instance_id(self, session_id: str) -> str | None:
         return self._require_agent_repo().get_coordinator_instance_id(session_id)
 
-    def dispatch_task_human(self, *, run_id: str, task_id: str, coordinator_instance_id: str) -> None:
-        import json
-
-        self._require_injection_manager().enqueue(
-            run_id=run_id,
-            recipient_instance_id=coordinator_instance_id,
-            source=InjectionSource.USER,
-            content=json.dumps({'__human_dispatch__': task_id}),
-        )
-
     def _find_task_for_instance(self, *, run_id: str, instance_id: str) -> str | None:
         for record in self._require_task_repo().list_by_trace(run_id):
             if record.assigned_instance_id != instance_id:

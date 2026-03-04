@@ -41,7 +41,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                     'created': False,
                     'message': (
                         'A workflow already exists for this task. Use '
-                        'dispatch_ready_tasks to continue, or start a new run '
+                        'dispatch_tasks to continue, or start a new run '
                         'for a fresh workflow.'
                     ),
                     'workflow_id': existing.get('workflow_id'),
@@ -114,12 +114,14 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 'created': True,
                 'message': (
                     f'Workflow created successfully with {len(task_list)} tasks. '
-                    f'Use workflow_id="{workflow_id}" in dispatch_ready_tasks to execute.'
+                    f'Use workflow_id="{workflow_id}" in dispatch_tasks to execute.'
                 ),
                 'workflow_id': workflow_id,
                 'workflow_type': workflow_type,
                 'tasks': task_list,
-                'next_action': 'Call dispatch_ready_tasks with this workflow_id to start executing tasks.',
+                'next_action': (
+                    'Call dispatch_tasks(action="next") with this workflow_id to start executing tasks.'
+                ),
             }
 
         return await execute_tool(
@@ -185,25 +187,37 @@ def _create_spec_flow_template(objective: str) -> list[TaskSpecModel]:
     return [
         TaskSpecModel(
             task_name='spec',
-            objective=f'Build requirement spec for: {objective}',
+            objective=(
+                f'Input: user requirement "{objective}". '
+                'Output: a structured requirement specification with clear goals, scope, and acceptance criteria.'
+            ),
             role_id='spec_spec',
             depends_on=[],
         ),
         TaskSpecModel(
             task_name='design',
-            objective=f'Design technical approach for: {objective}',
+            objective=(
+                f'Input: spec.md from previous stage for "{objective}". '
+                'Output: an implementation-ready technical design describing architecture, interfaces, and testing.'
+            ),
             role_id='spec_design',
             depends_on=['spec'],
         ),
         TaskSpecModel(
             task_name='code',
-            objective=f'Implement code for: {objective}',
+            objective=(
+                f'Input: design.md from previous stage for "{objective}". '
+                'Output: code changes and tests that implement the approved design.'
+            ),
             role_id='spec_coder',
             depends_on=['design'],
         ),
         TaskSpecModel(
             task_name='verify',
-            objective=f'Verify implementation quality for: {objective}',
+            objective=(
+                f'Input: implementation output and design artifacts for "{objective}". '
+                'Output: a verification verdict (PASS/FAIL) with concrete findings and coverage gaps.'
+            ),
             role_id='spec_verify',
             depends_on=['code'],
         ),

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai import Tool
 
-from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.skills.discovery import SkillsDirectory
 from agent_teams.tools.runtime import ToolContext
 from agent_teams.tools.tool_helpers import execute_tool
@@ -118,8 +117,8 @@ class SkillRegistry:
         ctx: ToolContext,
         skill_name: str,
         script_name: str,
-        args: JsonObject | None = None,
-    ) -> JsonValue:
+        args: dict[str, object] | None = None,
+    ) -> object:
         async def _action():
             skill = self.directory.get_skill(skill_name)
             if not skill:

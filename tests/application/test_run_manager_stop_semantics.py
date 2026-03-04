@@ -7,7 +7,6 @@ import pytest
 from agent_teams.application.run_manager import RunManager
 from agent_teams.core.enums import RunEventType
 from agent_teams.core.models import IntentInput
-from agent_teams.runtime.gate_manager import GateManager
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
@@ -76,7 +75,6 @@ def _make_run_manager(control: RunControlManager) -> RunManager:
         meta_agent=_MetaAgent(),
         injection_manager=injection,
         run_event_hub=hub,
-        gate_manager=GateManager(),
         run_control_manager=control,
         tool_approval_manager=ToolApprovalManager(),
     )
@@ -117,7 +115,6 @@ def test_stop_pending_run_emits_run_stopped_event() -> None:
         meta_agent=_MetaAgent(),
         injection_manager=injection,
         run_event_hub=hub,
-        gate_manager=GateManager(),
         run_control_manager=control,
         tool_approval_manager=ToolApprovalManager(),
     )

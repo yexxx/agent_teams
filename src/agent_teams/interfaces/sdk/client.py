@@ -45,13 +45,11 @@ class AgentTeamsClient:
         intent: str,
         session_id: str | None = None,
         execution_mode: str = "ai",
-        confirmation_gate: bool = False,
     ) -> RunHandle:
         payload = {
             "session_id": session_id,
             "intent": intent,
             "execution_mode": execution_mode,
-            "confirmation_gate": confirmation_gate,
         }
         data = self._request_json("POST", "/api/runs", payload)
         return RunHandle(run_id=data["run_id"], session_id=data["session_id"])
@@ -76,13 +74,6 @@ class AgentTeamsClient:
         except URLError as exc:
             raise RuntimeError(f"Failed to connect to server: {exc}") from exc
 
-    def resolve_gate(self, run_id: str, task_id: str, action: str, feedback: str = "") -> JsonObject:
-        return self._request_json(
-            "POST",
-            f"/api/runs/{run_id}/gates/{task_id}/resolve",
-            {"action": action, "feedback": feedback},
-        )
-
     def list_tool_approvals(self, run_id: str) -> list[JsonObject]:
         data = self._request_json("GET", f"/api/runs/{run_id}/tool-approvals")
         if isinstance(data, list):
@@ -101,11 +92,37 @@ class AgentTeamsClient:
             {"action": action, "feedback": feedback},
         )
 
-    def dispatch_task(self, run_id: str, task_id: str, session_id: str) -> JsonObject:
+    def create_workflow(
+        self,
+        run_id: str,
+        objective: str,
+        workflow_type: str = 'custom',
+        tasks: list[dict[str, object]] | None = None,
+    ) -> JsonObject:
         return self._request_json(
             "POST",
-            f"/api/runs/{run_id}/dispatch",
-            {"task_id": task_id, "session_id": session_id},
+            f"/api/workflows/runs/{run_id}",
+            {"objective": objective, "workflow_type": workflow_type, "tasks": tasks},
+        )
+
+    def get_workflow_status(self, run_id: str, workflow_id: str) -> JsonObject:
+        return self._request_json(
+            "GET",
+            f"/api/workflows/runs/{run_id}/{workflow_id}",
+        )
+
+    def dispatch_tasks(
+        self,
+        run_id: str,
+        workflow_id: str,
+        action: str,
+        feedback: str = "",
+        max_dispatch: int = 1,
+    ) -> JsonObject:
+        return self._request_json(
+            "POST",
+            f"/api/workflows/runs/{run_id}/{workflow_id}/dispatch",
+            {"action": action, "feedback": feedback, "max_dispatch": max_dispatch},
         )
 
     def inject_message(self, run_id: str, content: str) -> JsonObject:

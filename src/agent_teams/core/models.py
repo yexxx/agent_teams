@@ -56,7 +56,6 @@ class TaskEnvelope(BaseModel):
     trace_id: str = Field(min_length=1)
     objective: str = Field(min_length=1)
     verification: VerificationPlan
-    confirmation_gate: bool = False  # if True, pause after this task for human approval
 
 
 class TaskRecord(BaseModel):
@@ -126,9 +125,6 @@ class IntentInput(BaseModel):
     session_id: str | None = None
     intent: str = Field(min_length=1)
     execution_mode: ExecutionMode = ExecutionMode.AI
-    confirmation_gate: bool = (
-        False  # if True, every sub-task pauses for human approval after completion
-    )
 
 
 class RunResult(BaseModel):

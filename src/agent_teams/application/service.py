@@ -31,6 +31,12 @@ from agent_teams.application.provider_runtime import (
 from agent_teams.application.run_manager import RunManager
 from agent_teams.application.session_service import SessionService
 from agent_teams.application.task_service import TaskService
+from agent_teams.application.workflow_orchestration_service import (
+    DispatchAction,
+    WorkflowOrchestrationService,
+    WorkflowTaskSpecInput,
+    WorkflowType,
+)
 from agent_teams.runtime.console import set_debug
 from agent_teams.workflow.spec import WorkflowSpec
 
@@ -84,7 +90,6 @@ class AgentTeamsService:
             meta_agent=self._meta_agent,
             injection_manager=self._injection_manager,
             run_event_hub=self._run_event_hub,
-            gate_manager=self._gate_manager,
             run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
         )
@@ -100,6 +105,15 @@ class AgentTeamsService:
             task_repo=self._task_repo,
             instance_pool=self._instance_pool,
             role_registry=self._role_registry,
+        )
+        self._workflow_orchestration_service = WorkflowOrchestrationService(
+            task_repo=self._task_repo,
+            shared_store=self._shared_store,
+            role_registry=self._role_registry,
+            instance_pool=self._instance_pool,
+            agent_repo=self._agent_repo,
+            task_execution_service=self._task_execution_service,
+            injection_manager=self._injection_manager,
         )
 
     def _ensure_session(self, session_id: str | None) -> str:
@@ -197,6 +211,15 @@ class AgentTeamsService:
         self._meta_agent.coordinator.task_execution_service = (
             self._task_execution_service
         )
+        self._workflow_orchestration_service = WorkflowOrchestrationService(
+            task_repo=self._task_repo,
+            shared_store=self._shared_store,
+            role_registry=self._role_registry,
+            instance_pool=self._instance_pool,
+            agent_repo=self._agent_repo,
+            task_execution_service=self._task_execution_service,
+            injection_manager=self._injection_manager,
+        )
 
     def reload_mcp_config(self) -> None:
         self._mcp_registry = self._config_manager.load_mcp_registry()
@@ -236,14 +259,6 @@ class AgentTeamsService:
     ) -> InjectionMessage:
         return self._run_manager.inject_message(run_id, source, content)
 
-    def resolve_gate(
-        self, run_id: str, task_id: str, action: str, feedback: str = ""
-    ) -> None:
-        self._run_manager.resolve_gate(run_id, task_id, action, feedback)
-
-    def list_open_gates(self, run_id: str) -> list[dict]:
-        return self._run_manager.list_open_gates(run_id)
-
     def resolve_tool_approval(
         self, run_id: str, tool_call_id: str, action: str, feedback: str = ''
     ) -> None:
@@ -251,19 +266,6 @@ class AgentTeamsService:
 
     def list_open_tool_approvals(self, run_id: str) -> list[dict[str, str]]:
         return self._run_manager.list_open_tool_approvals(run_id)
-
-    def dispatch_task_human(
-        self, run_id: str, task_id: str, coordinator_instance_id: str
-    ) -> None:
-        self._run_manager.dispatch_task_human(run_id, task_id, coordinator_instance_id)
-
-    def get_coordinator_instance_id(self, session_id: str) -> str | None:
-        return self._run_manager.get_coordinator_instance_id(session_id)
-
-    def dispatch_task_human_for_session(
-        self, session_id: str, run_id: str, task_id: str
-    ) -> None:
-        self._run_manager.dispatch_task_human_for_session(session_id, run_id, task_id)
 
     def stop_run(self, run_id: str) -> None:
         self._run_manager.stop_run(run_id)
@@ -335,6 +337,44 @@ class AgentTeamsService:
 
     def get_session_workflows(self, session_id: str) -> list[dict]:
         return self._session_service.get_session_workflows(session_id)
+
+    def create_workflow_graph_for_run(
+        self,
+        *,
+        run_id: str,
+        objective: str,
+        workflow_type: WorkflowType = 'custom',
+        tasks: list[WorkflowTaskSpecInput] | None = None,
+    ) -> dict[str, object]:
+        return self._workflow_orchestration_service.create_workflow_graph(
+            run_id=run_id,
+            objective=objective,
+            workflow_type=workflow_type,
+            tasks=tasks,
+        )
+
+    async def dispatch_tasks_for_run(
+        self,
+        *,
+        run_id: str,
+        workflow_id: str,
+        action: DispatchAction,
+        feedback: str = '',
+        max_dispatch: int = 1,
+    ) -> dict[str, object]:
+        return await self._workflow_orchestration_service.dispatch_tasks(
+            run_id=run_id,
+            workflow_id=workflow_id,
+            action=action,
+            feedback=feedback,
+            max_dispatch=max_dispatch,
+        )
+
+    def get_workflow_status_for_run(self, *, run_id: str, workflow_id: str) -> dict[str, object]:
+        return self._workflow_orchestration_service.get_workflow_status(
+            run_id=run_id,
+            workflow_id=workflow_id,
+        )
 
     @staticmethod
     def _collect_pending_tool_approvals(

@@ -26,7 +26,6 @@ class CreateRunRequest(BaseModel):
     intent: str = Field(min_length=1)
     session_id: str | None = None
     execution_mode: ExecutionMode = ExecutionMode.AI
-    confirmation_gate: bool = False
 
 
 class CreateRunResponse(BaseModel):
@@ -43,25 +42,11 @@ class InjectMessageRequest(BaseModel):
     content: str = Field(min_length=1)
 
 
-class ResolveGateRequest(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-
-    action: str
-    feedback: str = ''
-
-
 class ResolveToolApprovalRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     action: Literal['approve', 'deny']
     feedback: str = ''
-
-
-class DispatchTaskRequest(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-
-    session_id: str = Field(min_length=1)
-    task_id: str = Field(min_length=1)
 
 
 class StopRunRequest(BaseModel):
@@ -89,7 +74,6 @@ def create_run(
                 session_id=req.session_id,
                 intent=req.intent,
                 execution_mode=req.execution_mode,
-                confirmation_gate=req.confirmation_gate,
             )
         )
         elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -100,7 +84,7 @@ def create_run(
                 event='run.created',
                 message='Run created',
                 duration_ms=elapsed_ms,
-                payload={'execution_mode': req.execution_mode.value, 'confirmation_gate': req.confirmation_gate},
+                payload={'execution_mode': req.execution_mode.value},
             )
         return CreateRunResponse(run_id=run_id, session_id=session_id)
     except RuntimeError as exc:
@@ -182,45 +166,6 @@ def inject_message(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get('/{run_id}/gates')
-def list_open_gates(
-    run_id: str,
-    service: AgentTeamsService = Depends(get_service),
-) -> list[dict]:
-    with bind_trace_context(trace_id=run_id, run_id=run_id):
-        result = service.list_open_gates(run_id)
-        log_event(
-            logger,
-            logging.INFO,
-            event='gate.listed',
-            message='Listed open gates',
-            payload={'count': len(result)},
-        )
-        return result
-
-
-@router.post('/{run_id}/gates/{task_id}/resolve')
-def resolve_gate(
-    run_id: str,
-    task_id: str,
-    req: ResolveGateRequest,
-    service: AgentTeamsService = Depends(get_service),
-) -> dict[str, str]:
-    try:
-        service.resolve_gate(run_id=run_id, task_id=task_id, action=req.action, feedback=req.feedback)
-        with bind_trace_context(trace_id=run_id, run_id=run_id, task_id=task_id):
-            log_event(
-                logger,
-                logging.INFO,
-                event='gate.resolved',
-                message='Gate resolved',
-                payload={'action': req.action, 'feedback_length': len(req.feedback)},
-            )
-        return {'status': 'ok', 'action': req.action}
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
 @router.get('/{run_id}/tool-approvals')
 def list_tool_approvals(
     run_id: str,
@@ -261,25 +206,6 @@ def resolve_tool_approval(
                 payload={'action': req.action, 'feedback_length': len(req.feedback)},
             )
         return {'status': 'ok', 'action': req.action}
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.post('/{run_id}/dispatch')
-def dispatch_task(
-    run_id: str,
-    req: DispatchTaskRequest,
-    service: AgentTeamsService = Depends(get_service),
-) -> dict[str, str]:
-    try:
-        service.dispatch_task_human_for_session(
-            session_id=req.session_id,
-            run_id=run_id,
-            task_id=req.task_id,
-        )
-        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=req.session_id, task_id=req.task_id):
-            log_event(logger, logging.INFO, event='coord.task.dispatched', message='Task dispatched by human')
-        return {'status': 'ok', 'dispatched_task_id': req.task_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -1,7 +1,5 @@
 ﻿# Repository Guidelines
 
-Database schema and API changes do not need to maintain backward compatibility. After making such changes, update the corresponding documentation in the `docs/` directory in the same task.
-
 ## Project Layout
 - Core code: `src/agent_teams/`
 - Main modules:
@@ -43,6 +41,7 @@ Database schema and API changes do not need to maintain backward compatibility. 
 - **No emoji policy**: Do not use emoji in code, comments, docs, or commit messages.
 - **Import policy**: Do not place imports inside functions; keep imports at module top level to expose circular dependencies early.
 - **CLI 模块规范**: 每个模块必须提供本模块的 CLI 子命令，且列表/查询类输出必须同时支持表格（默认）与 `--format json`。
+- **Design policy**: Database schema and API changes do not need to maintain backward compatibility. After making such changes, update the corresponding documentation in the `docs/` directory in the same task.
 
 ## Development Setup
 Run setup before starting implementation work.

@@ -25,6 +25,7 @@ from agent_teams.interfaces.server.routers import (
     sessions,
     system,
     tasks,
+    triggers,
     workflows,
 )
 from agent_teams.logger import configure_logging, get_logger, log_event
@@ -73,6 +74,7 @@ app.include_router(workflows.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(roles.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
+app.include_router(triggers.router, prefix="/api")
 
 
 @app.middleware("http")

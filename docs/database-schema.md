@@ -235,6 +235,85 @@ Purpose: one row per `agent.iter()` completion cycle (coordinator or subagent). 
 
 ---
 
+### 2.9 `triggers`
+
+```sql
+CREATE TABLE IF NOT EXISTS triggers (
+    trigger_id         TEXT PRIMARY KEY,
+    name               TEXT NOT NULL UNIQUE,
+    display_name       TEXT NOT NULL,
+    source_type        TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    public_token       TEXT UNIQUE,
+    source_config_json TEXT NOT NULL,
+    auth_policies_json TEXT NOT NULL,
+    target_config_json TEXT,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_triggers_source_type
+    ON triggers(source_type);
+CREATE INDEX IF NOT EXISTS idx_triggers_status
+    ON triggers(status);
+```
+
+Purpose: trigger definitions and webhook routing configuration.
+
+`source_type` values:
+- `schedule`
+- `webhook`
+- `im`
+- `rss`
+- `custom`
+
+`status` values:
+- `enabled`
+- `disabled`
+
+---
+
+### 2.10 `trigger_events`
+
+```sql
+CREATE TABLE IF NOT EXISTS trigger_events (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id           TEXT NOT NULL UNIQUE,
+    trigger_id         TEXT NOT NULL,
+    trigger_name       TEXT NOT NULL,
+    source_type        TEXT NOT NULL,
+    event_key          TEXT,
+    status             TEXT NOT NULL,
+    received_at        TEXT NOT NULL,
+    occurred_at        TEXT,
+    payload_json       TEXT NOT NULL,
+    metadata_json      TEXT NOT NULL,
+    headers_json       TEXT NOT NULL,
+    remote_addr        TEXT,
+    auth_mode          TEXT,
+    auth_result        TEXT NOT NULL,
+    auth_reason        TEXT,
+    FOREIGN KEY(trigger_id) REFERENCES triggers(trigger_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trigger_events_key
+    ON trigger_events(trigger_id, event_key)
+    WHERE event_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_trigger_events_trigger
+    ON trigger_events(trigger_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_trigger_events_status
+    ON trigger_events(status, id DESC);
+```
+
+Purpose: append-only ingest audit log for trigger events.
+
+`status` values:
+- `received`
+- `duplicate`
+- `rejected_auth`
+
+---
+
 ## 3. Relationship Keys
 
 Primary query keys used by repositories:
@@ -242,3 +321,5 @@ Primary query keys used by repositories:
 - `trace_id` (`run_id`): run-level retrieval across `tasks`, `events`, `messages`, `token_usage`.
 - `task_id`: task-level retrieval and task assignment tracking.
 - `instance_id`: agent-level retrieval and message history.
+- `trigger_id`: trigger-level retrieval across `triggers`, `trigger_events`.
+- `event_id`: trigger-event level retrieval for audit and replay preparation.

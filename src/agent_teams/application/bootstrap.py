@@ -31,6 +31,7 @@ from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
+from agent_teams.triggers import TriggerRepository, TriggerService
 from agent_teams.tools.defaults import build_default_registry
 from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
@@ -65,6 +66,8 @@ class ServiceComponents(BaseModel):
     task_execution_service: TaskExecutionService
     meta_agent: MetaAgent
     token_usage_repo: TokenUsageRepository
+    trigger_repo: TriggerRepository
+    trigger_service: TriggerService
 
 
 def build_service_components(
@@ -95,6 +98,8 @@ def build_service_components(
     message_repo = MessageRepository(runtime.paths.db_path)
     session_repo = SessionRepository(runtime.paths.db_path)
     token_usage_repo = TokenUsageRepository(runtime.paths.db_path)
+    trigger_repo = TriggerRepository(runtime.paths.db_path)
+    trigger_service = TriggerService(trigger_repo=trigger_repo)
     instance_pool = InstancePool.from_repo(agent_repo)
     injection_manager = RunInjectionManager()
     run_control_manager = RunControlManager()
@@ -193,4 +198,6 @@ def build_service_components(
         task_execution_service=task_execution_service,
         meta_agent=meta_agent,
         token_usage_repo=token_usage_repo,
+        trigger_repo=trigger_repo,
+        trigger_service=trigger_service,
     )

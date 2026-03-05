@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, ConfigDict
 
-from agent_teams.core.types import JsonObject, JsonValue
+from agent_teams.core.types import JsonArray, JsonObject, JsonValue
 
 
 class RunHandle(BaseModel):
@@ -163,6 +163,52 @@ class AgentTeamsClient:
             "POST",
             f"/api/runs/{run_id}/stop",
             {"scope": "subagent", "instance_id": instance_id},
+        )
+
+    def create_trigger(
+        self,
+        *,
+        name: str,
+        source_type: str,
+        display_name: str | None = None,
+        source_config: JsonObject | None = None,
+        auth_policies: list[JsonObject] | None = None,
+        target_config: JsonObject | None = None,
+        public_token: str | None = None,
+        enabled: bool = True,
+    ) -> JsonObject:
+        payload: JsonObject = {
+            "name": name,
+            "source_type": source_type,
+            "enabled": enabled,
+        }
+        if display_name is not None:
+            payload["display_name"] = display_name
+        if source_config is not None:
+            payload["source_config"] = source_config
+        if auth_policies is not None:
+            policies_payload: JsonArray = [policy for policy in auth_policies]
+            payload["auth_policies"] = policies_payload
+        if target_config is not None:
+            payload["target_config"] = target_config
+        if public_token is not None:
+            payload["public_token"] = public_token
+        return self._request_json("POST", "/api/triggers", payload)
+
+    def list_triggers(self) -> list[JsonObject]:
+        data = self._request_json("GET", "/api/triggers")
+        items = data.get("data", data)
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+        return []
+
+    def ingest_trigger_webhook(
+        self, public_token: str, payload: JsonObject
+    ) -> JsonObject:
+        return self._request_json(
+            "POST",
+            f"/api/triggers/webhooks/{public_token}",
+            payload,
         )
 
     def inject_subagent_message(

@@ -17,6 +17,7 @@ import typer
 
 from agent_teams.core.enums import RunEventType
 from agent_teams.env.env_cli import env_app
+from agent_teams.triggers.cli import build_triggers_app
 
 app = typer.Typer(no_args_is_help=False, pretty_exceptions_enable=False)
 server_app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
@@ -31,6 +32,7 @@ def _request_json(
     method: str,
     path: str,
     payload: dict[str, object] | None = None,
+    extra_headers: dict[str, str] | None = None,
     timeout_seconds: float = 30.0,
 ) -> dict[str, object] | list[object]:
     body = None
@@ -38,6 +40,8 @@ def _request_json(
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    if extra_headers is not None:
+        headers.update(extra_headers)
 
     request = Request(
         url=f"{base_url.rstrip('/')}{path}",
@@ -89,15 +93,24 @@ def _start_server_daemon(host: str, port: int) -> None:
     ]
 
     if sys.platform.startswith("win"):
-        creationflags = (
-            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        create_new_process_group = int(
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         )
+        detached_process = int(getattr(subprocess, "DETACHED_PROCESS", 0))
+        create_no_window = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        creationflags = (
+            create_new_process_group | detached_process | create_no_window
+        )
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
+        startupinfo.wShowWindow = int(getattr(subprocess, "SW_HIDE", 0))
         subprocess.Popen(
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             creationflags=creationflags,
+            startupinfo=startupinfo,
         )
     else:
         subprocess.Popen(
@@ -138,6 +151,35 @@ def _auto_start_if_needed(base_url: str, autostart: bool) -> None:
     _start_server_daemon(host=host, port=port)
     if not _wait_until_healthy(base_url):
         raise RuntimeError("Failed to start local Agent Teams server")
+
+
+def _trigger_request_json(
+    base_url: str,
+    method: str,
+    path: str,
+    payload: dict[str, object] | None = None,
+    extra_headers: dict[str, str] | None = None,
+    timeout_seconds: float = 30.0,
+) -> dict[str, object] | list[object]:
+    return _request_json(
+        base_url=base_url,
+        method=method,
+        path=path,
+        payload=payload,
+        extra_headers=extra_headers,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _trigger_auto_start(base_url: str, autostart: bool) -> None:
+    _auto_start_if_needed(base_url, autostart=autostart)
+
+
+triggers_app = build_triggers_app(
+    request_json=_trigger_request_json,
+    auto_start_if_needed=_trigger_auto_start,
+    default_base_url=DEFAULT_BASE_URL,
+)
 
 
 def _stream_events(base_url: str, run_id: str, debug: bool) -> None:
@@ -262,12 +304,10 @@ def serve(
     uvicorn_module = import_module("uvicorn")
     server_module = import_module("agent_teams.interfaces.server.app")
     fastapi_app = getattr(server_module, "app")
-    uvicorn_run = cast(
-        Callable[[object, str, int], None], getattr(uvicorn_module, "run")
-    )
+    uvicorn_run = cast(Callable[..., None], getattr(uvicorn_module, "run"))
 
     typer.echo(f"Starting Agent Teams server on http://{host}:{port}")
-    uvicorn_run(fastapi_app, host, port)
+    uvicorn_run(fastapi_app, host=host, port=port)
 
 
 @roles_app.command("validate")
@@ -317,6 +357,7 @@ app.add_typer(server_app, name="server")
 app.add_typer(roles_app, name="roles")
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(env_app, name="env")
+app.add_typer(triggers_app, name="triggers")
 
 
 def main() -> None:

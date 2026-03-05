@@ -67,6 +67,16 @@ from agent_teams.state.token_usage_repo import (
 )
 from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
+from agent_teams.triggers import (
+    TriggerCreateInput,
+    TriggerDefinition,
+    TriggerEventRecord,
+    TriggerIngestInput,
+    TriggerIngestResult,
+    TriggerService,
+    TriggerStatus,
+    TriggerUpdateInput,
+)
 from agent_teams.workflow.spec import WorkflowSpec
 
 
@@ -106,6 +116,7 @@ class AgentTeamsService:
         self._event_log: EventLog = components.event_log
         self._shared_store: SharedStore = components.shared_store
         self._token_usage_repo: TokenUsageRepository = components.token_usage_repo
+        self._trigger_service: TriggerService = components.trigger_service
         self._config_dir: Path = config_dir
         self._config_manager: ConfigManager = components.config_manager
         self._roles_dir: Path = components.runtime.paths.roles_dir
@@ -462,3 +473,71 @@ class AgentTeamsService:
 
     def get_token_usage_by_session(self, session_id: str) -> SessionTokenUsage:
         return self._token_usage_repo.get_by_session(session_id)
+
+    def create_trigger(self, trigger: TriggerCreateInput) -> TriggerDefinition:
+        return self._trigger_service.create_trigger(trigger)
+
+    def update_trigger(
+        self, trigger_id: str, trigger: TriggerUpdateInput
+    ) -> TriggerDefinition:
+        return self._trigger_service.update_trigger(trigger_id, trigger)
+
+    def list_triggers(self) -> tuple[TriggerDefinition, ...]:
+        return self._trigger_service.list_triggers()
+
+    def get_trigger(self, trigger_id: str) -> TriggerDefinition:
+        return self._trigger_service.get_trigger(trigger_id)
+
+    def set_trigger_status(
+        self, trigger_id: str, status: TriggerStatus
+    ) -> TriggerDefinition:
+        return self._trigger_service.set_trigger_status(trigger_id, status)
+
+    def rotate_trigger_token(self, trigger_id: str) -> TriggerDefinition:
+        return self._trigger_service.rotate_public_token(trigger_id)
+
+    def ingest_trigger_event(
+        self,
+        event: TriggerIngestInput,
+        *,
+        headers: dict[str, str],
+        remote_addr: str | None,
+        raw_body: str,
+    ) -> TriggerIngestResult:
+        return self._trigger_service.ingest_event(
+            event=event,
+            headers=headers,
+            remote_addr=remote_addr,
+            raw_body=raw_body,
+        )
+
+    def ingest_trigger_webhook(
+        self,
+        *,
+        public_token: str,
+        raw_body: str,
+        headers: dict[str, str],
+        remote_addr: str | None,
+    ) -> TriggerIngestResult:
+        return self._trigger_service.ingest_webhook(
+            public_token=public_token,
+            raw_body=raw_body,
+            headers=headers,
+            remote_addr=remote_addr,
+        )
+
+    def get_trigger_event(self, event_id: str) -> TriggerEventRecord:
+        return self._trigger_service.get_event(event_id)
+
+    def list_trigger_events(
+        self,
+        trigger_id: str,
+        *,
+        limit: int = 50,
+        cursor_event_id: str | None = None,
+    ) -> tuple[tuple[TriggerEventRecord, ...], str | None]:
+        return self._trigger_service.list_events(
+            trigger_id,
+            limit=limit,
+            cursor_event_id=cursor_event_id,
+        )

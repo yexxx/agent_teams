@@ -74,3 +74,4 @@ def test_root_help_lists_env_module() -> None:
     result = runner.invoke(cli_app.app, ["--help"])
     assert result.exit_code == 0
     assert "env" in result.output
+    assert "triggers" in result.output

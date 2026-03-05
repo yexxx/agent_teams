@@ -419,6 +419,168 @@ Request:
 }
 ```
 
+---
+
+## 10. Trigger APIs
+
+### trigger enums
+
+#### `source_type`
+- `schedule`
+- `webhook`
+- `im`
+- `rss`
+- `custom`
+
+#### `status`
+- `enabled`
+- `disabled`
+
+#### `auth mode`
+- `none`
+- `url_token`
+- `header_token`
+- `hmac_sha256`
+
+#### `trigger event status`
+- `received`
+- `duplicate`
+- `rejected_auth`
+
+### `POST /triggers`
+Creates one trigger definition.
+
+Request:
+```json
+{
+  "name": "repo_push_trigger",
+  "display_name": "Repo Push Trigger",
+  "source_type": "webhook",
+  "source_config": {"provider": "github"},
+  "auth_policies": [
+    {"mode": "none"}
+  ],
+  "target_config": null,
+  "enabled": true
+}
+```
+
+Response: `TriggerDefinition`
+
+### `GET /triggers`
+Lists all trigger definitions.
+
+### `GET /triggers/{trigger_id}`
+Gets one trigger definition.
+
+### `PATCH /triggers/{trigger_id}`
+Updates trigger mutable fields:
+- `name`
+- `display_name`
+- `source_config`
+- `auth_policies`
+- `target_config`
+
+### `POST /triggers/{trigger_id}:enable`
+Enables trigger.
+
+### `POST /triggers/{trigger_id}:disable`
+Disables trigger.
+
+### `POST /triggers/{trigger_id}:rotate-token`
+Rotates webhook public token.
+
+### `POST /triggers/ingest`
+Internal generic trigger ingest endpoint.
+
+Request:
+```json
+{
+  "trigger_id": "trg_123",
+  "trigger_name": null,
+  "source_type": "webhook",
+  "event_key": "evt_001",
+  "occurred_at": "2026-03-05T12:00:00Z",
+  "payload": {"action": "push"},
+  "metadata": {"source": "internal"}
+}
+```
+
+### `POST /triggers/webhooks/{public_token}`
+Webhook dedicated endpoint. Requests are routed by `public_token`.
+
+Supported body patterns:
+1. Envelope style:
+```json
+{
+  "event_key": "evt_001",
+  "occurred_at": "2026-03-05T12:00:00Z",
+  "payload": {"action": "push"},
+  "metadata": {"provider": "github"}
+}
+```
+2. Raw JSON object (the whole object is persisted as `payload`).
+
+Response (`/ingest` and `/webhooks/{public_token}`):
+```json
+{
+  "accepted": true,
+  "event_id": "tev_abc123",
+  "duplicate": false,
+  "status": "received",
+  "trigger_id": "trg_123",
+  "trigger_name": "repo_push_trigger"
+}
+```
+
+### `GET /triggers/{trigger_id}/events`
+Lists persisted trigger events for one trigger.
+
+Query:
+- `limit` (default 50, max 100)
+- `cursor_event_id` (optional)
+
+Response:
+```json
+{
+  "items": [
+    {
+      "sequence_id": 1,
+      "event_id": "tev_abc123",
+      "trigger_id": "trg_123",
+      "trigger_name": "repo_push_trigger",
+      "source_type": "webhook",
+      "event_key": "evt_001",
+      "status": "received",
+      "received_at": "2026-03-05T12:00:00Z",
+      "occurred_at": "2026-03-05T12:00:00Z",
+      "payload": {"action": "push"},
+      "metadata": {"provider": "github"},
+      "headers": {"content-type": "application/json"},
+      "remote_addr": "127.0.0.1",
+      "auth_mode": "none",
+      "auth_result": "accepted",
+      "auth_reason": "no_auth_required"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### `GET /triggers/events/{event_id}`
+Gets one persisted trigger event.
+
+### trigger ingest status/error behavior
+- `403`: authentication rejected (`rejected_auth` event is still persisted for audit)
+- `404`: unknown trigger / token / event id
+- `409`: disabled trigger
+- `422`: payload validation or source mismatch
+
+### idempotency
+- `event_key` is optional.
+- When provided, uniqueness is enforced by `(trigger_id, event_key)`.
+- Duplicate ingest returns `duplicate=true` and existing `event_id`.
+
 Response:
 ```json
 {"accepted": 1}

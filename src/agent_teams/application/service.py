@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 import uuid
-from typing import Callable
+from typing import Callable, cast
 
 from agent_teams.agents.core.meta_agent import MetaAgent
 from agent_teams.agents.management.instance_pool import InstancePool
@@ -45,6 +45,7 @@ from agent_teams.application.rounds_projection import (
     paginate_rounds,
 )
 from agent_teams.mcp.registry import McpRegistry
+from agent_teams.notifications import NotificationConfig, NotificationService
 from agent_teams.paths import get_project_root
 from agent_teams.providers.llm import LLMProvider
 from agent_teams.roles.registry import RoleRegistry
@@ -110,6 +111,7 @@ class AgentTeamsService:
             components.tool_approval_manager
         )
         self._tool_approval_policy: ToolApprovalPolicy = components.tool_approval_policy
+        self._notification_service: NotificationService = components.notification_service
         self._agent_repo: AgentInstanceRepository = components.agent_repo
         self._session_repo: SessionRepository = components.session_repo
         self._message_repo: MessageRepository = components.message_repo
@@ -137,6 +139,7 @@ class AgentTeamsService:
             run_event_hub=self._run_event_hub,
             run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
+            notification_service=self._notification_service,
         )
         self._session_service: SessionService = SessionService(
             session_repo=self._session_repo,
@@ -211,6 +214,14 @@ class AgentTeamsService:
         self._config_manager.save_model_config(config)
         self.reload_model_config()
 
+    def get_notification_config(self) -> JsonObject:
+        config = self._config_manager.get_notification_config()
+        return cast(JsonObject, config.model_dump(mode="json"))
+
+    def save_notification_config(self, config: JsonObject) -> None:
+        validated = NotificationConfig.model_validate(config)
+        self._config_manager.save_notification_config(validated)
+
     def reload_model_config(self) -> None:
         self._runtime = load_runtime_config(
             config_dir=self._config_dir,
@@ -240,6 +251,7 @@ class AgentTeamsService:
             run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
             tool_approval_policy=self._tool_approval_policy,
+            notification_service=self._notification_service,
             get_task_execution_service=get_task_execution_service,
             token_usage_repo=self._token_usage_repo,
         )

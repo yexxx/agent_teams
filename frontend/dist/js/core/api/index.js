@@ -24,6 +24,7 @@ export {
 } from './runs.js';
 
 export {
+    fetchNotificationConfig,
     deleteModelProfile,
     fetchConfigStatus,
     fetchModelConfig,
@@ -31,6 +32,7 @@ export {
     reloadMcpConfig,
     reloadModelConfig,
     reloadSkillsConfig,
+    saveNotificationConfig,
     saveModelConfig,
     saveModelProfile,
 } from './system.js';

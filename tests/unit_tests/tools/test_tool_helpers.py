@@ -4,6 +4,8 @@ from typing import cast
 
 from agent_teams.core.enums import RunEventType
 from agent_teams.core.types import JsonObject
+from agent_teams.notifications import NotificationService, default_notification_config
+from agent_teams.runtime.run_event_hub import RunEventHub
 from agent_teams.tools.runtime import ToolContext
 from agent_teams.tools.tool_helpers import execute_tool
 
@@ -55,6 +57,7 @@ class _FakeDeps:
         self.run_control_manager = _FakeRunControlManager()
         self.tool_approval_manager = manager
         self.tool_approval_policy = policy
+        self.notification_service = _build_notification_service(self.run_event_hub)
 
 
 class _FakeCtx:
@@ -73,6 +76,13 @@ class _FakeRunControlManager:
 
     def raise_if_cancelled(self, *, run_id: str, instance_id: str | None = None) -> None:
         return None
+
+
+def _build_notification_service(run_event_hub: _FakeRunEventHub) -> NotificationService:
+    return NotificationService(
+        run_event_hub=cast(RunEventHub, cast(object, run_event_hub)),
+        get_config=default_notification_config,
+    )
 
 
 def test_execute_tool_returns_standard_envelope() -> None:
@@ -119,6 +129,7 @@ def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
     assert meta['approval_status'] == 'deny'
     assert any(e.event_type == RunEventType.TOOL_APPROVAL_REQUESTED for e in deps.run_event_hub.events)
     assert any(e.event_type == RunEventType.TOOL_APPROVAL_RESOLVED for e in deps.run_event_hub.events)
+    assert any(e.event_type == RunEventType.NOTIFICATION_REQUESTED for e in deps.run_event_hub.events)
 
 
 def test_execute_tool_returns_timeout_error_when_approval_times_out() -> None:

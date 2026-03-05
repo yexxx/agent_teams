@@ -14,6 +14,7 @@ from agent_teams.core.enums import RunEventType
 from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.core.models import RunEvent
 from agent_teams.logger import get_logger, log_event, log_tool_call, log_tool_error
+from agent_teams.notifications import NotificationContext, NotificationType
 from agent_teams.tools.models import ToolError, ToolResultEnvelope
 from agent_teams.tools.runtime import ToolContext
 
@@ -225,6 +226,11 @@ async def _handle_tool_approval(
             "risk_level": "high",
         },
     )
+    _publish_tool_approval_notification(
+        ctx=ctx,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+    )
     try:
         action, feedback = await asyncio.to_thread(
             ctx.deps.tool_approval_manager.wait_for_approval,
@@ -281,6 +287,36 @@ async def _handle_tool_approval(
             suggested_fix="Adjust the approach and request a safer tool call.",
         )
     return None
+
+
+def _publish_tool_approval_notification(
+    *,
+    ctx: ToolContext,
+    tool_call_id: str,
+    tool_name: str,
+) -> None:
+    notification_service = ctx.deps.notification_service
+    if notification_service is None:
+        return
+
+    role_label = ctx.deps.role_id or "An agent"
+    body = f"{role_label} requests approval for {tool_name}."
+    _ = notification_service.emit(
+        notification_type=NotificationType.TOOL_APPROVAL_REQUESTED,
+        title="Approval Required",
+        body=body,
+        dedupe_key=f"tool_approval_requested:{ctx.deps.run_id}:{tool_call_id}",
+        context=NotificationContext(
+            session_id=ctx.deps.session_id,
+            run_id=ctx.deps.run_id,
+            trace_id=ctx.deps.trace_id,
+            task_id=ctx.deps.task_id,
+            instance_id=ctx.deps.instance_id,
+            role_id=ctx.deps.role_id,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+        ),
+    )
 
 
 def _publish_tool_approval_event(

@@ -47,6 +47,7 @@ from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps
 from agent_teams.mcp.registry import McpRegistry
+from agent_teams.notifications import NotificationService
 from agent_teams.skills.registry import SkillRegistry
 
 if TYPE_CHECKING:
@@ -115,6 +116,7 @@ class OpenAICompatibleProvider(LLMProvider):
         run_control_manager: RunControlManager,
         tool_approval_manager: ToolApprovalManager,
         tool_approval_policy: ToolApprovalPolicy,
+        notification_service: NotificationService | None = None,
         token_usage_repo: TokenUsageRepository | None = None,
     ) -> None:
         self._config = config
@@ -138,6 +140,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._message_repo = message_repo
         self._tool_approval_manager = tool_approval_manager
         self._tool_approval_policy = tool_approval_policy
+        self._notification_service = notification_service
         self._token_usage_repo = token_usage_repo
 
     @override
@@ -207,6 +210,7 @@ class OpenAICompatibleProvider(LLMProvider):
             run_control_manager=self._run_control_manager,
             tool_approval_manager=self._tool_approval_manager,
             tool_approval_policy=self._tool_approval_policy,
+            notification_service=self._notification_service,
         )
         control_ctx = self._run_control_manager.context(
             run_id=request.run_id,

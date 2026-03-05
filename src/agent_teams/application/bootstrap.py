@@ -36,6 +36,7 @@ from agent_teams.tools.defaults import build_default_registry
 from agent_teams.tools.policy import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.mcp.registry import McpRegistry
+from agent_teams.notifications import NotificationService
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.providers.llm import LLMProvider
 
@@ -62,6 +63,7 @@ class ServiceComponents(BaseModel):
     gate_manager: GateManager
     tool_approval_manager: ToolApprovalManager
     tool_approval_policy: ToolApprovalPolicy
+    notification_service: NotificationService
     provider_factory: Callable[[RoleDefinition], LLMProvider]
     task_execution_service: TaskExecutionService
     meta_agent: MetaAgent
@@ -104,6 +106,10 @@ def build_service_components(
     injection_manager = RunInjectionManager()
     run_control_manager = RunControlManager()
     run_event_hub = RunEventHub(event_log=event_log)
+    notification_service = NotificationService(
+        run_event_hub=run_event_hub,
+        get_config=config_manager.get_notification_config,
+    )
     gate_manager = GateManager()
     tool_approval_manager = ToolApprovalManager()
     tool_approval_policy = ToolApprovalPolicy()
@@ -142,6 +148,7 @@ def build_service_components(
         run_control_manager=run_control_manager,
         tool_approval_manager=tool_approval_manager,
         tool_approval_policy=tool_approval_policy,
+        notification_service=notification_service,
         get_task_execution_service=get_task_execution_service,
         token_usage_repo=token_usage_repo,
     )
@@ -194,6 +201,7 @@ def build_service_components(
         gate_manager=gate_manager,
         tool_approval_manager=tool_approval_manager,
         tool_approval_policy=tool_approval_policy,
+        notification_service=notification_service,
         provider_factory=provider_factory,
         task_execution_service=task_execution_service,
         meta_agent=meta_agent,

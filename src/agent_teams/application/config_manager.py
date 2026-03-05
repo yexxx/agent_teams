@@ -7,6 +7,7 @@ from typing import cast
 from agent_teams.core.types import JsonObject, JsonValue
 from agent_teams.logger import get_logger
 from agent_teams.mcp.registry import McpRegistry, McpServerSpec
+from agent_teams.notifications import NotificationConfig, default_notification_config
 from agent_teams.skills.registry import SkillRegistry
 
 logger = get_logger(__name__)
@@ -61,6 +62,23 @@ class ConfigManager:
     def save_model_config(self, config: JsonObject) -> None:
         model_file = self._config_dir / "model.json"
         _ = model_file.write_text(dumps(config, indent=2), encoding="utf-8")
+
+    def get_notification_config(self) -> NotificationConfig:
+        notification_file = self._config_dir / "notifications.json"
+        if not notification_file.exists():
+            return default_notification_config()
+        try:
+            payload = _load_json_object(notification_file)
+            return NotificationConfig.model_validate(payload)
+        except Exception:
+            return default_notification_config()
+
+    def save_notification_config(self, config: NotificationConfig) -> None:
+        notification_file = self._config_dir / "notifications.json"
+        _ = notification_file.write_text(
+            dumps(config.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
 
     def load_mcp_registry(self) -> McpRegistry:
         mcp_specs: list[McpServerSpec] = []

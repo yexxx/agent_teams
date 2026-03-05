@@ -94,6 +94,31 @@ def save_model_config(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.get("/configs/notifications")
+def get_notification_config(
+    service: AgentTeamsService = Depends(get_service),
+) -> JsonObject:
+    return service.get_notification_config()
+
+
+class NotificationConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config: JsonObject
+
+
+@router.put("/configs/notifications")
+def save_notification_config(
+    req: NotificationConfigRequest,
+    service: AgentTeamsService = Depends(get_service),
+) -> dict[str, str]:
+    try:
+        service.save_notification_config(req.config)
+        return {"status": "ok"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.post("/configs/model:reload")
 def reload_model_config(service: AgentTeamsService = Depends(get_service)) -> dict[str, str]:
     try:

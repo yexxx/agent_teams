@@ -4,6 +4,7 @@
  */
 
 const notifiedApprovalToolCalls = new Set();
+const notifiedKeys = new Set();
 let permissionRequested = false;
 let inAppToastContainer = null;
 let titleFlashTimer = null;
@@ -22,33 +23,64 @@ export function primeNotificationPermission() {
 }
 
 export function notifyToolApprovalRequested(payload = {}) {
-    const toolCallId = String(payload?.tool_call_id || '');
-    if (toolCallId && notifiedApprovalToolCalls.has(toolCallId)) return false;
+    return notifyFromRequest({
+        notification_type: 'tool_approval_requested',
+        title: 'Approval Required',
+        body: buildApprovalBody(payload),
+        channels: ['browser', 'toast'],
+        dedupe_key: String(payload?.tool_call_id || ''),
+    });
+}
 
-    const title = 'Approval Required';
-    const toolName = String(payload?.tool_name || 'tool');
-    const roleId = String(payload?.role_id || '');
-    const body = roleId
-        ? `${roleId} requests approval for ${toolName}.`
-        : `A tool call (${toolName}) is waiting for your approval.`;
+export function notifyFromRequest(payload = {}) {
+    const dedupeKey = String(payload?.dedupe_key || '');
+    if (dedupeKey && notifiedKeys.has(dedupeKey)) return false;
+
+    const notificationType = String(payload?.notification_type || '');
+    const toolCallId = String(payload?.context?.tool_call_id || payload?.tool_call_id || '');
+    if (
+        notificationType === 'tool_approval_requested' &&
+        toolCallId &&
+        notifiedApprovalToolCalls.has(toolCallId)
+    ) {
+        return false;
+    }
+
+    const title = String(payload?.title || 'Notification');
+    const body = String(payload?.body || buildApprovalBody(payload?.context || payload));
+    const channels = Array.isArray(payload?.channels) ? payload.channels : ['toast'];
 
     if (typeof window === 'undefined') {
         return false;
     }
 
+    if (dedupeKey) {
+        notifiedKeys.add(dedupeKey);
+    }
     if (toolCallId) {
         notifiedApprovalToolCalls.add(toolCallId);
     }
 
-    startTitleFlash('[Approval Required]');
+    startTitleFlash(`[${title}]`);
 
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        showNotification(title, body, toolCallId);
-        return true;
+    let shown = false;
+    if (channels.includes('browser') && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        showNotification(title, body, toolCallId || dedupeKey);
+        shown = true;
     }
+    if (channels.includes('toast')) {
+        showInAppToast(body);
+        shown = true;
+    }
+    return shown;
+}
 
-    showInAppToast(body);
-    return false;
+function buildApprovalBody(payload = {}) {
+    const toolName = String(payload?.tool_name || 'tool');
+    const roleId = String(payload?.role_id || '');
+    return roleId
+        ? `${roleId} requests approval for ${toolName}.`
+        : `A tool call (${toolName}) is waiting for your approval.`;
 }
 
 function showNotification(title, body, toolCallId) {

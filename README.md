@@ -18,6 +18,7 @@ Core code lives under `src/agent_teams/`:
   - `interfaces/sdk/`: Python HTTP client SDK
 - `logger/`, `trace/`: structured logging and trace context
 - `mcp/`: MCP capability integration
+- `notifications/`: backend-driven notification rules and event dispatch
 - `paths/`: path and filesystem location helpers
 - `prompting/`: prompt assembly and prompt-layer abstractions
 - `providers/`: LLM provider integrations
@@ -148,6 +149,18 @@ uv run agent-teams triggers list
 
 ```bash
 uv run agent-teams approvals list --run-id <run_id>
+```
+
+### 6.2) Notification config API
+
+```bash
+curl http://127.0.0.1:8000/api/system/configs/notifications
+```
+
+```bash
+curl -X PUT http://127.0.0.1:8000/api/system/configs/notifications \
+  -H "Content-Type: application/json" \
+  -d '{"config":{"tool_approval_requested":{"enabled":true,"channels":["browser","toast"]},"run_completed":{"enabled":false,"channels":["toast"]},"run_failed":{"enabled":true,"channels":["browser","toast"]},"run_stopped":{"enabled":false,"channels":["toast"]}}}'
 ```
 
 ## Testing Layout

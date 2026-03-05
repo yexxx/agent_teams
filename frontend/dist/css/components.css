@@ -1455,6 +1455,96 @@
     padding: 0.5rem 1.5rem;
 }
 
+.notifications-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.notifications-help {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.notification-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.notification-row {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) 110px 110px 110px;
+    gap: 0.75rem;
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+}
+
+.notification-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.notification-row-title {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.notification-row-desc {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.notification-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    user-select: none;
+}
+
+.notification-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+}
+
+.notification-row.notification-row-disabled .notification-row-title,
+.notification-row.notification-row-disabled .notification-row-desc,
+.notification-row.notification-row-disabled .notification-toggle {
+    opacity: 0.6;
+}
+
+.notifications-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
+.notifications-actions .primary-btn {
+    width: auto;
+    padding: 0.5rem 1rem;
+}
+
+@media (max-width: 760px) {
+    .notification-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .notification-row-main {
+        grid-column: 1 / -1;
+    }
+}
+
 .secondary-btn {
     background-color: var(--bg-hover-strong);
     color: var(--text-primary);

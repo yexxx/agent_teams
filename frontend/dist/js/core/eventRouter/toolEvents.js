@@ -4,7 +4,6 @@
  */
 import { state } from '../state.js';
 import { sysLog } from '../../utils/logger.js';
-import { notifyToolApprovalRequested } from '../../utils/notifications.js';
 import {
     appendToolCallBlock,
     attachToolApprovalControls,
@@ -89,10 +88,6 @@ export function handleToolApprovalRequested(payload, eventMeta, instanceId) {
     });
     if (!bound) {
         sysLog(`Approval requested for ${payload.tool_name}`, 'log-info');
-    }
-    const notified = notifyToolApprovalRequested(payload);
-    if (!notified) {
-        sysLog('Approval pending. Browser notification may be blocked; showing in-app reminder.', 'log-info');
     }
 }
 

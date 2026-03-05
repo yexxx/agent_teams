@@ -29,6 +29,7 @@ import {
     handleSubagentStopped,
     handleSubagentGate,
 } from './humanEvents.js';
+import { handleNotificationRequested } from './notificationEvents.js';
 
 export function routeEvent(evType, payload, eventMeta) {
     if (eventMeta?.run_id) state.activeRunId = eventMeta.run_id;
@@ -80,6 +81,8 @@ export function routeEvent(evType, payload, eventMeta) {
         handleToolApprovalRequested(payload, eventMeta, instanceId);
     } else if (evType === 'tool_approval_resolved') {
         handleToolApprovalResolved(payload, instanceId);
+    } else if (evType === 'notification_requested') {
+        handleNotificationRequested(payload);
     } else if (evType === 'awaiting_human_dispatch') {
         handleAwaitingHumanDispatch(payload);
     } else if (evType === 'human_task_dispatched') {

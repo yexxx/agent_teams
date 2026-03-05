@@ -8,6 +8,7 @@ from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.core.config import RuntimeConfig
 from agent_teams.core.models import RoleDefinition
 from agent_teams.mcp.registry import McpRegistry
+from agent_teams.notifications import NotificationService
 from agent_teams.prompting.runtime_prompt_builder import RuntimePromptBuilder
 from agent_teams.providers.llm import (
     EchoProvider,
@@ -48,6 +49,7 @@ def create_provider_factory(
     run_control_manager: RunControlManager,
     tool_approval_manager: ToolApprovalManager,
     tool_approval_policy: ToolApprovalPolicy,
+    notification_service: NotificationService | None,
     get_task_execution_service: Callable[[], TaskExecutionService],
     token_usage_repo: TokenUsageRepository | None = None,
 ) -> Callable[[RoleDefinition], LLMProvider]:
@@ -79,6 +81,7 @@ def create_provider_factory(
             run_control_manager=run_control_manager,
             tool_approval_manager=tool_approval_manager,
             tool_approval_policy=tool_approval_policy,
+            notification_service=notification_service,
             token_usage_repo=token_usage_repo,
         )
 

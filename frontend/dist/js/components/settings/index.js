@@ -3,6 +3,10 @@
  * Settings modal shell and tab routing.
  */
 import { bindModelProfileHandlers, loadModelProfilesPanel } from './modelProfiles.js';
+import {
+    bindNotificationSettingsHandlers,
+    loadNotificationSettingsPanel,
+} from './notifications.js';
 import { bindSystemStatusHandlers, loadMcpStatusPanel, loadSkillsStatusPanel } from './systemStatus.js';
 
 let settingsModal = null;
@@ -28,6 +32,7 @@ function createModal() {
             </div>
             <div class="settings-tabs">
                 <button class="settings-tab active" data-tab="model">Model Profiles</button>
+                <button class="settings-tab" data-tab="notifications">Notifications</button>
                 <button class="settings-tab" data-tab="mcp">MCP Config</button>
                 <button class="settings-tab" data-tab="skills">Skills</button>
             </div>
@@ -87,6 +92,99 @@ function createModal() {
                         <div class="status-info" id="mcp-status"></div>
                     </div>
                 </div>
+                <div class="settings-panel" id="notifications-panel" style="display:none;">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h3>Notifications</h3>
+                        </div>
+                        <div class="status-info notifications-panel-body">
+                            <p class="notifications-help">
+                                Configure when notifications should be sent, and through which channel.
+                                A notification is delivered only when <strong>Enabled</strong> is on and at least one channel is selected.
+                            </p>
+                            <div class="notification-grid">
+                                <div class="notification-row" data-notif-type="tool_approval_requested">
+                                    <div class="notification-row-main">
+                                        <div class="notification-row-title">Tool approval requested</div>
+                                        <div class="notification-row-desc">When an agent asks for tool approval.</div>
+                                    </div>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-tool_approval_requested-enabled">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-tool_approval_requested-browser">
+                                        <span>Browser</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-tool_approval_requested-toast">
+                                        <span>Toast</span>
+                                    </label>
+                                </div>
+
+                                <div class="notification-row" data-notif-type="run_completed">
+                                    <div class="notification-row-main">
+                                        <div class="notification-row-title">Run completed</div>
+                                        <div class="notification-row-desc">When a run finishes successfully.</div>
+                                    </div>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_completed-enabled">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_completed-browser">
+                                        <span>Browser</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_completed-toast">
+                                        <span>Toast</span>
+                                    </label>
+                                </div>
+
+                                <div class="notification-row" data-notif-type="run_failed">
+                                    <div class="notification-row-main">
+                                        <div class="notification-row-title">Run failed</div>
+                                        <div class="notification-row-desc">When a run exits due to an error.</div>
+                                    </div>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_failed-enabled">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_failed-browser">
+                                        <span>Browser</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_failed-toast">
+                                        <span>Toast</span>
+                                    </label>
+                                </div>
+
+                                <div class="notification-row" data-notif-type="run_stopped">
+                                    <div class="notification-row-main">
+                                        <div class="notification-row-title">Run stopped</div>
+                                        <div class="notification-row-desc">When a run is stopped by user action.</div>
+                                    </div>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_stopped-enabled">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_stopped-browser">
+                                        <span>Browser</span>
+                                    </label>
+                                    <label class="notification-toggle">
+                                        <input type="checkbox" id="notif-run_stopped-toast">
+                                        <span>Toast</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="notifications-actions">
+                                <button class="primary-btn" id="save-notifications-btn">Save Notifications</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-panel" id="skills-panel" style="display:none;">
                     <div class="settings-section">
                         <div class="section-header">
@@ -124,6 +222,7 @@ function setupEventListeners() {
     });
 
     bindModelProfileHandlers();
+    bindNotificationSettingsHandlers();
     bindSystemStatusHandlers();
 }
 
@@ -133,6 +232,8 @@ async function showPanel(tab) {
 
     if (tab === 'model') {
         await loadModelProfilesPanel();
+    } else if (tab === 'notifications') {
+        await loadNotificationSettingsPanel();
     } else if (tab === 'mcp') {
         await loadMcpStatusPanel();
     } else if (tab === 'skills') {

@@ -52,6 +52,7 @@ Common status codes:
 - `run_stopped`
 - `run_completed`
 - `run_failed`
+- `notification_requested`
 - `awaiting_manual_action`
 - `token_usage`
 
@@ -110,6 +111,34 @@ Reloads MCP config into runtime.
 
 ### `POST /system/configs/skills:reload`
 Reloads skills config into runtime.
+
+### `GET /system/configs/notifications`
+Returns notification rules by event type.
+
+Response:
+```json
+{
+  "tool_approval_requested": {"enabled": true, "channels": ["browser", "toast"]},
+  "run_completed": {"enabled": false, "channels": ["toast"]},
+  "run_failed": {"enabled": true, "channels": ["browser", "toast"]},
+  "run_stopped": {"enabled": false, "channels": ["toast"]}
+}
+```
+
+### `PUT /system/configs/notifications`
+Replaces notification rules.
+
+Request:
+```json
+{
+  "config": {
+    "tool_approval_requested": {"enabled": true, "channels": ["browser", "toast"]},
+    "run_completed": {"enabled": true, "channels": ["toast"]},
+    "run_failed": {"enabled": true, "channels": ["browser", "toast"]},
+    "run_stopped": {"enabled": false, "channels": ["toast"]}
+  }
+}
+```
 
 ---
 

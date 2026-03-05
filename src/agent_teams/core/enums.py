@@ -70,6 +70,7 @@ class RunEventType(str, Enum):
     RUN_STOPPED = 'run_stopped'
     RUN_COMPLETED = 'run_completed'
     RUN_FAILED = 'run_failed'
+    NOTIFICATION_REQUESTED = 'notification_requested'
     # Human orchestration mode
     AWAITING_MANUAL_ACTION = 'awaiting_manual_action'
     # Token consumption statistics

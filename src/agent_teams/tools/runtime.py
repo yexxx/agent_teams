@@ -8,6 +8,7 @@ from pydantic_ai import RunContext
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.roles.registry import RoleRegistry
+from agent_teams.notifications import NotificationService
 from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.tool_approval_manager import ToolApprovalManager
 from agent_teams.state.event_log import EventLog
@@ -45,6 +46,7 @@ class ToolDeps(BaseModel):
     run_control_manager: SkipValidation[RunControlManager]
     tool_approval_manager: SkipValidation[ToolApprovalManager]
     tool_approval_policy: SkipValidation[ToolApprovalPolicy]
+    notification_service: SkipValidation[NotificationService | None] = None
 
 
 ToolContext = RunContext[ToolDeps]

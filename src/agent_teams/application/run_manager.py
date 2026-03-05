@@ -10,6 +10,11 @@ from agent_teams.core.enums import InjectionSource, RunEventType
 from agent_teams.core.ids import new_trace_id
 from agent_teams.core.models import IntentInput, RunEvent, RunResult
 from agent_teams.logger import get_logger, log_event
+from agent_teams.notifications import (
+    NotificationContext,
+    NotificationService,
+    NotificationType,
+)
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_control_manager import RunControlManager
 from agent_teams.runtime.run_event_hub import RunEventHub
@@ -31,12 +36,14 @@ class RunManager:
         run_event_hub: RunEventHub,
         run_control_manager: RunControlManager,
         tool_approval_manager: ToolApprovalManager,
+        notification_service: NotificationService | None = None,
     ) -> None:
         self._meta_agent: MetaAgent = meta_agent
         self._injection_manager: RunInjectionManager = injection_manager
         self._run_event_hub: RunEventHub = run_event_hub
         self._run_control_manager: RunControlManager = run_control_manager
         self._tool_approval_manager: ToolApprovalManager = tool_approval_manager
+        self._notification_service: NotificationService | None = notification_service
         self._pending_runs: dict[str, IntentInput] = {}
         self._running_run_ids: set[str] = set()
 
@@ -141,6 +148,14 @@ class RunManager:
                         message="Run completed",
                         payload={"root_task_id": result.root_task_id},
                     )
+                self._emit_notification(
+                    notification_type=NotificationType.RUN_COMPLETED,
+                    session_id=session_id,
+                    run_id=run_id,
+                    trace_id=result.trace_id,
+                    title="Run Completed",
+                    body=f"Run {run_id} completed successfully.",
+                )
             except asyncio.CancelledError:
                 self._run_control_manager.publish_run_stopped(
                     session_id=session_id,
@@ -157,6 +172,14 @@ class RunManager:
                         message="Run cancelled",
                         payload={"reason": "stopped_by_user"},
                     )
+                self._emit_notification(
+                    notification_type=NotificationType.RUN_STOPPED,
+                    session_id=session_id,
+                    run_id=run_id,
+                    trace_id=run_id,
+                    title="Run Stopped",
+                    body=f"Run {run_id} was stopped by user.",
+                )
             except Exception as exc:
                 self._run_event_hub.publish(
                     RunEvent(
@@ -178,6 +201,14 @@ class RunManager:
                         message="Run failed",
                         exc_info=exc,
                     )
+                self._emit_notification(
+                    notification_type=NotificationType.RUN_FAILED,
+                    session_id=session_id,
+                    run_id=run_id,
+                    trace_id=run_id,
+                    title="Run Failed",
+                    body=f"Run {run_id} failed: {exc}",
+                )
             finally:
                 self._injection_manager.deactivate(run_id)
                 self._run_control_manager.unregister_run_task(run_id)
@@ -240,6 +271,14 @@ class RunManager:
                 run_id=run_id,
                 reason="stopped_before_start",
             )
+            self._emit_notification(
+                notification_type=NotificationType.RUN_STOPPED,
+                session_id=session_id,
+                run_id=run_id,
+                trace_id=run_id,
+                title="Run Stopped",
+                body=f"Run {run_id} was stopped before start.",
+            )
             return
 
         requested = self._run_control_manager.request_run_stop(run_id)
@@ -283,3 +322,26 @@ class RunManager:
 
     def list_open_tool_approvals(self, run_id: str) -> list[dict[str, str]]:
         return self._tool_approval_manager.list_open_approvals(run_id=run_id)
+
+    def _emit_notification(
+        self,
+        *,
+        notification_type: NotificationType,
+        session_id: str,
+        run_id: str,
+        trace_id: str,
+        title: str,
+        body: str,
+    ) -> None:
+        if self._notification_service is None:
+            return
+        _ = self._notification_service.emit(
+            notification_type=notification_type,
+            title=title,
+            body=body,
+            context=NotificationContext(
+                session_id=session_id,
+                run_id=run_id,
+                trace_id=trace_id,
+            ),
+        )

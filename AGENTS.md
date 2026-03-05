@@ -16,6 +16,7 @@ Database schema and API changes do not need to maintain backward compatibility. 
     - `interfaces/sdk/`: Python HTTP client SDK
   - `logger/`, `trace/`: structured logging and trace context
   - `mcp/`: MCP capability integration
+  - `notifications/`: backend-driven notification models, dispatch, and channel rules
   - `paths/`: path and filesystem location helpers
   - `prompting/`: prompt assembly and prompt-layer abstractions
   - `providers/`: LLM provider integrations

@@ -10,6 +10,12 @@ from agent_teams.agents.core.meta_agent import MetaAgent
 from agent_teams.application.run_manager import RunManager
 from agent_teams.core.enums import RunEventType
 from agent_teams.core.models import IntentInput
+from agent_teams.notifications import (
+    NotificationChannel,
+    NotificationConfig,
+    NotificationRule,
+    NotificationService,
+)
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.runtime.injection_manager import RunInjectionManager
 from agent_teams.runtime.run_control_manager import RunControlManager
@@ -128,6 +134,15 @@ def test_stop_pending_run_emits_run_stopped_event() -> None:
         run_event_hub=hub,
         run_control_manager=control,
         tool_approval_manager=ToolApprovalManager(),
+        notification_service=NotificationService(
+            run_event_hub=hub,
+            get_config=lambda: NotificationConfig(
+                run_stopped=NotificationRule(
+                    enabled=True,
+                    channels=(NotificationChannel.TOAST,),
+                ),
+            ),
+        ),
     )
 
     run_id, _ = manager.create_run(
@@ -139,3 +154,5 @@ def test_stop_pending_run_emits_run_stopped_event() -> None:
 
     event = queue.get_nowait()
     assert event.event_type == RunEventType.RUN_STOPPED
+    notification_event = queue.get_nowait()
+    assert notification_event.event_type == RunEventType.NOTIFICATION_REQUESTED

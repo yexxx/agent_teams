@@ -71,3 +71,19 @@ export async function reloadSkillsConfig() {
         'Failed to reload skills config',
     );
 }
+
+export async function fetchNotificationConfig() {
+    return requestJson('/api/system/configs/notifications', undefined, 'Failed to fetch notification config');
+}
+
+export async function saveNotificationConfig(config) {
+    return requestJson(
+        '/api/system/configs/notifications',
+        {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config }),
+        },
+        'Failed to save notification config',
+    );
+}

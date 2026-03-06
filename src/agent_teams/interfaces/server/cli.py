@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from importlib import import_module
-import os
 from typing import cast
 
 import typer
@@ -12,15 +11,7 @@ import typer
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the server to"),
     port: int = typer.Option(8000, "--port", help="Port to bind the server to"),
-    config_dir: str | None = typer.Option(
-        None,
-        "--config-dir",
-        help="Override runtime config directory (default: ./.agent_teams)",
-    ),
 ) -> None:
-    if config_dir:
-        os.environ["AGENT_TEAMS_CONFIG_DIR"] = config_dir
-
     uvicorn_module = import_module("uvicorn")
     server_module = import_module("agent_teams.interfaces.server.app")
     fastapi_app = getattr(server_module, "app")

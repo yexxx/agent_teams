@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 from types import ModuleType
-import os
 import sys
 
 from agent_teams.interfaces.server import cli as server_cli
 
 
-def test_serve_sets_config_dir_env_and_runs_uvicorn(monkeypatch) -> None:
+def test_serve_runs_uvicorn(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     fake_uvicorn = ModuleType("uvicorn")
@@ -28,11 +27,9 @@ def test_serve_sets_config_dir_env_and_runs_uvicorn(monkeypatch) -> None:
     monkeypatch.setitem(
         sys.modules, "agent_teams.interfaces.server.app", fake_server_module
     )
-    monkeypatch.delenv("AGENT_TEAMS_CONFIG_DIR", raising=False)
 
-    server_cli.serve(host="127.0.0.1", port=8911, config_dir="D:/tmp/at-config")
+    server_cli.serve(host="127.0.0.1", port=8911)
 
-    assert os.environ["AGENT_TEAMS_CONFIG_DIR"] == "D:/tmp/at-config"
     assert captured == {
         "app": sentinel_app,
         "host": "127.0.0.1",

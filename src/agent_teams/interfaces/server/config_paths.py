@@ -3,22 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_teams.env import get_env_var
-from agent_teams.paths import get_project_root as resolve_project_root
-
-CONFIG_DIR_ENV_VAR = "AGENT_TEAMS_CONFIG_DIR"
-
-
-def get_project_root() -> Path:
-    return resolve_project_root()
-
-
-def get_config_dir() -> Path:
-    raw_override = (get_env_var(CONFIG_DIR_ENV_VAR, "") or "").strip()
-    if not raw_override:
-        return get_project_root() / ".agent_teams"
-    return Path(raw_override).expanduser().resolve()
+from agent_teams.paths import get_project_root_or_none
 
 
 def get_frontend_dist_dir() -> Path:
-    return get_project_root() / "frontend" / "dist"
+    project_root = get_project_root_or_none() or Path.cwd().resolve()
+    return project_root / "frontend" / "dist"

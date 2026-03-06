@@ -5,26 +5,17 @@ from collections.abc import Mapping
 import os
 from pathlib import Path
 
-from agent_teams.paths import get_project_root, get_user_home_dir
+from agent_teams.paths import get_project_config_dir, get_user_config_dir
 
-_ENV_DIR_NAME = ".agent_teams"
 _ENV_FILE_NAME = ".env"
 
 
 def get_user_env_file_path(user_home_dir: Path | None = None) -> Path:
-    if user_home_dir is None:
-        home_dir = get_user_home_dir()
-    else:
-        home_dir = user_home_dir.expanduser().resolve()
-    return home_dir / _ENV_DIR_NAME / _ENV_FILE_NAME
+    return get_user_config_dir(user_home_dir=user_home_dir) / _ENV_FILE_NAME
 
 
 def get_project_env_file_path(project_root: Path | None = None) -> Path:
-    if project_root is None:
-        resolved_project_root = get_project_root()
-    else:
-        resolved_project_root = project_root.expanduser().resolve()
-    return resolved_project_root / _ENV_DIR_NAME / _ENV_FILE_NAME
+    return get_project_config_dir(project_root=project_root) / _ENV_FILE_NAME
 
 
 def load_env_file(env_file_path: Path) -> dict[str, str]:

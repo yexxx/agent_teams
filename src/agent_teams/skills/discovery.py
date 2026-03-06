@@ -7,7 +7,7 @@ import re
 import yaml
 
 from agent_teams.logger import get_logger
-from agent_teams.paths import get_project_root, get_user_home_dir
+from agent_teams.paths import get_project_config_dir, get_user_config_dir
 from agent_teams.skills.models import (
     Skill,
     SkillMetadata,
@@ -24,21 +24,11 @@ _SCRIPT_DESCRIPTION_PATTERN = re.compile(
 
 
 def get_user_skills_dir(user_home_dir: Path | None = None) -> Path:
-    resolved_home = (
-        get_user_home_dir()
-        if user_home_dir is None
-        else user_home_dir.expanduser().resolve()
-    )
-    return resolved_home / ".agent_teams" / "skills"
+    return get_user_config_dir(user_home_dir=user_home_dir) / "skills"
 
 
 def get_project_skills_dir(project_root: Path | None = None) -> Path:
-    resolved_project_root = (
-        get_project_root()
-        if project_root is None
-        else project_root.expanduser().resolve()
-    )
-    return resolved_project_root / ".agent_teams" / "skills"
+    return get_project_config_dir(project_root=project_root) / "skills"
 
 
 class SkillsDirectory:

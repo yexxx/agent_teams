@@ -18,13 +18,14 @@ from integration_tests.support.process_control import (
     wait_for_http_ready,
 )
 
+
 @pytest.fixture(scope="session")
 def integration_env(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[IntegrationEnvironment]:
     repo_root = Path(__file__).resolve().parent.parent.parent
     runtime_root = tmp_path_factory.mktemp("agent-teams-integration")
-    config_dir = runtime_root / "config"
+    config_dir = runtime_root / ".agent_teams"
 
     fake_llm_port = find_free_port()
     backend_port = find_free_port()
@@ -74,9 +75,6 @@ def integration_env(
             process=fake_llm_process,
         )
 
-        backend_env = dict(shared_env)
-        backend_env["AGENT_TEAMS_CONFIG_DIR"] = str(config_dir)
-
         backend_process = start_process(
             name="agent-teams-backend",
             command=(
@@ -91,8 +89,8 @@ def integration_env(
                 "--log-level",
                 "warning",
             ),
-            cwd=repo_root,
-            env=backend_env,
+            cwd=runtime_root,
+            env=shared_env,
             log_file=backend_log_file,
         )
         wait_for_http_ready(

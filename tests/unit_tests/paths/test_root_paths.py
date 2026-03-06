@@ -7,7 +7,10 @@ import subprocess
 from agent_teams.paths import root_paths
 
 
-def test_get_project_root_returns_git_root(monkeypatch, tmp_path: Path) -> None:
+def test_get_project_root_or_none_returns_git_root(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     git_root = tmp_path / "repo"
     git_root.mkdir(parents=True)
 
@@ -36,12 +39,12 @@ def test_get_project_root_returns_git_root(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(root_paths.subprocess, "run", fake_run)
 
-    resolved = root_paths.get_project_root()
+    resolved = root_paths.get_project_root_or_none()
 
     assert resolved == git_root.resolve()
 
 
-def test_get_project_root_falls_back_to_cwd_when_git_fails(
+def test_get_project_root_or_none_returns_none_when_git_fails(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -65,12 +68,12 @@ def test_get_project_root_falls_back_to_cwd_when_git_fails(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(root_paths.subprocess, "run", fake_run)
 
-    resolved = root_paths.get_project_root()
+    resolved = root_paths.get_project_root_or_none()
 
-    assert resolved == tmp_path.resolve()
+    assert resolved is None
 
 
-def test_get_project_root_passes_start_dir_to_git(
+def test_get_project_root_or_none_passes_start_dir_to_git(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -100,13 +103,13 @@ def test_get_project_root_passes_start_dir_to_git(
 
     monkeypatch.setattr(root_paths.subprocess, "run", fake_run)
 
-    resolved = root_paths.get_project_root(start_dir=project_dir)
+    resolved = root_paths.get_project_root_or_none(start_dir=project_dir)
 
     assert captured["cwd"] == str(project_dir.resolve())
     assert resolved == git_root.resolve()
 
 
-def test_get_project_root_or_none_falls_back_to_cwd_when_git_fails(
+def test_get_project_root_or_none_returns_none_on_git_failure(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -129,10 +132,54 @@ def test_get_project_root_or_none_falls_back_to_cwd_when_git_fails(
 
     monkeypatch.setattr(root_paths.subprocess, "run", fake_run)
 
-    assert (
-        root_paths.get_project_root_or_none(start_dir=tmp_path) == Path.cwd().resolve()
-    )
+    assert root_paths.get_project_root_or_none(start_dir=tmp_path) is None
+
+
+def test_get_project_config_dir_uses_project_root_when_available(monkeypatch) -> None:
+    project_root = Path("D:/repo-root").resolve()
+    monkeypatch.setattr(root_paths, "get_project_root_or_none", lambda: project_root)
+
+    config_dir = root_paths.get_project_config_dir()
+
+    assert config_dir == project_root / ".agent_teams"
+
+
+def test_get_project_config_dir_falls_back_to_cwd_when_git_root_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(root_paths, "get_project_root_or_none", lambda: None)
+
+    config_dir = root_paths.get_project_config_dir()
+
+    assert config_dir == tmp_path.resolve() / ".agent_teams"
+
+
+def test_get_project_config_dir_uses_project_root_override() -> None:
+    project_root = Path("D:/repo-root").resolve()
+
+    config_dir = root_paths.get_project_config_dir(project_root=project_root)
+
+    assert config_dir == project_root / ".agent_teams"
 
 
 def test_get_user_home_dir_returns_resolved_home() -> None:
     assert root_paths.get_user_home_dir() == Path.home().resolve()
+
+
+def test_get_user_config_dir_uses_resolved_home(monkeypatch, tmp_path: Path) -> None:
+    user_home_dir = tmp_path / "home"
+    monkeypatch.setattr(root_paths, "get_user_home_dir", lambda: user_home_dir)
+
+    config_dir = root_paths.get_user_config_dir()
+
+    assert config_dir == user_home_dir / ".agent_teams"
+
+
+def test_get_user_config_dir_uses_user_home_override(tmp_path: Path) -> None:
+    user_home_dir = tmp_path / "home"
+
+    config_dir = root_paths.get_user_config_dir(user_home_dir=user_home_dir)
+
+    assert config_dir == user_home_dir.resolve() / ".agent_teams"

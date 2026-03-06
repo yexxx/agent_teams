@@ -85,3 +85,17 @@ def test_get_env_var_returns_default_when_missing(tmp_path: Path) -> None:
     )
 
     assert value == "fallback"
+
+
+def test_get_project_env_file_path_falls_back_to_cwd_when_git_root_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path.resolve() / ".agent_teams"
+    monkeypatch.setattr(
+        runtime_env, "get_project_config_dir", lambda **kwargs: config_dir
+    )
+
+    env_file_path = runtime_env.get_project_env_file_path()
+
+    assert env_file_path == config_dir / ".env"

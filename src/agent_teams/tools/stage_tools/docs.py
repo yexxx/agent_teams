@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent_teams.paths import get_project_config_dir
+
 STAGE_ROLE_TO_FILE = {
     "spec_spec": "spec.md",
     "spec_design": "design.md",
@@ -16,7 +18,7 @@ PREVIOUS_STAGE_FILE = {
 
 
 def stage_docs_dir(workspace_root: Path, run_id: str) -> Path:
-    return workspace_root / ".agent_teams" / "stage_docs" / run_id
+    return get_project_config_dir(project_root=workspace_root) / "stage_docs" / run_id
 
 
 def current_stage_doc_path(*, workspace_root: Path, run_id: str, role_id: str) -> Path:

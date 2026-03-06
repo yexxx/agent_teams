@@ -6,22 +6,22 @@ from pathlib import Path
 from agent_teams.interfaces.server import config_paths
 
 
-def test_get_config_dir_uses_default_when_env_not_set(monkeypatch) -> None:
-    default_root = Path("D:/repo-root").resolve()
-    monkeypatch.setattr(config_paths, "get_project_root", lambda: default_root)
-    monkeypatch.setattr(config_paths, "get_env_var", lambda *args, **kwargs: "")
+def test_get_frontend_dist_dir_uses_git_root_when_available(monkeypatch) -> None:
+    project_root = Path("D:/repo-root").resolve()
+    monkeypatch.setattr(config_paths, "get_project_root_or_none", lambda: project_root)
 
-    config_dir = config_paths.get_config_dir()
+    frontend_dist_dir = config_paths.get_frontend_dist_dir()
 
-    assert config_dir == default_root / ".agent_teams"
+    assert frontend_dist_dir == project_root / "frontend" / "dist"
 
 
-def test_get_config_dir_prefers_env_override(monkeypatch) -> None:
-    override_dir = Path("D:/tmp/custom-config").resolve()
-    monkeypatch.setattr(
-        config_paths, "get_env_var", lambda *args, **kwargs: str(override_dir)
-    )
+def test_get_frontend_dist_dir_falls_back_to_cwd_when_git_root_is_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config_paths, "get_project_root_or_none", lambda: None)
 
-    config_dir = config_paths.get_config_dir()
+    frontend_dist_dir = config_paths.get_frontend_dist_dir()
 
-    assert config_dir == override_dir
+    assert frontend_dist_dir == tmp_path.resolve() / "frontend" / "dist"

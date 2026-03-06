@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from agent_teams.env import load_merged_env_vars
+from agent_teams.paths import get_project_config_dir
 from agent_teams.providers.model_config import ModelEndpointConfig, SamplingConfig
 
 
@@ -32,25 +33,28 @@ def load_runtime_config(
     roles_dir: Path | None = None,
     db_path: Path | None = None,
 ) -> RuntimeConfig:
-    if config_dir is None:
-        config_dir = Path(".agent_teams")
-    config_dir.mkdir(parents=True, exist_ok=True)
+    resolved_config_dir = (
+        get_project_config_dir()
+        if config_dir is None
+        else config_dir.expanduser().resolve()
+    )
+    resolved_config_dir.mkdir(parents=True, exist_ok=True)
 
-    env_file = config_dir / ".env"
+    env_file = resolved_config_dir / ".env"
     merged_env = load_merged_env_vars(extra_env_files=(env_file,))
 
     resolved_roles_dir = roles_dir or Path(
-        merged_env.get("AGENT_TEAMS_ROLES_DIR", str(config_dir / "roles"))
+        merged_env.get("AGENT_TEAMS_ROLES_DIR", str(resolved_config_dir / "roles"))
     )
     resolved_db_path = db_path or _resolve_path(
-        config_dir,
+        resolved_config_dir,
         merged_env.get("AGENT_TEAMS_DB_PATH", "agent_teams.db"),
     )
-    llm_profiles = load_llm_configs(config_dir, merged_env)
+    llm_profiles = load_llm_configs(resolved_config_dir, merged_env)
 
     return RuntimeConfig(
         paths=RuntimePaths(
-            config_dir=config_dir,
+            config_dir=resolved_config_dir,
             env_file=env_file,
             db_path=resolved_db_path,
             roles_dir=resolved_roles_dir,
@@ -67,7 +71,7 @@ def load_llm_configs(
     if not model_file.exists():
         raise FileNotFoundError(
             f"model.json not found in {config_dir}. "
-            "Please create .agent_teams/model.json with a 'default' profile."
+            "Please create model.json with a 'default' profile."
         )
 
     try:

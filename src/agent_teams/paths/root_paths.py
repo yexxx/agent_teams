@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 
+_CONFIG_DIR_NAME = ".agent_teams"
 _GIT_TOPLEVEL_CMD: tuple[str, str, str] = ("git", "rev-parse", "--show-toplevel")
 _GIT_TIMEOUT_SECONDS = 5.0
 
@@ -13,11 +14,13 @@ def get_user_home_dir() -> Path:
     return Path.home().resolve()
 
 
-def get_project_root(start_dir: Path | None = None) -> Path:
-    project_root = get_project_root_or_none(start_dir=start_dir)
-    if project_root is None:
-        return Path.cwd().resolve()
-    return project_root
+def get_user_config_dir(user_home_dir: Path | None = None) -> Path:
+    resolved_home_dir = (
+        get_user_home_dir()
+        if user_home_dir is None
+        else user_home_dir.expanduser().resolve()
+    )
+    return resolved_home_dir / _CONFIG_DIR_NAME
 
 
 def get_project_root_or_none(start_dir: Path | None = None) -> Path | None:
@@ -32,17 +35,26 @@ def get_project_root_or_none(start_dir: Path | None = None) -> Path | None:
             timeout=_GIT_TIMEOUT_SECONDS,
         )
     except OSError:
-        return Path.cwd().resolve()
+        return None
     except subprocess.TimeoutExpired:
-        return Path.cwd().resolve()
+        return None
 
     if completed.returncode != 0:
-        return Path.cwd().resolve()
+        return None
 
     raw_stdout = completed.stdout.strip()
     if not raw_stdout:
-        return Path.cwd().resolve()
+        return None
     return Path(raw_stdout).expanduser().resolve()
+
+
+def get_project_config_dir(project_root: Path | None = None) -> Path:
+    resolved_project_root = (
+        get_project_root_or_none() or Path.cwd().resolve()
+        if project_root is None
+        else project_root.expanduser().resolve()
+    )
+    return resolved_project_root / _CONFIG_DIR_NAME
 
 
 def _resolve_start_dir(start_dir: Path | None) -> Path:

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+# -*- coding: utf-8 -*-
+from __future__ import annotations
 
 import json
 import logging
@@ -15,6 +16,7 @@ from agent_teams.logger import (
     log_event,
     log_tool_call,
 )
+from agent_teams.logger import logger as logger_module
 from agent_teams.trace import bind_trace_context
 
 
@@ -40,6 +42,26 @@ def test_configure_logging_loads_ini_and_builds_rotating_handler(
         ]
         assert len(rotating_handlers) == 1
         assert rotating_handlers[0].backupCount == 14
+    finally:
+        _snapshot.restore()
+
+
+def test_configure_logging_uses_project_config_dir_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_TEAMS_LOG_PERSIST", "0")
+    monkeypatch.setattr(
+        logger_module,
+        "get_project_config_dir",
+        lambda: tmp_path,
+    )
+    _snapshot = _RootLoggerSnapshot.take()
+    try:
+        configure_logging()
+
+        assert (tmp_path / "logger.ini").exists()
+        assert (tmp_path / "logs").exists()
     finally:
         _snapshot.restore()
 
@@ -143,5 +165,3 @@ class _RootLoggerSnapshot:
         for handler in current_handlers:
             if handler not in self._handlers:
                 handler.close()
-
-

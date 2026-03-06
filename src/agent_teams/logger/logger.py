@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import ast
@@ -15,6 +15,7 @@ from typing import cast, override
 from agent_teams.shared_types.json_types import JsonObject, JsonValue
 from agent_teams.env import load_merged_env_vars
 from agent_teams.logger.log_persistence import PersistentLogHandler
+from agent_teams.paths import get_project_config_dir
 from agent_teams.trace import get_trace_context
 
 SERVICE_NAME = "agent_teams"
@@ -127,7 +128,11 @@ def configure_logging(
 ) -> None:
     _refresh_runtime_env_values()
 
-    resolved_config_dir = (config_dir or Path(".agent_teams")).resolve()
+    resolved_config_dir = (
+        get_project_config_dir()
+        if config_dir is None
+        else config_dir.expanduser().resolve()
+    )
     resolved_config_dir.mkdir(parents=True, exist_ok=True)
 
     config_path = resolved_config_dir / LOGGER_CONFIG_FILENAME
@@ -377,5 +382,3 @@ def _safe_json(value: object) -> str:
     if len(text) > 300:
         return text[:300] + "...(truncated)"
     return text
-
-

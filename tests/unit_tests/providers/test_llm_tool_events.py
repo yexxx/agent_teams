@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import tempfile
 from pathlib import Path
 from typing import cast
 
@@ -23,7 +24,7 @@ from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
 from agent_teams.state.run_runtime_repo import RunRuntimeRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.runtime import ToolApprovalPolicy
@@ -33,6 +34,8 @@ from agent_teams.roles.registry import RoleRegistry
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.agents.management.instance_pool import InstancePool
+from agent_teams.roles.models import RoleDefinition
+from agent_teams.workspace import WorkspaceManager
 
 
 class _FakeRunEventHub:
@@ -59,7 +62,7 @@ class _FakeInstancePool:
     pass
 
 
-class _FakeSharedStore:
+class _FakeSharedStateRepository:
     pass
 
 
@@ -73,11 +76,22 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         base_url="http://localhost",
         api_key="test-key",
     )
+    role_registry = RoleRegistry()
+    role_registry.register(
+        RoleDefinition(
+            role_id="coordinator_agent",
+            name="coordinator",
+            version="1",
+            tools=(),
+            system_prompt="Coordinate work.",
+        )
+    )
+    shared_store = SharedStateRepository(Path(tempfile.mkstemp(suffix=".db")[1]))
     return OpenAICompatibleProvider(
         config,
         task_repo=cast(TaskRepository, cast(object, _FakeTaskRepository())),
         instance_pool=cast(InstancePool, cast(object, _FakeInstancePool())),
-        shared_store=cast(SharedStore, cast(object, _FakeSharedStore())),
+        shared_store=shared_store,
         event_bus=cast(EventLog, cast(object, _FakeEventLog())),
         injection_manager=cast(RunInjectionManager, object()),
         run_event_hub=cast(RunEventHub, cast(object, hub)),
@@ -85,7 +99,10 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         workflow_graph_repo=cast(WorkflowGraphRepository, object()),
         approval_ticket_repo=cast(ApprovalTicketRepository, object()),
         run_runtime_repo=cast(RunRuntimeRepository, object()),
-        workspace_root=Path("."),
+        workspace_manager=WorkspaceManager(
+            project_root=Path("."),
+            shared_store=shared_store,
+        ),
         tool_registry=cast(ToolRegistry, object()),
         mcp_registry=cast(McpRegistry, object()),
         skill_registry=cast(SkillRegistry, object()),
@@ -93,7 +110,7 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         allowed_mcp_servers=(),
         allowed_skills=(),
         message_repo=cast(MessageRepository, object()),
-        role_registry=cast(RoleRegistry, object()),
+        role_registry=role_registry,
         task_execution_service=cast(TaskExecutionService, object()),
         run_control_manager=cast(
             RunControlManager, cast(object, _FakeRunControlManager())

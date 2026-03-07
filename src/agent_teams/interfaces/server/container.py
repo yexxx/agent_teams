@@ -42,7 +42,7 @@ from agent_teams.state.run_intent_repo import RunIntentRepository
 from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.run_state_repo import RunStateRepository
 from agent_teams.state.session_repo import SessionRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
@@ -52,6 +52,7 @@ from agent_teams.tools.runtime import (
     ToolApprovalPolicy,
 )
 from agent_teams.triggers import TriggerRepository, TriggerService
+from agent_teams.workspace import WorkspaceManager
 from agent_teams.workflow.orchestration_service import WorkflowOrchestrationService
 
 
@@ -96,7 +97,13 @@ class ServerContainer:
             self.skill_registry.validate_known(role.skills)
 
         self.task_repo: TaskRepository = TaskRepository(runtime.paths.db_path)
-        self.shared_store: SharedStore = SharedStore(runtime.paths.db_path)
+        self.shared_store: SharedStateRepository = SharedStateRepository(
+            runtime.paths.db_path
+        )
+        self.workspace_manager: WorkspaceManager = WorkspaceManager(
+            project_root=Path.cwd(),
+            shared_store=self.shared_store,
+        )
         self.event_log: EventLog = EventLog(runtime.paths.db_path)
         self.agent_repo: AgentInstanceRepository = AgentInstanceRepository(
             runtime.paths.db_path
@@ -203,6 +210,8 @@ class ServerContainer:
                 self.run_service._active_run_by_session.get(session_id)
             ),
             event_log=self.event_log,
+            shared_store=self.shared_store,
+            workspace_manager=self.workspace_manager,
         )
         self.config_status_service: ConfigStatusService = ConfigStatusService(
             get_runtime=lambda: self.runtime,
@@ -251,6 +260,7 @@ class ServerContainer:
             workflow_graph_repo=self.workflow_graph_repo,
             approval_ticket_repo=self.approval_ticket_repo,
             run_runtime_repo=self.run_runtime_repo,
+            workspace_manager=self.workspace_manager,
             tool_registry=self.tool_registry,
             mcp_registry=self.mcp_registry,
             skill_registry=self.skill_registry,
@@ -274,6 +284,7 @@ class ServerContainer:
             workflow_graph_repo=self.workflow_graph_repo,
             approval_ticket_repo=self.approval_ticket_repo,
             run_runtime_repo=self.run_runtime_repo,
+            workspace_manager=self.workspace_manager,
             provider_factory=self._provider_factory,
             injection_manager=self.injection_manager,
             run_control_manager=self.run_control_manager,

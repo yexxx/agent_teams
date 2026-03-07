@@ -28,6 +28,7 @@ from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.session_models import SessionRecord
 from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.task_repo import TaskRepository
+from agent_teams.workspace import build_workspace_id
 
 
 class _MetaAgent:
@@ -87,12 +88,19 @@ class _RunRuntimeRepo:
 
 class _SessionRepo:
     def get(self, session_id: str) -> SessionRecord:
-        return SessionRecord(session_id=session_id)
+        return SessionRecord(
+            session_id=session_id,
+            workspace_id=build_workspace_id(session_id),
+        )
 
     def create(
         self, session_id: str, metadata: dict[str, str] | None = None
     ) -> SessionRecord:
-        return SessionRecord(session_id=session_id, metadata=metadata or {})
+        return SessionRecord(
+            session_id=session_id,
+            workspace_id=build_workspace_id(session_id),
+            metadata=metadata or {},
+        )
 
 
 def _make_run_manager(control: RunControlManager) -> RunManager:

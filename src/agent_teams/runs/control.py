@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -437,6 +438,9 @@ class RunControlManager:
 
         self._require_message_repo().append_user_prompt_if_missing(
             session_id=record.session_id,
+            workspace_id=record.workspace_id,
+            conversation_id=record.conversation_id,
+            agent_role_id=record.role_id,
             instance_id=instance_id,
             task_id=task_id or "subagent-followup",
             trace_id=run_id,

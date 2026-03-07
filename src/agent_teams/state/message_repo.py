@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import json
@@ -13,10 +14,11 @@ from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.state.db import open_sqlite
 from agent_teams.workflow.task_status_sanitizer import sanitize_task_status_payload
+from agent_teams.workspace import build_workspace_id
 
 
 class MessageRepository:
-    """Persists per-instance LLM message history for multi-turn context."""
+    """Persists conversation-safe LLM message history."""
 
     def __init__(self, db_path: Path) -> None:
         self._conn = open_sqlite(db_path)
@@ -29,30 +31,48 @@ class MessageRepository:
             self._conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS messages (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id   TEXT NOT NULL DEFAULT '',
-                    instance_id  TEXT NOT NULL,
-                    task_id      TEXT NOT NULL,
-                    trace_id     TEXT NOT NULL,
-                    role         TEXT NOT NULL,
-                    message_json TEXT NOT NULL,
-                    created_at   TEXT NOT NULL
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id      TEXT NOT NULL DEFAULT '',
+                    workspace_id    TEXT NOT NULL DEFAULT '',
+                    conversation_id TEXT NOT NULL DEFAULT '',
+                    agent_role_id   TEXT NOT NULL DEFAULT '',
+                    instance_id     TEXT NOT NULL,
+                    task_id         TEXT NOT NULL,
+                    trace_id        TEXT NOT NULL,
+                    role            TEXT NOT NULL,
+                    message_json    TEXT NOT NULL,
+                    created_at      TEXT NOT NULL
                 )
                 """
             )
             columns = [
-                r["name"]
-                for r in self._conn.execute("PRAGMA table_info(messages)").fetchall()
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(messages)").fetchall()
             ]
             if "session_id" not in columns:
                 self._conn.execute(
                     "ALTER TABLE messages ADD COLUMN session_id TEXT NOT NULL DEFAULT ''"
                 )
+            if "workspace_id" not in columns:
                 self._conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)"
+                    "ALTER TABLE messages ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "conversation_id" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE messages ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "agent_role_id" not in columns:
+                self._conn.execute(
+                    "ALTER TABLE messages ADD COLUMN agent_role_id TEXT NOT NULL DEFAULT ''"
                 )
             self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)"
+            )
+            self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_instance ON messages(instance_id)"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)"
             )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_task ON messages(task_id)"
@@ -67,14 +87,21 @@ class MessageRepository:
         task_id: str,
         trace_id: str,
         messages: Sequence[ModelMessage],
+        workspace_id: str | None = None,
+        conversation_id: str | None = None,
+        agent_role_id: str | None = None,
     ) -> None:
-        """Insert a batch of messages from a single run_sync call."""
         if not messages:
             return
         now = datetime.now(tz=timezone.utc).isoformat()
+        resolved_workspace_id = workspace_id or build_workspace_id(session_id)
+        resolved_conversation_id = conversation_id or instance_id
         rows = [
             (
                 session_id,
+                resolved_workspace_id,
+                resolved_conversation_id,
+                agent_role_id or "",
                 instance_id,
                 task_id,
                 trace_id,
@@ -89,33 +116,29 @@ class MessageRepository:
         with self._lock:
             self._run_write_with_retry(
                 lambda: self._conn.executemany(
-                    "INSERT INTO messages(session_id, instance_id, task_id, trace_id, role, message_json, created_at) "
-                    "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO messages(session_id, workspace_id, conversation_id, agent_role_id, instance_id, task_id, trace_id, role, message_json, created_at) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     rows,
                 )
             )
             self._run_write_with_retry(self._conn.commit)
 
     def get_history(self, instance_id: str) -> list[ModelMessage]:
-        """Return all messages for an instance ordered chronologically."""
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT message_json FROM messages WHERE instance_id=? ORDER BY id ASC",
-                (instance_id,),
-            ).fetchall()
-        result: list[ModelMessage] = []
-        for row in rows:
-            msgs = ModelMessagesTypeAdapter.validate_json(
-                _sanitize_message_json(str(row["message_json"]))
-            )
-            result.extend(msgs)
-        return _truncate_model_history_to_safe_boundary(result)
+        return self._read_history(
+            "SELECT message_json FROM messages WHERE instance_id=? ORDER BY id ASC",
+            (instance_id,),
+        )
+
+    def get_history_for_conversation(self, conversation_id: str) -> list[ModelMessage]:
+        return self._read_history(
+            "SELECT message_json FROM messages WHERE conversation_id=? ORDER BY id ASC",
+            (conversation_id,),
+        )
 
     def get_messages_by_session(self, session_id: str) -> list[JsonObject]:
-        """Return all messages for an entire session with their DB metadata."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, instance_id, task_id, trace_id, role, message_json, created_at "
+                "SELECT id, conversation_id, agent_role_id, instance_id, task_id, trace_id, role, message_json, created_at "
                 "FROM messages WHERE session_id=? ORDER BY id ASC",
                 (session_id,),
             ).fetchall()
@@ -123,11 +146,12 @@ class MessageRepository:
 
         results: list[JsonObject] = []
         for row in rows:
-            # message_json is a list [ { ... } ]
             msg_list = _load_message_list(str(row["message_json"]))
             msg = msg_list[0] if msg_list and isinstance(msg_list[0], dict) else {}
             results.append(
                 {
+                    "conversation_id": str(row["conversation_id"] or ""),
+                    "agent_role_id": str(row["agent_role_id"] or ""),
                     "instance_id": str(row["instance_id"]),
                     "task_id": str(row["task_id"]),
                     "trace_id": str(row["trace_id"]),
@@ -141,10 +165,9 @@ class MessageRepository:
     def get_messages_for_instance(
         self, session_id: str, instance_id: str
     ) -> list[JsonObject]:
-        """Return all messages for a single instance scoped to one session."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, instance_id, task_id, trace_id, role, message_json, created_at "
+                "SELECT id, conversation_id, agent_role_id, instance_id, task_id, trace_id, role, message_json, created_at "
                 "FROM messages WHERE session_id=? AND instance_id=? ORDER BY id ASC",
                 (session_id, instance_id),
             ).fetchall()
@@ -156,6 +179,8 @@ class MessageRepository:
             msg = msg_list[0] if msg_list and isinstance(msg_list[0], dict) else {}
             results.append(
                 {
+                    "conversation_id": str(row["conversation_id"] or ""),
+                    "agent_role_id": str(row["agent_role_id"] or ""),
                     "instance_id": str(row["instance_id"]),
                     "task_id": str(row["task_id"]),
                     "trace_id": str(row["trace_id"]),
@@ -176,11 +201,93 @@ class MessageRepository:
             self._run_write_with_retry(self._conn.commit)
 
     def prune_history_to_safe_boundary(self, instance_id: str) -> None:
+        self._prune_to_safe_boundary(
+            "SELECT id, message_json FROM messages WHERE instance_id=? ORDER BY id ASC",
+            (instance_id,),
+        )
+
+    def prune_conversation_history_to_safe_boundary(self, conversation_id: str) -> None:
+        self._prune_to_safe_boundary(
+            "SELECT id, message_json FROM messages WHERE conversation_id=? ORDER BY id ASC",
+            (conversation_id,),
+        )
+
+    def append_user_prompt_if_missing(
+        self,
+        *,
+        session_id: str,
+        instance_id: str,
+        task_id: str,
+        trace_id: str,
+        content: str,
+        workspace_id: str | None = None,
+        conversation_id: str | None = None,
+        agent_role_id: str | None = None,
+    ) -> bool:
+        from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+        target = str(content or "").strip()
+        if not target:
+            return False
+        resolved_conversation_id = conversation_id or instance_id
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT id, message_json FROM messages WHERE instance_id=? ORDER BY id ASC",
-                (instance_id,),
-            ).fetchall()
+            self.prune_conversation_history_to_safe_boundary(resolved_conversation_id)
+            history = self.get_history_for_conversation_task(
+                resolved_conversation_id,
+                task_id,
+            )
+            if _history_ends_with_user_prompt(history, target):
+                return False
+            self.append(
+                session_id=session_id,
+                workspace_id=workspace_id,
+                conversation_id=resolved_conversation_id,
+                agent_role_id=agent_role_id,
+                instance_id=instance_id,
+                task_id=task_id,
+                trace_id=trace_id,
+                messages=[ModelRequest(parts=[UserPromptPart(content=target)])],
+            )
+            return True
+
+    def get_history_for_task(
+        self, instance_id: str, task_id: str
+    ) -> list[ModelMessage]:
+        return self._read_history(
+            "SELECT message_json FROM messages WHERE instance_id=? AND task_id=? ORDER BY id ASC",
+            (instance_id, task_id),
+        )
+
+    def get_history_for_conversation_task(
+        self, conversation_id: str, task_id: str
+    ) -> list[ModelMessage]:
+        return self._read_history(
+            "SELECT message_json FROM messages WHERE conversation_id=? AND task_id=? ORDER BY id ASC",
+            (conversation_id, task_id),
+        )
+
+    def _read_history(
+        self,
+        query: str,
+        params: tuple[str, ...],
+    ) -> list[ModelMessage]:
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        result: list[ModelMessage] = []
+        for row in rows:
+            msgs = ModelMessagesTypeAdapter.validate_json(
+                _sanitize_message_json(str(row["message_json"]))
+            )
+            result.extend(msgs)
+        return _truncate_model_history_to_safe_boundary(result)
+
+    def _prune_to_safe_boundary(
+        self,
+        query: str,
+        params: tuple[str, ...],
+    ) -> None:
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
             if not rows:
                 return
             allowed_ids = _safe_row_ids(rows)
@@ -199,51 +306,6 @@ class MessageRepository:
                 )
             )
             self._run_write_with_retry(self._conn.commit)
-
-    def append_user_prompt_if_missing(
-        self,
-        *,
-        session_id: str,
-        instance_id: str,
-        task_id: str,
-        trace_id: str,
-        content: str,
-    ) -> bool:
-        from pydantic_ai.messages import ModelRequest, UserPromptPart
-
-        target = str(content or "").strip()
-        if not target:
-            return False
-        with self._lock:
-            self.prune_history_to_safe_boundary(instance_id)
-            history = self.get_history_for_task(instance_id, task_id)
-            if _history_ends_with_user_prompt(history, target):
-                return False
-            self.append(
-                session_id=session_id,
-                instance_id=instance_id,
-                task_id=task_id,
-                trace_id=trace_id,
-                messages=[ModelRequest(parts=[UserPromptPart(content=target)])],
-            )
-            return True
-
-    def get_history_for_task(
-        self, instance_id: str, task_id: str
-    ) -> list[ModelMessage]:
-        """Return messages scoped to a specific task."""
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT message_json FROM messages WHERE instance_id=? AND task_id=? ORDER BY id ASC",
-                (instance_id, task_id),
-            ).fetchall()
-        result: list[ModelMessage] = []
-        for row in rows:
-            msgs = ModelMessagesTypeAdapter.validate_json(
-                _sanitize_message_json(str(row["message_json"]))
-            )
-            result.extend(msgs)
-        return _truncate_model_history_to_safe_boundary(result)
 
     def _run_write_with_retry(self, op: Callable[[], object]) -> None:
         max_retries = 8
@@ -301,13 +363,13 @@ def _dedupe_duplicate_objective_messages(
     seen_user_prompts: dict[tuple[str, str], set[str]] = {}
     deduped: list[JsonObject] = []
     for message in messages:
-        instance_id = str(message.get("instance_id") or "")
+        conversation_id = str(message.get("conversation_id") or "")
         task_id = str(message.get("task_id") or "")
         repeated_user_prompt = _extract_repeatable_user_prompt(message.get("message"))
         if not repeated_user_prompt:
             deduped.append(message)
             continue
-        seen_for_task = seen_user_prompts.setdefault((instance_id, task_id), set())
+        seen_for_task = seen_user_prompts.setdefault((conversation_id, task_id), set())
         if repeated_user_prompt in seen_for_task:
             continue
         seen_for_task.add(repeated_user_prompt)
@@ -346,11 +408,13 @@ def _truncate_message_rows_to_safe_boundary(
 ) -> list[sqlite3.Row]:
     grouped: dict[str, list[sqlite3.Row]] = {}
     for row in rows:
-        grouped.setdefault(str(row["instance_id"]), []).append(row)
+        grouped.setdefault(
+            str(row["conversation_id"] or row["instance_id"]), []
+        ).append(row)
 
     allowed_ids: set[int] = set()
-    for instance_rows in grouped.values():
-        allowed_ids.update(_safe_row_ids(instance_rows))
+    for conversation_rows in grouped.values():
+        allowed_ids.update(_safe_row_ids(conversation_rows))
     return [
         row
         for row in rows

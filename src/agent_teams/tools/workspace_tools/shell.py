@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,6 @@ from agent_teams.tools.workspace_tools.shell_executor import (
     spawn_shell,
 )
 from agent_teams.tools.workspace_tools.shell_policy import validate_shell_command
-from agent_teams.tools.workspace_tools.path_utils import resolve_workspace_path
 
 MAX_OUTPUT_CHARS = 64_000
 MAX_METADATA_LENGTH = 30_000
@@ -29,9 +29,9 @@ def register(Agent: Agent[ToolDeps, str]) -> None:
             validate_shell_command(command)
 
             if workdir:
-                cwd = resolve_workspace_path(ctx.deps.workspace_root, workdir)
+                cwd = ctx.deps.workspace.resolve_workdir(workdir)
             else:
-                cwd = ctx.deps.workspace_root
+                cwd = ctx.deps.workspace.resolve_workdir()
 
             timeout = normalize_timeout(timeout_ms)
 

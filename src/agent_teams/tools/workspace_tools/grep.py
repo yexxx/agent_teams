@@ -1,10 +1,10 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from pydantic_ai import Agent
 
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
-from agent_teams.tools.workspace_tools.path_utils import resolve_workspace_path
 from agent_teams.tools.workspace_tools import ripgrep
 
 
@@ -18,7 +18,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         include: str | None = None,
     ) -> JsonObject:
         async def _action() -> str:
-            root = resolve_workspace_path(ctx.deps.workspace_root, path)
+            root = ctx.deps.workspace.resolve_path(path, write=False)
 
             result = await ripgrep.grep_search(
                 cwd=root,

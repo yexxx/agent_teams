@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -29,8 +30,9 @@ from agent_teams.state.run_runtime_repo import (
     RunRuntimeRecord,
     RunRuntimeRepository,
 )
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.events import EventEnvelope, EventType
 from agent_teams.workflow.ids import new_task_id
@@ -52,7 +54,7 @@ class CoordinatorGraph(BaseModel):
     role_registry: RoleRegistry
     instance_pool: InstancePool
     task_repo: TaskRepository
-    shared_store: SharedStore
+    shared_store: SharedStateRepository
     event_bus: EventLog
     agent_repo: AgentInstanceRepository
     prompt_builder: RuntimePromptBuilder
@@ -476,7 +478,13 @@ class CoordinatorGraph(BaseModel):
             )
             return coordinator_instance_id
 
-        instance = self.instance_pool.create_subagent(ROLE_COORDINATOR)
+        workspace_id = build_workspace_id(session_id)
+        conversation_id = build_conversation_id(session_id, ROLE_COORDINATOR)
+        instance = self.instance_pool.create_subagent(
+            ROLE_COORDINATOR,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+        )
         _ = self.task_repo.update_status(
             task_id=root_task.task_id,
             status=TaskStatus.ASSIGNED,
@@ -488,6 +496,8 @@ class CoordinatorGraph(BaseModel):
             session_id=session_id,
             instance_id=instance.instance_id,
             role_id=ROLE_COORDINATOR,
+            workspace_id=instance.workspace_id,
+            conversation_id=instance.conversation_id,
             status=InstanceStatus.IDLE,
         )
         self.event_bus.emit(

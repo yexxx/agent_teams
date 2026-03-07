@@ -1,10 +1,10 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from pydantic_ai import Agent
 
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
-from agent_teams.tools.stage_tools.docs import previous_stage_doc_path
 
 
 def register(agent: Agent[ToolDeps, str]) -> None:
@@ -16,8 +16,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                 return f"Requirement:\n{task.envelope.objective}"
 
             try:
-                path = previous_stage_doc_path(
-                    workspace_root=ctx.deps.workspace_root,
+                path = ctx.deps.workspace.artifacts.previous_stage_doc_path(
                     run_id=ctx.deps.run_id,
                     role_id=ctx.deps.role_id,
                 )

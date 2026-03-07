@@ -24,9 +24,14 @@ from agent_teams.state.run_runtime_repo import (
     RunRuntimeRepository,
     RunRuntimeStatus,
 )
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workspace import (
+    WorkspaceManager,
+    build_conversation_id,
+    build_workspace_id,
+)
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
 
@@ -72,18 +77,22 @@ def _build_service(
     agent_repo = AgentInstanceRepository(db_path)
     message_repo = MessageRepository(db_path)
     instance_pool = InstancePool()
+    shared_store = SharedStateRepository(db_path)
 
     service = TaskExecutionService(
         role_registry=role_registry,
         instance_pool=instance_pool,
         task_repo=task_repo,
-        shared_store=SharedStore(db_path),
+        shared_store=shared_store,
         event_bus=EventLog(db_path),
         agent_repo=agent_repo,
         message_repo=message_repo,
         workflow_graph_repo=WorkflowGraphRepository(db_path),
         approval_ticket_repo=ApprovalTicketRepository(db_path),
         run_runtime_repo=RunRuntimeRepository(db_path),
+        workspace_manager=WorkspaceManager(
+            project_root=Path("."), shared_store=shared_store
+        ),
         prompt_builder=RuntimePromptBuilder(),
         provider_factory=lambda _: provider,
     )
@@ -118,6 +127,7 @@ def _build_service_with_control(
     instance_pool = InstancePool()
     event_log = EventLog(db_path)
     run_runtime_repo = RunRuntimeRepository(db_path)
+    shared_store = SharedStateRepository(db_path)
     run_control_manager = RunControlManager()
     run_control_manager.bind_runtime(
         run_event_hub=RunEventHub(),
@@ -134,13 +144,16 @@ def _build_service_with_control(
         role_registry=role_registry,
         instance_pool=instance_pool,
         task_repo=task_repo,
-        shared_store=SharedStore(db_path),
+        shared_store=shared_store,
         event_bus=event_log,
         agent_repo=agent_repo,
         message_repo=message_repo,
         workflow_graph_repo=WorkflowGraphRepository(db_path),
         approval_ticket_repo=ApprovalTicketRepository(db_path),
         run_runtime_repo=run_runtime_repo,
+        workspace_manager=WorkspaceManager(
+            project_root=Path("."), shared_store=shared_store
+        ),
         prompt_builder=RuntimePromptBuilder(),
         provider_factory=lambda _: provider,
         run_control_manager=run_control_manager,
@@ -163,7 +176,13 @@ def _seed_task(
     message_repo: MessageRepository,
     instance_pool: InstancePool,
 ) -> tuple[TaskEnvelope, str]:
-    instance = instance_pool.create_subagent("time")
+    workspace_id = build_workspace_id("session-1")
+    conversation_id = build_conversation_id("session-1", "time")
+    instance = instance_pool.create_subagent(
+        "time",
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+    )
     task = TaskEnvelope(
         task_id="task-1",
         session_id="session-1",
@@ -179,10 +198,15 @@ def _seed_task(
         session_id="session-1",
         instance_id=instance.instance_id,
         role_id="time",
+        workspace_id=instance.workspace_id,
+        conversation_id=instance.conversation_id,
         status=InstanceStatus.IDLE,
     )
     message_repo.append(
         session_id="session-1",
+        workspace_id=instance.workspace_id,
+        conversation_id=instance.conversation_id,
+        agent_role_id="time",
         instance_id=instance.instance_id,
         task_id="task-1",
         trace_id="run-1",
@@ -226,7 +250,13 @@ async def test_execute_persists_objective_before_first_turn(
         tmp_path / "task_execution_service_objective.db",
         provider,
     )
-    instance = instance_pool.create_subagent("time")
+    workspace_id = build_workspace_id("session-1")
+    conversation_id = build_conversation_id("session-1", "time")
+    instance = instance_pool.create_subagent(
+        "time",
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+    )
     task = TaskEnvelope(
         task_id="task-1",
         session_id="session-1",
@@ -242,6 +272,8 @@ async def test_execute_persists_objective_before_first_turn(
         session_id="session-1",
         instance_id=instance.instance_id,
         role_id="time",
+        workspace_id=instance.workspace_id,
+        conversation_id=instance.conversation_id,
         status=InstanceStatus.IDLE,
     )
 

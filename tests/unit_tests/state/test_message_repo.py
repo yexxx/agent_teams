@@ -8,6 +8,7 @@ from typing import cast
 from pydantic_ai.messages import ModelRequest, ToolReturnPart, UserPromptPart
 
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 
 
 def test_message_repo_sanitizes_stale_task_status_error_on_read(tmp_path: Path) -> None:
@@ -124,6 +125,42 @@ def test_append_user_prompt_if_missing_dedupes_only_tail_prompt(tmp_path: Path) 
     assert len(history) == 1
     assert isinstance(history[0], ModelRequest)
     assert history[0].parts[0].content == "query time"
+
+
+def test_conversation_history_can_span_multiple_instances(tmp_path: Path) -> None:
+    db_path = tmp_path / "message_repo_conversation.db"
+    repo = MessageRepository(db_path)
+    conversation_id = build_conversation_id("session-1", "time")
+    workspace_id = build_workspace_id("session-1")
+
+    repo.append(
+        session_id="session-1",
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+        agent_role_id="time",
+        instance_id="inst-1",
+        task_id="task-1",
+        trace_id="run-1",
+        messages=[ModelRequest(parts=[UserPromptPart(content="first turn")])],
+    )
+    repo.append(
+        session_id="session-1",
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+        agent_role_id="time",
+        instance_id="inst-2",
+        task_id="task-1",
+        trace_id="run-1",
+        messages=[ModelRequest(parts=[UserPromptPart(content="second turn")])],
+    )
+
+    history = repo.get_history_for_conversation(conversation_id)
+
+    assert len(history) == 2
+    assert isinstance(history[0], ModelRequest)
+    assert isinstance(history[1], ModelRequest)
+    assert history[0].parts[0].content == "first turn"
+    assert history[1].parts[0].content == "second turn"
 
 
 def test_message_repo_append_is_thread_safe_under_parallel_writes(

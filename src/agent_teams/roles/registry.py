@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 from agent_teams.roles.models import RoleDefinition
+from agent_teams.workspace import WorkspaceProfile, default_workspace_profile
 
 
 class RoleRegistry:
@@ -77,6 +78,13 @@ class RoleLoader:
         if not isinstance(skills, list):
             raise ValueError(f"skills must be a list in {path}")
 
+        workspace_profile_raw = parsed.get("workspace_profile")
+        workspace_profile = default_workspace_profile()
+        if workspace_profile_raw is not None:
+            if not isinstance(workspace_profile_raw, dict):
+                raise ValueError(f"workspace_profile must be an object in {path}")
+            workspace_profile = WorkspaceProfile.model_validate(workspace_profile_raw)
+
         return RoleDefinition(
             role_id=str(parsed["role_id"]),
             name=str(parsed["name"]),
@@ -86,6 +94,7 @@ class RoleLoader:
             skills=tuple(str(item) for item in skills),
             depends_on=tuple(str(item) for item in depends_on),
             model_profile=str(parsed.get("model_profile", "default")),
+            workspace_profile=workspace_profile,
             system_prompt=body.strip(),
         )
 

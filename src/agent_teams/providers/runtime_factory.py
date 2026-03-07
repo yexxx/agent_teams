@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Callable
 
 from agent_teams.agents.management.instance_pool import InstancePool
@@ -27,12 +26,13 @@ from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
 from agent_teams.state.run_runtime_repo import RunRuntimeRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolApprovalManager, ToolApprovalPolicy
+from agent_teams.workspace import WorkspaceManager
 
 
 def create_provider_factory(
@@ -40,7 +40,7 @@ def create_provider_factory(
     runtime: RuntimeConfig,
     task_repo: TaskRepository,
     instance_pool: InstancePool,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     event_log: EventLog,
     injection_manager: RunInjectionManager,
     run_event_hub: RunEventHub,
@@ -48,6 +48,7 @@ def create_provider_factory(
     workflow_graph_repo: WorkflowGraphRepository,
     approval_ticket_repo: ApprovalTicketRepository,
     run_runtime_repo: RunRuntimeRepository,
+    workspace_manager: WorkspaceManager,
     tool_registry: ToolRegistry,
     mcp_registry: McpRegistry,
     skill_registry: SkillRegistry,
@@ -79,7 +80,7 @@ def create_provider_factory(
                 workflow_graph_repo=workflow_graph_repo,
                 approval_ticket_repo=approval_ticket_repo,
                 run_runtime_repo=run_runtime_repo,
-                workspace_root=Path.cwd(),
+                workspace_manager=workspace_manager,
                 tool_registry=tool_registry,
                 mcp_registry=mcp_registry,
                 skill_registry=skill_registry,
@@ -106,13 +107,14 @@ def create_task_execution_service(
     role_registry: RoleRegistry,
     instance_pool: InstancePool,
     task_repo: TaskRepository,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     event_log: EventLog,
     agent_repo: AgentInstanceRepository,
     message_repo: MessageRepository,
     workflow_graph_repo: WorkflowGraphRepository,
     approval_ticket_repo: ApprovalTicketRepository,
     run_runtime_repo: RunRuntimeRepository,
+    workspace_manager: WorkspaceManager,
     provider_factory: Callable[[RoleDefinition], LLMProvider],
     injection_manager: RunInjectionManager,
     run_control_manager: RunControlManager,
@@ -128,6 +130,7 @@ def create_task_execution_service(
         workflow_graph_repo=workflow_graph_repo,
         approval_ticket_repo=approval_ticket_repo,
         run_runtime_repo=run_runtime_repo,
+        workspace_manager=workspace_manager,
         prompt_builder=RuntimePromptBuilder(),
         provider_factory=provider_factory,
         injection_manager=injection_manager,

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +7,6 @@ from pydantic_ai import Agent
 
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
-from agent_teams.tools.workspace_tools.path_utils import resolve_workspace_path
 
 DEFAULT_READ_LIMIT = 2000
 MAX_LINE_LENGTH = 2000
@@ -159,7 +159,7 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         limit: int = DEFAULT_READ_LIMIT,
     ) -> JsonObject:
         async def _action() -> str:
-            file_path = resolve_workspace_path(ctx.deps.workspace_root, path)
+            file_path = ctx.deps.workspace.resolve_path(path, write=False)
 
             if not file_path.exists():
                 raise ValueError(f"File not found: {path}")

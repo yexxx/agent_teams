@@ -203,9 +203,17 @@ def test_get_project_root_or_none_returns_none_on_blank_stdout(
     assert root_paths.get_project_root_or_none(start_dir=tmp_path) is None
 
 
-def test_get_project_config_dir_uses_project_root_when_available(monkeypatch) -> None:
+def test_get_project_config_dir_uses_project_root_when_available(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     project_root = Path("D:/repo-root").resolve()
-    monkeypatch.setattr(root_paths, "get_project_root_or_none", lambda: project_root)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        root_paths,
+        "get_project_root_or_none",
+        lambda start_dir=None: project_root,
+    )
 
     config_dir = root_paths.get_project_config_dir()
 
@@ -217,11 +225,35 @@ def test_get_project_config_dir_falls_back_to_cwd_when_git_root_is_missing(
     tmp_path: Path,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(root_paths, "get_project_root_or_none", lambda: None)
+    monkeypatch.setattr(
+        root_paths,
+        "get_project_root_or_none",
+        lambda start_dir=None: None,
+    )
 
     config_dir = root_paths.get_project_config_dir()
 
     assert config_dir == tmp_path.resolve() / ".agent_teams"
+
+
+def test_get_project_config_dir_prefers_cwd_local_config_over_git_root(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    cwd = tmp_path / "worktree"
+    (cwd / ".agent_teams").mkdir(parents=True)
+    git_root = tmp_path / "repo-root"
+    git_root.mkdir()
+    monkeypatch.chdir(cwd)
+    monkeypatch.setattr(
+        root_paths,
+        "get_project_root_or_none",
+        lambda start_dir=None: git_root,
+    )
+
+    config_dir = root_paths.get_project_config_dir()
+
+    assert config_dir == cwd.resolve() / ".agent_teams"
 
 
 def test_get_project_config_dir_uses_project_root_override() -> None:
@@ -262,8 +294,6 @@ def test_get_project_config_dir_resolves_user_supplied_root(tmp_path: Path) -> N
     assert config_dir == (tmp_path / "project-root").resolve() / ".agent_teams"
 
 
-
-
 def test_resolve_start_dir_defaults_to_cwd(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -279,6 +309,7 @@ def test_resolve_start_dir_keeps_directory_input(tmp_path: Path) -> None:
     resolved = root_paths._resolve_start_dir(start_dir=nested_dir)
 
     assert resolved == nested_dir.resolve()
+
 
 def test_resolve_start_dir_uses_parent_for_file_path(tmp_path: Path) -> None:
     nested_dir = tmp_path / "nested"

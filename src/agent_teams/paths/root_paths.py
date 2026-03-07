@@ -50,11 +50,18 @@ def get_project_root_or_none(start_dir: Path | None = None) -> Path | None:
 
 def get_project_config_dir(project_root: Path | None = None) -> Path:
     resolved_project_root = (
-        get_project_root_or_none() or Path.cwd().resolve()
+        _resolve_project_root_from_context()
         if project_root is None
         else project_root.expanduser().resolve()
     )
     return resolved_project_root / _CONFIG_DIR_NAME
+
+
+def _resolve_project_root_from_context() -> Path:
+    cwd = Path.cwd().resolve()
+    if (cwd / _CONFIG_DIR_NAME).exists():
+        return cwd
+    return get_project_root_or_none(start_dir=cwd) or cwd
 
 
 def _resolve_start_dir(start_dir: Path | None) -> Path:

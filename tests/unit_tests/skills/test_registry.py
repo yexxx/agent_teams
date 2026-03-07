@@ -277,6 +277,20 @@ class _FakePolicy:
         return False
 
 
+class _FakeRunRuntimeRepo:
+    def ensure(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        root_task_id: str,
+    ) -> None:
+        _ = (run_id, session_id, root_task_id)
+
+    def update(self, run_id: str, **kwargs: object) -> None:
+        _ = (run_id, kwargs)
+
+
 class _FakeDeps:
     def __init__(self) -> None:
         self.run_id = "run-1"
@@ -289,6 +303,7 @@ class _FakeDeps:
         self.run_control_manager = _FakeRunControlManager()
         self.tool_approval_manager = _FakeApprovalManager()
         self.tool_approval_policy = _FakePolicy()
+        self.run_runtime_repo = _FakeRunRuntimeRepo()
         self.notification_service = None
 
 

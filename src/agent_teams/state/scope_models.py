@@ -7,7 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ScopeType(str, Enum):
     GLOBAL = "global"
+    WORKSPACE = "workspace"
     SESSION = "session"
+    ROLE = "role"
+    CONVERSATION = "conversation"
     TASK = "task"
     INSTANCE = "instance"
 

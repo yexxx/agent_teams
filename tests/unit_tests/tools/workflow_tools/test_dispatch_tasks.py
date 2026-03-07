@@ -5,9 +5,10 @@ import pytest
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 
 from agent_teams.agents.management.instance_pool import InstancePool
+from agent_teams.agents.enums import InstanceStatus
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.message_repo import MessageRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.tools.runtime import ToolContext
 from agent_teams.tools.workflow_tools.dispatch_tasks import (
@@ -18,6 +19,7 @@ from agent_teams.tools.workflow_tools.dispatch_tasks import (
     _next_action,
     _progress,
 )
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
 from agent_teams.workflow.runtime_graph import get_ready_tasks
@@ -191,7 +193,7 @@ class _FakeEventLog:
 class _FakeDeps:
     def __init__(self, db_path: Path, task_repo: TaskRepository) -> None:
         self.task_repo = task_repo
-        self.shared_store = SharedStore(db_path)
+        self.shared_store = SharedStateRepository(db_path)
         self.instance_pool = InstancePool()
         self.agent_repo = AgentInstanceRepository(db_path)
         self.message_repo = MessageRepository(db_path)
@@ -203,6 +205,18 @@ class _FakeDeps:
         self.session_id = "session-1"
         self.instance_id = "coord-inst"
         self.role_id = "coordinator_agent"
+
+    def seed_agent(self, *, instance_id: str, role_id: str) -> None:
+        self.agent_repo.upsert_instance(
+            run_id=self.run_id,
+            trace_id=self.trace_id,
+            session_id=self.session_id,
+            instance_id=instance_id,
+            role_id=role_id,
+            workspace_id=build_workspace_id(self.session_id),
+            conversation_id=build_conversation_id(self.session_id, role_id),
+            status=InstanceStatus.IDLE,
+        )
 
 
 class _FakeCtx:
@@ -378,8 +392,12 @@ async def test_dispatch_revise_runs_new_followup_turn_for_completed_task(
         assigned_instance_id="inst-time",
         result="first-result",
     )
+    deps.seed_agent(instance_id="inst-time", role_id="time")
     deps.message_repo.append(
         session_id="session-1",
+        workspace_id=build_workspace_id("session-1"),
+        conversation_id=build_conversation_id("session-1", "time"),
+        agent_role_id="time",
         instance_id="inst-time",
         task_id="task-time",
         trace_id="run-1",
@@ -441,8 +459,12 @@ async def test_dispatch_revise_resume_does_not_repeat_followup_prompt_if_history
         TaskStatus.RUNNING,
         assigned_instance_id="inst-time",
     )
+    deps.seed_agent(instance_id="inst-time", role_id="time")
     deps.message_repo.append(
         session_id="session-1",
+        workspace_id=build_workspace_id("session-1"),
+        conversation_id=build_conversation_id("session-1", "time"),
+        agent_role_id="time",
         instance_id="inst-time",
         task_id="task-time",
         trace_id="run-1",
@@ -497,6 +519,7 @@ async def test_dispatch_revise_requires_feedback(
         assigned_instance_id="inst-time",
         result="first-result",
     )
+    deps.seed_agent(instance_id="inst-time", role_id="time")
 
     graph: dict[str, object] = {
         "workflow_id": "workflow-1",

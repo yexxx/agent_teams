@@ -31,6 +31,7 @@ from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.tools.runtime import ToolApprovalManager
 from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
+from agent_teams.workspace import build_workspace_id
 
 
 class _MetaAgent:
@@ -45,14 +46,21 @@ class _MetaAgent:
 
 class _SessionRepo:
     def get(self, session_id: str) -> SessionRecord:
-        return SessionRecord(session_id=session_id)
+        return SessionRecord(
+            session_id=session_id,
+            workspace_id=build_workspace_id(session_id),
+        )
 
     def create(
         self,
         session_id: str,
         metadata: dict[str, str] | None = None,
     ) -> SessionRecord:
-        return SessionRecord(session_id=session_id, metadata=metadata or {})
+        return SessionRecord(
+            session_id=session_id,
+            workspace_id=build_workspace_id(session_id),
+            metadata=metadata or {},
+        )
 
 
 class _EventBus:

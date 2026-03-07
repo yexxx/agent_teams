@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_teams.workspace import WorkspaceProfile, default_workspace_profile
+
 
 class RoleDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -14,4 +16,7 @@ class RoleDefinition(BaseModel):
     skills: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
     model_profile: str = Field(default="default")
+    workspace_profile: WorkspaceProfile = Field(
+        default_factory=default_workspace_profile
+    )
     system_prompt: str = Field(min_length=1)

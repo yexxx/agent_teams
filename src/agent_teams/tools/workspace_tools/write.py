@@ -1,7 +1,7 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import difflib
-import os
 import tempfile
 from pathlib import Path
 
@@ -9,29 +9,28 @@ from pydantic_ai import Agent
 
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
-from agent_teams.tools.workspace_tools.path_utils import resolve_workspace_path
 
 
 def generate_diff(old_path: str, old_content: str, new_content: str) -> str:
-    """鐢熸垚 unified diff 鏍煎紡"""
     old_lines = old_content.splitlines(keepends=True)
     new_lines = new_content.splitlines(keepends=True)
-
-    diff = difflib.unified_diff(
-        old_lines, new_lines, fromfile=old_path, tofile=old_path, lineterm=""
+    return "".join(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=old_path,
+            tofile=old_path,
+            lineterm="",
+        )
     )
 
-    return "".join(diff)
 
-
-def format_diff_short(old_content: str, new_content: str) -> str:
-    """鐢熸垚绠€鐭?diff"""
+def format_diff_summary(old_content: str, new_content: str) -> str:
     old_lines = old_content.splitlines()
     new_lines = new_content.splitlines()
-
     matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
 
-    changes = []
+    changes: list[str] = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             continue
@@ -45,28 +44,27 @@ def format_diff_short(old_content: str, new_content: str) -> str:
     return "\n".join(changes) if changes else "No changes"
 
 
-def atomic_write(file_path: Path, content: str, encoding: str = "utf-8") -> None:
-    """鍘熷瓙鍐欏叆鏂囦欢"""
-    file_path.parent.mkdir(parents=True, exist_ok=True)
+def format_diff_short(old_content: str, new_content: str) -> str:
+    return format_diff_summary(old_content, new_content)
 
-    fd, temp_path = tempfile.mkstemp(
-        dir=file_path.parent, prefix=f".{file_path.name}.", suffix=".tmp", text=True
-    )
+
+def atomic_write(file_path: Path, content: str, encoding: str = "utf-8") -> None:
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding=encoding,
+        delete=False,
+        dir=file_path.parent,
+        prefix=f".{file_path.name}.",
+        suffix=".tmp",
+    ) as temp_file:
+        temp_file.write(content)
+        temp_path = Path(temp_file.name)
 
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as f:
-            f.write(content)
-
-        if os.name == "nt":
-            if file_path.exists():
-                os.remove(file_path)
-            os.replace(temp_path, file_path)
-        else:
-            os.replace(temp_path, file_path)
-
+        temp_path.replace(file_path)
     except Exception:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_path.unlink(missing_ok=True)
         raise
 
 
@@ -78,24 +76,17 @@ def register(agent: Agent[ToolDeps, str]) -> None:
         content: str,
     ) -> JsonObject:
         async def _action() -> str:
-            file_path = resolve_workspace_path(ctx.deps.workspace_root, path)
+            file_path = ctx.deps.workspace.resolve_path(path, write=True)
 
             old_content = ""
-            exists = file_path.exists()
-            if exists:
+            if file_path.exists():
                 if file_path.is_dir():
                     raise ValueError(f"Path is a directory: {path}")
                 old_content = file_path.read_text(encoding="utf-8")
 
-            generate_diff(str(file_path), old_content, content)
-            diff_short = format_diff_short(old_content, content)
-
+            diff_summary = format_diff_summary(old_content, content)
             atomic_write(file_path, content, encoding="utf-8")
-
-            output = "Wrote file successfully.\n\n"
-            output += f"Diff:\n{diff_short}"
-
-            return output
+            return "Wrote file successfully.\n\nDiff:\n" + diff_summary
 
         return await execute_tool(
             ctx,

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -14,9 +15,13 @@ from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runs.injection_queue import RunInjectionManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.message_repo import MessageRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workspace import (
+    build_conversation_id,
+    build_workspace_id,
+)
 from agent_teams.workflow.runtime_graph import get_ready_tasks
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
@@ -42,7 +47,7 @@ class WorkflowOrchestrationService:
         self,
         *,
         task_repo: TaskRepository,
-        shared_store: SharedStore,
+        shared_store: SharedStateRepository,
         workflow_graph_repo: WorkflowGraphRepository,
         role_registry: RoleRegistry,
         instance_pool: InstancePool,
@@ -52,7 +57,7 @@ class WorkflowOrchestrationService:
         message_repo: MessageRepository,
     ) -> None:
         self._task_repo: TaskRepository = task_repo
-        self._shared_store: SharedStore = shared_store
+        self._shared_store: SharedStateRepository = shared_store
         self._workflow_graph_repo: WorkflowGraphRepository = workflow_graph_repo
         self._role_registry: RoleRegistry = role_registry
         self._instance_pool: InstancePool = instance_pool
@@ -250,13 +255,24 @@ class WorkflowOrchestrationService:
             record = records.get(task_id)
             if record is None or record.status != TaskStatus.CREATED:
                 return
-            instance = self._instance_pool.create_subagent(role_id)
+            workspace_id = build_workspace_id(record.envelope.session_id)
+            conversation_id = build_conversation_id(
+                record.envelope.session_id,
+                role_id,
+            )
+            instance = self._instance_pool.create_subagent(
+                role_id,
+                workspace_id=workspace_id,
+                conversation_id=conversation_id,
+            )
             self._agent_repo.upsert_instance(
                 run_id=run_id,
                 trace_id=run_id,
                 session_id=record.envelope.session_id,
                 instance_id=instance.instance_id,
                 role_id=instance.role_id,
+                workspace_id=instance.workspace_id,
+                conversation_id=instance.conversation_id,
                 status=InstanceStatus.IDLE,
             )
             self._task_repo.update_status(
@@ -268,6 +284,9 @@ class WorkflowOrchestrationService:
                 self._persist_followup_message(
                     session_id=record.envelope.session_id,
                     instance_id=instance.instance_id,
+                    role_id=instance.role_id,
+                    workspace_id=instance.workspace_id,
+                    conversation_id=instance.conversation_id,
                     task_id=task_id,
                     trace_id=run_id,
                     content=feedback,
@@ -374,6 +393,9 @@ class WorkflowOrchestrationService:
         self._persist_followup_message(
             session_id=record.envelope.session_id,
             instance_id=instance_id,
+            role_id=instance.role_id,
+            workspace_id=instance.workspace_id,
+            conversation_id=instance.conversation_id,
             task_id=task_id,
             trace_id=run_id,
             content=feedback,
@@ -440,12 +462,18 @@ class WorkflowOrchestrationService:
         *,
         session_id: str,
         instance_id: str,
+        role_id: str,
+        workspace_id: str,
+        conversation_id: str,
         task_id: str,
         trace_id: str,
         content: str,
     ) -> None:
         self._message_repo.append_user_prompt_if_missing(
             session_id=session_id,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            agent_role_id=role_id,
             instance_id=instance_id,
             task_id=task_id,
             trace_id=trace_id,

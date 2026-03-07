@@ -24,6 +24,7 @@ from agent_teams.mcp.registry import McpRegistry
 from agent_teams.prompting.provider_augment import PromptSkillInstruction
 from agent_teams.providers.llm import LLMRequest, OpenAICompatibleProvider
 from agent_teams.providers.model_config import ModelEndpointConfig
+from agent_teams.roles.models import RoleDefinition
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.runs.control import RunControlManager
 from agent_teams.runs.enums import RunEventType
@@ -36,11 +37,16 @@ from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
 from agent_teams.state.run_runtime_repo import RunRuntimeRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolApprovalManager, ToolApprovalPolicy
+from agent_teams.workspace import (
+    WorkspaceManager,
+    build_conversation_id,
+    build_workspace_id,
+)
 
 
 class _FakeRunEventHub:
@@ -478,6 +484,26 @@ def _build_provider(
         if skill_registry is not None
         else cast(SkillRegistry, object())
     )
+    shared_store = SharedStateRepository(db_path)
+    role_registry = RoleRegistry()
+    role_registry.register(
+        RoleDefinition(
+            role_id="coordinator_agent",
+            name="coordinator",
+            version="1",
+            tools=(),
+            system_prompt="Coordinate work.",
+        )
+    )
+    role_registry.register(
+        RoleDefinition(
+            role_id="time",
+            name="time",
+            version="1",
+            tools=(),
+            system_prompt="Tell time.",
+        )
+    )
     config = ModelEndpointConfig(
         model="gpt-test",
         base_url="http://localhost",
@@ -488,7 +514,7 @@ def _build_provider(
         config,
         task_repo=TaskRepository(db_path),
         instance_pool=cast(InstancePool, cast(object, InstancePool())),
-        shared_store=SharedStore(db_path),
+        shared_store=shared_store,
         event_bus=EventLog(db_path),
         injection_manager=cast(
             RunInjectionManager, cast(object, _FakeInjectionManager())
@@ -498,7 +524,9 @@ def _build_provider(
         workflow_graph_repo=WorkflowGraphRepository(db_path),
         approval_ticket_repo=ApprovalTicketRepository(db_path),
         run_runtime_repo=RunRuntimeRepository(db_path),
-        workspace_root=Path("."),
+        workspace_manager=WorkspaceManager(
+            project_root=Path("."), shared_store=shared_store
+        ),
         tool_registry=cast(ToolRegistry, object()),
         mcp_registry=cast(McpRegistry, object()),
         skill_registry=registry,
@@ -506,7 +534,7 @@ def _build_provider(
         allowed_mcp_servers=(),
         allowed_skills=allowed_skills,
         message_repo=message_repo,
-        role_registry=cast(RoleRegistry, object()),
+        role_registry=role_registry,
         task_execution_service=cast(TaskExecutionService, object()),
         run_control_manager=cast(
             RunControlManager,
@@ -526,9 +554,13 @@ def _seed_request(
     task_id: str,
     trace_id: str,
     content: str,
+    role_id: str,
 ) -> None:
     message_repo.append(
         session_id=session_id,
+        workspace_id=build_workspace_id(session_id),
+        conversation_id=build_conversation_id(session_id, role_id),
+        agent_role_id=role_id,
         instance_id=instance_id,
         task_id=task_id,
         trace_id=trace_id,
@@ -552,6 +584,7 @@ async def test_generate_persists_current_turn_prompt_even_with_existing_history(
         task_id="task-2",
         trace_id="run-2",
         content="previous turn",
+        role_id="coordinator_agent",
     )
 
     monkeypatch.setattr(
@@ -589,6 +622,12 @@ async def test_generate_prunes_pending_tool_call_tail_before_persisting_prompt(
     provider, message_repo = _build_provider(tmp_path / "pending_tail.db", fake_hub)
     message_repo.append(
         session_id="session-pending-tool",
+        workspace_id=build_workspace_id("session-pending-tool"),
+        conversation_id=build_conversation_id(
+            "session-pending-tool",
+            "coordinator_agent",
+        ),
+        agent_role_id="coordinator_agent",
         instance_id="inst-pending-tool",
         task_id="task-pending-tool",
         trace_id="run-pending-tool",
@@ -838,6 +877,7 @@ async def test_subagent_resume_after_stream_cancellation_reuses_db_history(
         task_id="task-sub",
         trace_id="run-sub",
         content="query time",
+        role_id="time",
     )
 
     cancelled_agent = _SequentialAgent(
@@ -921,6 +961,7 @@ async def test_subagent_resume_after_tool_call_cancellation_replays_from_safe_bo
         task_id="task-sub",
         trace_id="run-sub",
         content="query time",
+        role_id="time",
     )
 
     cancelled_agent = _SequentialAgent(
@@ -1050,6 +1091,7 @@ async def test_subagent_resume_after_tool_result_before_commit_retries_cleanly(
         task_id="task-sub",
         trace_id="run-sub",
         content="query time",
+        role_id="time",
     )
     scripted_messages = [
         ModelResponse(

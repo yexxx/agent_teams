@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -812,8 +813,12 @@ class RunManager:
                 raise KeyError(
                     f"No coordinator instance found for session {session_id}"
                 )
+            record = self._require_agent_repo().get_instance(instance_id)
             self._require_message_repo().append(
                 session_id=session_id,
+                workspace_id=record.workspace_id,
+                conversation_id=record.conversation_id,
+                agent_role_id=record.role_id,
                 instance_id=instance_id,
                 task_id=root.envelope.task_id,
                 trace_id=run_id,
@@ -826,7 +831,6 @@ class RunManager:
                     source=InjectionSource.USER,
                     content=content,
                 )
-                record = self._require_agent_repo().get_instance(instance_id)
                 self._publish_injection_event(
                     run_id=run_id,
                     record=record,

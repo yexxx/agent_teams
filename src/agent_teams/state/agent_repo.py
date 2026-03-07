@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import sqlite3
@@ -7,6 +8,7 @@ from pathlib import Path
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.models import AgentRuntimeRecord
 from agent_teams.state.db import open_sqlite
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 
 
 class AgentInstanceRepository:
@@ -24,12 +26,28 @@ class AgentInstanceRepository:
                 session_id TEXT NOT NULL,
                 instance_id TEXT PRIMARY KEY,
                 role_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL DEFAULT '',
+                conversation_id TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        columns = [
+            str(row["name"])
+            for row in self._conn.execute(
+                "PRAGMA table_info(agent_instances)"
+            ).fetchall()
+        ]
+        if "workspace_id" not in columns:
+            self._conn.execute(
+                "ALTER TABLE agent_instances ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''"
+            )
+        if "conversation_id" not in columns:
+            self._conn.execute(
+                "ALTER TABLE agent_instances ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''"
+            )
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_agent_instances_run_status ON agent_instances(run_id, status)"
         )
@@ -43,15 +61,26 @@ class AgentInstanceRepository:
         session_id: str,
         instance_id: str,
         role_id: str,
+        workspace_id: str | None = None,
+        conversation_id: str | None = None,
         status: InstanceStatus,
     ) -> None:
         now = datetime.now(tz=timezone.utc).isoformat()
+        resolved_workspace_id = workspace_id or build_workspace_id(session_id)
+        resolved_conversation_id = conversation_id or build_conversation_id(
+            session_id,
+            role_id,
+        )
         self._conn.execute(
             """
-            INSERT INTO agent_instances(run_id, trace_id, session_id, instance_id, role_id, status, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO agent_instances(run_id, trace_id, session_id, instance_id, role_id, workspace_id, conversation_id, status, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(instance_id)
-            DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at
+            DO UPDATE SET
+                status=excluded.status,
+                workspace_id=excluded.workspace_id,
+                conversation_id=excluded.conversation_id,
+                updated_at=excluded.updated_at
             """,
             (
                 run_id,
@@ -59,6 +88,8 @@ class AgentInstanceRepository:
                 session_id,
                 instance_id,
                 role_id,
+                resolved_workspace_id,
+                resolved_conversation_id,
                 status.value,
                 now,
                 now,
@@ -132,6 +163,16 @@ class AgentInstanceRepository:
             session_id=str(row["session_id"]),
             instance_id=str(row["instance_id"]),
             role_id=str(row["role_id"]),
+            workspace_id=str(
+                row["workspace_id"] or build_workspace_id(str(row["session_id"]))
+            ),
+            conversation_id=str(
+                row["conversation_id"]
+                or build_conversation_id(
+                    str(row["session_id"]),
+                    str(row["role_id"]),
+                )
+            ),
             status=InstanceStatus(str(row["status"])),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),

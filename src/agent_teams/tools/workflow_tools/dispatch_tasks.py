@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -8,6 +9,7 @@ from pydantic_ai import Agent
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 from agent_teams.workflow.runtime_graph import get_ready_tasks
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskRecord
@@ -120,7 +122,16 @@ async def _dispatch_next(
         instance_id = planned_instance_id or record.assigned_instance_id or ""
         if record.status == TaskStatus.CREATED:
             if not instance_id:
-                instance = ctx.deps.instance_pool.create_subagent(role_id)
+                workspace_id = build_workspace_id(ctx.deps.session_id)
+                conversation_id = build_conversation_id(
+                    ctx.deps.session_id,
+                    role_id,
+                )
+                instance = ctx.deps.instance_pool.create_subagent(
+                    role_id,
+                    workspace_id=workspace_id,
+                    conversation_id=conversation_id,
+                )
                 instance_id = instance.instance_id
                 ctx.deps.agent_repo.upsert_instance(
                     run_id=ctx.deps.run_id,
@@ -128,6 +139,8 @@ async def _dispatch_next(
                     session_id=ctx.deps.session_id,
                     instance_id=instance.instance_id,
                     role_id=instance.role_id,
+                    workspace_id=instance.workspace_id,
+                    conversation_id=instance.conversation_id,
                     status=InstanceStatus.IDLE,
                 )
             ctx.deps.task_repo.update_status(
@@ -399,8 +412,12 @@ def _persist_followup_message(
     task_id: str,
     content: str,
 ) -> None:
+    record = ctx.deps.agent_repo.get_instance(instance_id)
     ctx.deps.message_repo.append_user_prompt_if_missing(
         session_id=ctx.deps.session_id,
+        workspace_id=record.workspace_id,
+        conversation_id=record.conversation_id,
+        agent_role_id=record.role_id,
         instance_id=instance_id,
         task_id=task_id,
         trace_id=ctx.deps.trace_id,

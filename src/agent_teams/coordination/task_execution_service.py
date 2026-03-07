@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -24,10 +25,10 @@ from agent_teams.state.run_runtime_repo import (
     RunRuntimeRepository,
     RunRuntimeStatus,
 )
-from agent_teams.state.scope_models import ScopeRef, ScopeType
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workspace import WorkspaceManager
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.events import EventEnvelope, EventType
 from agent_teams.workflow.models import TaskEnvelope
@@ -42,13 +43,14 @@ class TaskExecutionService(BaseModel):
     role_registry: RoleRegistry
     instance_pool: InstancePool
     task_repo: TaskRepository
-    shared_store: SharedStore
+    shared_store: SharedStateRepository
     event_bus: EventLog
     agent_repo: AgentInstanceRepository
     message_repo: MessageRepository
     workflow_graph_repo: WorkflowGraphRepository
     approval_ticket_repo: ApprovalTicketRepository
     run_runtime_repo: RunRuntimeRepository
+    workspace_manager: WorkspaceManager
     prompt_builder: RuntimePromptBuilder
     provider_factory: Callable[[RoleDefinition], object]
     injection_manager: RunInjectionManager | None = None
@@ -151,20 +153,26 @@ class TaskExecutionService(BaseModel):
         )
 
         role: RoleDefinition = self.role_registry.get(role_id)
+        instance_record = self.agent_repo.get_instance(instance_id)
+        workspace = self.workspace_manager.resolve(
+            session_id=task.session_id,
+            role_id=role_id,
+            instance_id=instance_id,
+            workspace_id=instance_record.workspace_id,
+            conversation_id=instance_record.conversation_id,
+            profile=role.workspace_profile,
+        )
         runner = SubAgentRunner(
             role=role,
             prompt_builder=self.prompt_builder,
             provider=self.provider_factory(role),
         )
-        snapshot = (
-            ()
-            if role_id == ROLE_COORDINATOR
-            else self.shared_store.snapshot(
-                ScopeRef(scope_type=ScopeType.SESSION, scope_id=task.session_id)
-            )
-        )
+        snapshot = workspace.memory.prompt_snapshot()
         try:
             self._ensure_committed_task_prompt(
+                role_id=role_id,
+                workspace_id=workspace.ref.workspace_id,
+                conversation_id=workspace.ref.conversation_id,
                 instance_id=instance_id,
                 task=task,
                 user_prompt_override=user_prompt_override,
@@ -172,6 +180,8 @@ class TaskExecutionService(BaseModel):
             result = await runner.run(
                 task=task,
                 instance_id=instance_id,
+                workspace_id=workspace.ref.workspace_id,
+                conversation_id=workspace.ref.conversation_id,
                 shared_state_snapshot=snapshot,
             )
             self.task_repo.update_status(
@@ -366,6 +376,9 @@ class TaskExecutionService(BaseModel):
     def _ensure_committed_task_prompt(
         self,
         *,
+        role_id: str,
+        workspace_id: str,
+        conversation_id: str,
         instance_id: str,
         task: TaskEnvelope,
         user_prompt_override: str | None,
@@ -374,6 +387,9 @@ class TaskExecutionService(BaseModel):
         if prompt:
             self.message_repo.append_user_prompt_if_missing(
                 session_id=task.session_id,
+                workspace_id=workspace_id,
+                conversation_id=conversation_id,
+                agent_role_id=role_id,
                 instance_id=instance_id,
                 task_id=task.task_id,
                 trace_id=task.trace_id,
@@ -381,11 +397,17 @@ class TaskExecutionService(BaseModel):
             )
             return
 
-        task_history = self.message_repo.get_history_for_task(instance_id, task.task_id)
+        task_history = self.message_repo.get_history_for_conversation_task(
+            conversation_id,
+            task.task_id,
+        )
         if task_history:
             return
         self.message_repo.append_user_prompt_if_missing(
             session_id=task.session_id,
+            workspace_id=workspace_id,
+            conversation_id=conversation_id,
+            agent_role_id=role_id,
             instance_id=instance_id,
             task_id=task.task_id,
             trace_id=task.trace_id,

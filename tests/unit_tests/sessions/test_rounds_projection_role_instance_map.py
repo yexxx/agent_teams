@@ -15,6 +15,7 @@ from agent_teams.state.run_runtime_repo import (
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 
 
 class _FakeAgentRepo:
@@ -57,6 +58,8 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
         session_id=session_id,
         instance_id="inst-old",
         role_id=role_id,
+        workspace_id=build_workspace_id(session_id),
+        conversation_id=build_conversation_id(session_id, role_id),
         status=InstanceStatus.IDLE,
     )
     agent_new = AgentRuntimeRecord(
@@ -65,6 +68,8 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
         session_id=session_id,
         instance_id="inst-new",
         role_id=role_id,
+        workspace_id=build_workspace_id(session_id),
+        conversation_id=build_conversation_id(session_id, role_id),
         status=InstanceStatus.IDLE,
     )
     runtime = RunRuntimeRecord(

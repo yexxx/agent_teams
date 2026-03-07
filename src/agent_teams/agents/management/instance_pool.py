@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -5,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.ids import new_instance_id
 from agent_teams.agents.models import SubAgentInstance
+from agent_teams.workspace import build_conversation_id, build_workspace_id
 
 
 class InstancePool:
@@ -12,9 +14,10 @@ class InstancePool:
         self._instances: list[SubAgentInstance] = []
 
     @classmethod
-    def from_repo(cls, repo: object) -> 'InstancePool':
+    def from_repo(cls, repo: object) -> "InstancePool":
         """Rebuild pool from DB on startup, marking any stale RUNNING instances as FAILED."""
         from agent_teams.state.agent_repo import AgentInstanceRepository
+
         assert isinstance(repo, AgentInstanceRepository)
         pool = cls()
         for record in repo.list_all():
@@ -26,6 +29,10 @@ class InstancePool:
             instance = SubAgentInstance(
                 instance_id=record.instance_id,
                 role_id=record.role_id,
+                workspace_id=record.workspace_id
+                or build_workspace_id(record.session_id),
+                conversation_id=record.conversation_id
+                or build_conversation_id(record.session_id, record.role_id),
                 status=status,
                 created_at=record.created_at,
                 last_active_at=record.updated_at,
@@ -33,8 +40,19 @@ class InstancePool:
             pool._instances.append(instance)
         return pool
 
-    def create_subagent(self, role_id: str) -> SubAgentInstance:
-        instance = SubAgentInstance(instance_id=new_instance_id().value, role_id=role_id)
+    def create_subagent(
+        self,
+        role_id: str,
+        workspace_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> SubAgentInstance:
+        instance_id = new_instance_id().value
+        instance = SubAgentInstance(
+            instance_id=instance_id,
+            role_id=role_id,
+            workspace_id=workspace_id or instance_id,
+            conversation_id=conversation_id or instance_id,
+        )
         self._instances.append(instance)
         return instance
 
@@ -45,7 +63,9 @@ class InstancePool:
         return self._replace_status(instance_id, InstanceStatus.IDLE)
 
     def mark_completed(self, instance_id: str) -> SubAgentInstance:
-        return self._replace_status(instance_id, InstanceStatus.COMPLETED, inc_completed=1)
+        return self._replace_status(
+            instance_id, InstanceStatus.COMPLETED, inc_completed=1
+        )
 
     def mark_stopped(self, instance_id: str) -> SubAgentInstance:
         return self._replace_status(instance_id, InstanceStatus.STOPPED)
@@ -63,14 +83,17 @@ class InstancePool:
         for instance in self._instances:
             if instance.instance_id == instance_id:
                 return instance
-        raise KeyError(f'Unknown instance_id: {instance_id}')
+        raise KeyError(f"Unknown instance_id: {instance_id}")
 
     def cleanup_idle(self, idle_ttl_seconds: int) -> tuple[str, ...]:
         cutoff = datetime.now(tz=timezone.utc) - timedelta(seconds=idle_ttl_seconds)
         removed_ids: list[str] = []
         kept: list[SubAgentInstance] = []
         for instance in self._instances:
-            if instance.status == InstanceStatus.IDLE and instance.last_active_at < cutoff:
+            if (
+                instance.status == InstanceStatus.IDLE
+                and instance.last_active_at < cutoff
+            ):
                 removed_ids.append(instance.instance_id)
                 continue
             kept.append(instance)
@@ -89,12 +112,12 @@ class InstancePool:
                 continue
             updated = instance.model_copy(
                 update={
-                    'status': status,
-                    'last_active_at': datetime.now(tz=timezone.utc),
-                    'completed_tasks': instance.completed_tasks + inc_completed,
-                    'failed_tasks': instance.failed_tasks + inc_failed,
+                    "status": status,
+                    "last_active_at": datetime.now(tz=timezone.utc),
+                    "completed_tasks": instance.completed_tasks + inc_completed,
+                    "failed_tasks": instance.failed_tasks + inc_failed,
                 }
             )
             self._instances[idx] = updated
             return updated
-        raise KeyError(f'Unknown instance_id: {instance_id}')
+        raise KeyError(f"Unknown instance_id: {instance_id}")

@@ -13,7 +13,7 @@ from agent_teams.runs.enums import RunEventType
 from agent_teams.shared_types.json_types import JsonObject, JsonValue
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.scope_models import ScopeRef, ScopeType, StateMutation
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.workflow.dispatch_prompts import build_revise_followup_prompt
 from agent_teams.workflow.enums import TaskStatus
@@ -60,7 +60,7 @@ class PersistedToolCallState(BaseModel):
 
 def load_tool_call_state(
     *,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     task_id: str,
     tool_call_id: str,
 ) -> PersistedToolCallState | None:
@@ -75,7 +75,7 @@ def load_tool_call_state(
 
 def merge_tool_call_state(
     *,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     task_id: str,
     tool_call_id: str,
     tool_name: str,
@@ -134,7 +134,7 @@ def merge_tool_call_state(
 
 def load_or_recover_tool_call_state(
     *,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     event_log: EventLog,
     trace_id: str,
     task_id: str,
@@ -160,7 +160,7 @@ def load_or_recover_tool_call_state(
 
 def update_tool_call_call_state(
     *,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     task_id: str,
     tool_call_id: str,
     tool_name: str,
@@ -189,7 +189,7 @@ def update_tool_call_call_state(
 def recover_tool_call_state_from_event_log(
     *,
     event_log: EventLog,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     trace_id: str,
     task_id: str,
     tool_call_id: str,
@@ -370,7 +370,7 @@ def _recover_call_state(
     trace_id: str,
     task_id: str,
     tool_args: JsonObject,
-    shared_store: SharedStore,
+    shared_store: SharedStateRepository,
     task_repo: TaskRepository | None,
 ) -> JsonObject:
     if tool_name != "dispatch_tasks" or task_repo is None:

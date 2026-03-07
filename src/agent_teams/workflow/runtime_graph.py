@@ -6,7 +6,7 @@ from typing import cast
 from agent_teams.state.scope_models import ScopeRef, ScopeType, StateMutation
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskRecord
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 
 WORKFLOW_GRAPH_KEY = "workflow_graph"
 
@@ -15,7 +15,11 @@ def workflow_scope(task_id: str) -> ScopeRef:
     return ScopeRef(scope_type=ScopeType.TASK, scope_id=task_id)
 
 
-def load_graph(store: SharedStore, *, task_id: str) -> dict[str, object] | None:
+def load_graph(
+    store: SharedStateRepository,
+    *,
+    task_id: str,
+) -> dict[str, object] | None:
     raw = store.get_state(workflow_scope(task_id), WORKFLOW_GRAPH_KEY)
     if not raw:
         return None
@@ -25,7 +29,12 @@ def load_graph(store: SharedStore, *, task_id: str) -> dict[str, object] | None:
     return value
 
 
-def save_graph(store: SharedStore, *, task_id: str, graph: dict[str, object]) -> None:
+def save_graph(
+    store: SharedStateRepository,
+    *,
+    task_id: str,
+    graph: dict[str, object],
+) -> None:
     store.manage_state(
         StateMutation(
             scope=workflow_scope(task_id),

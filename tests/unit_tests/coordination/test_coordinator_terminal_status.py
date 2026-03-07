@@ -23,7 +23,7 @@ from agent_teams.state.run_runtime_repo import (
     RunRuntimeRepository,
     RunRuntimeStatus,
 )
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import (
@@ -103,7 +103,7 @@ def _build_coordinator(
         role_registry=role_registry,
         instance_pool=instance_pool,
         task_repo=task_repo,
-        shared_store=SharedStore(db_path),
+        shared_store=SharedStateRepository(db_path),
         event_bus=event_log,
         agent_repo=agent_repo,
         prompt_builder=RuntimePromptBuilder(),

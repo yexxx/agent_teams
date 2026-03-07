@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 import logging
-from json import dumps
-from pathlib import Path
+from copy import deepcopy
 from collections.abc import Sequence
+from json import dumps
 from typing import TYPE_CHECKING, Protocol, cast, final, override
 
 from pydantic import BaseModel, ConfigDict
@@ -41,7 +40,7 @@ from agent_teams.runs.models import RunEvent
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.message_repo import MessageRepository
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.shared_state_repo import SharedStateRepository
 from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
@@ -62,6 +61,11 @@ from agent_teams.prompting.provider_augment import (
 )
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.workflow.task_status_sanitizer import sanitize_task_status_payload
+from agent_teams.workspace import (
+    WorkspaceManager,
+    build_conversation_id,
+    build_workspace_id,
+)
 
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
@@ -86,6 +90,8 @@ class LLMRequest(BaseModel):
     trace_id: str
     task_id: str
     session_id: str
+    workspace_id: str = ""
+    conversation_id: str = ""
     instance_id: str
     role_id: str
     system_prompt: str
@@ -111,7 +117,7 @@ class OpenAICompatibleProvider(LLMProvider):
         *,
         task_repo: TaskRepository,
         instance_pool: InstancePool,
-        shared_store: SharedStore,
+        shared_store: SharedStateRepository,
         event_bus: EventLog,
         injection_manager: RunInjectionManager,
         run_event_hub: RunEventHub,
@@ -119,7 +125,7 @@ class OpenAICompatibleProvider(LLMProvider):
         workflow_graph_repo: WorkflowGraphRepository,
         approval_ticket_repo: ApprovalTicketRepository,
         run_runtime_repo: RunRuntimeRepository,
-        workspace_root: Path,
+        workspace_manager: WorkspaceManager,
         tool_registry: ToolRegistry,
         mcp_registry: McpRegistry,
         skill_registry: SkillRegistry,
@@ -146,7 +152,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._workflow_graph_repo = workflow_graph_repo
         self._approval_ticket_repo = approval_ticket_repo
         self._run_runtime_repo = run_runtime_repo
-        self._workspace_root = workspace_root
+        self._workspace_manager = workspace_manager
         self._tool_registry = tool_registry
         self._mcp_registry = mcp_registry
         self._skill_registry = skill_registry
@@ -167,6 +173,13 @@ class OpenAICompatibleProvider(LLMProvider):
         return await self._generate_async(request)
 
     async def _generate_async(self, request: LLMRequest) -> str:
+        resolved_workspace_id = request.workspace_id or build_workspace_id(
+            request.session_id
+        )
+        resolved_conversation_id = request.conversation_id or build_conversation_id(
+            request.session_id,
+            request.role_id,
+        )
         skill_instructions = (
             tuple(
                 PromptSkillInstruction(
@@ -240,11 +253,20 @@ class OpenAICompatibleProvider(LLMProvider):
             injection_manager=self._injection_manager,
             run_event_hub=self._run_event_hub,
             agent_repo=self._agent_repo,
-            workspace_root=self._workspace_root,
+            workspace=self._workspace_manager.resolve(
+                session_id=request.session_id,
+                role_id=request.role_id,
+                instance_id=request.instance_id,
+                workspace_id=resolved_workspace_id,
+                conversation_id=resolved_conversation_id,
+                profile=self._role_registry.get(request.role_id).workspace_profile,
+            ),
             run_id=request.run_id,
             trace_id=request.trace_id,
             task_id=request.task_id,
             session_id=request.session_id,
+            workspace_id=resolved_workspace_id,
+            conversation_id=resolved_conversation_id,
             instance_id=request.instance_id,
             role_id=request.role_id,
             role_registry=self._role_registry,
@@ -264,7 +286,9 @@ class OpenAICompatibleProvider(LLMProvider):
         history: list[ModelRequest | ModelResponse] = (
             self._truncate_history_to_safe_boundary(
                 self._filter_model_messages(
-                    self._message_repo.get_history(request.instance_id)
+                    self._message_repo.get_history_for_conversation(
+                        resolved_conversation_id
+                    )
                 )
             )
         )
@@ -379,6 +403,9 @@ class OpenAICompatibleProvider(LLMProvider):
                             )
                         self._message_repo.append(
                             session_id=request.session_id,
+                            workspace_id=resolved_workspace_id,
+                            conversation_id=resolved_conversation_id,
+                            agent_role_id=request.role_id,
                             instance_id=request.instance_id,
                             task_id=request.task_id,
                             trace_id=request.trace_id,
@@ -386,7 +413,9 @@ class OpenAICompatibleProvider(LLMProvider):
                         )
                         # Restart iter() with injected messages appended to committed history
                         history = self._filter_model_messages(
-                            self._message_repo.get_history(request.instance_id)
+                            self._message_repo.get_history_for_conversation(
+                                resolved_conversation_id
+                            )
                         )
                         seen_count = 0
                         buffered_messages = []
@@ -594,17 +623,24 @@ class OpenAICompatibleProvider(LLMProvider):
             return history
         if self._history_ends_with_user_prompt(history, prompt):
             return history
-        self._message_repo.prune_history_to_safe_boundary(request.instance_id)
+        self._message_repo.prune_conversation_history_to_safe_boundary(
+            self._conversation_id(request)
+        )
         prompt_message = ModelRequest(parts=[UserPromptPart(content=prompt)])
         self._message_repo.append(
             session_id=request.session_id,
+            workspace_id=self._workspace_id(request),
+            conversation_id=self._conversation_id(request),
+            agent_role_id=request.role_id,
             instance_id=request.instance_id,
             task_id=request.task_id,
             trace_id=request.trace_id,
             messages=[prompt_message],
         )
         return self._filter_model_messages(
-            self._message_repo.get_history(request.instance_id)
+            self._message_repo.get_history_for_conversation(
+                self._conversation_id(request)
+            )
         )
 
     def _history_ends_with_user_prompt(
@@ -639,6 +675,9 @@ class OpenAICompatibleProvider(LLMProvider):
         ready = pending_messages[:safe_index]
         self._message_repo.append(
             session_id=request.session_id,
+            workspace_id=self._workspace_id(request),
+            conversation_id=self._conversation_id(request),
+            agent_role_id=request.role_id,
             instance_id=request.instance_id,
             task_id=request.task_id,
             trace_id=request.trace_id,
@@ -649,7 +688,9 @@ class OpenAICompatibleProvider(LLMProvider):
             messages=ready,
         )
         next_history = self._filter_model_messages(
-            self._message_repo.get_history(request.instance_id)
+            self._message_repo.get_history_for_conversation(
+                self._conversation_id(request)
+            )
         )
         return next_history, pending_messages[safe_index:]
 
@@ -812,3 +853,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 for key, entry in entries.items()
             }
         return str(value)
+
+    def _workspace_id(self, request: LLMRequest) -> str:
+        return request.workspace_id or build_workspace_id(request.session_id)
+
+    def _conversation_id(self, request: LLMRequest) -> str:
+        return request.conversation_id or build_conversation_id(
+            request.session_id,
+            request.role_id,
+        )

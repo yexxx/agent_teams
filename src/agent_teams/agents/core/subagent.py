@@ -21,6 +21,8 @@ class SubAgentRequest(BaseModel):
     trace_id: str
     task_id: str
     session_id: str
+    workspace_id: str
+    conversation_id: str
     instance_id: str
     role_id: str
     system_prompt: str
@@ -38,6 +40,8 @@ class SubAgentRunner(BaseModel):
         self,
         task: TaskEnvelope,
         instance_id: str,
+        workspace_id: str,
+        conversation_id: str,
         shared_state_snapshot: tuple[tuple[str, str], ...],
     ) -> str:
         system_prompt = self.prompt_builder.build(
@@ -56,6 +60,8 @@ class SubAgentRunner(BaseModel):
                 trace_id=task.trace_id,
                 task_id=task.task_id,
                 session_id=task.session_id,
+                workspace_id=workspace_id,
+                conversation_id=conversation_id,
                 instance_id=instance_id,
                 role_id=self.role.role_id,
                 system_prompt=system_prompt,

@@ -2,7 +2,10 @@
  * core/eventRouter/toolEvents.js
  * Handlers for tool call/result/approval events.
  */
-import { state } from '../state.js';
+import {
+    markToolApprovalRequested,
+    markToolApprovalResolved as markRecoveryToolApprovalResolved,
+} from '../../app/recovery.js';
 import { sysLog } from '../../utils/logger.js';
 import {
     appendToolCallBlock,
@@ -16,7 +19,6 @@ import {
     getPanelScrollContainer,
     openAgentPanel,
 } from '../../components/agentPanel.js';
-import { resolveToolApproval } from '../api.js';
 import {
     COORDINATOR_ROLE,
     coordinatorContainerFor,
@@ -32,19 +34,25 @@ export function handleToolCall(payload, eventMeta, instanceId, roleId) {
         openAgentPanel(instanceId, roleId);
     }
     const streamKey = instanceId || 'coordinator';
+    const runId = eventMeta?.run_id || eventMeta?.trace_id || '';
+    const label = isCoordinator ? 'Coordinator' : (roleId || 'Agent');
     appendToolCallBlock(
         container,
         streamKey,
         payload.tool_name,
         payload.args,
         payload.tool_call_id || null,
+        { runId, roleId: isCoordinator ? COORDINATOR_ROLE : roleId, label },
     );
     sysLog(`[Tool] ${payload.tool_name}`);
 }
 
-export function handleToolInputValidationFailed(payload, instanceId) {
+export function handleToolInputValidationFailed(payload, instanceId, eventMeta = null, roleId = '') {
     const streamKey = instanceId || 'coordinator';
-    const bound = markToolInputValidationFailed(streamKey, payload);
+    const bound = markToolInputValidationFailed(streamKey, payload, {
+        runId: eventMeta?.run_id || eventMeta?.trace_id || '',
+        roleId,
+    });
     if (!bound) {
         sysLog(
             `Tool input validation failed (not executed): ${payload.tool_name}`,
@@ -53,7 +61,7 @@ export function handleToolInputValidationFailed(payload, instanceId) {
     }
 }
 
-export function handleToolResult(payload, instanceId) {
+export function handleToolResult(payload, instanceId, eventMeta = null, roleId = '') {
     const streamKey = instanceId || 'coordinator';
     const resultEnvelope = payload.result || {};
     const isError = typeof resultEnvelope === 'object'
@@ -65,6 +73,10 @@ export function handleToolResult(payload, instanceId) {
         resultEnvelope,
         isError,
         payload.tool_call_id || null,
+        {
+            runId: eventMeta?.run_id || eventMeta?.trace_id || '',
+            roleId,
+        },
     );
 
     if (payload.tool_name === 'create_workflow_graph' && resultEnvelope) {
@@ -74,24 +86,32 @@ export function handleToolResult(payload, instanceId) {
 
 export function handleToolApprovalRequested(payload, eventMeta, instanceId) {
     const streamKey = instanceId || 'coordinator';
-    const runId = eventMeta?.run_id || eventMeta?.trace_id || state.activeRunId;
-    const bound = attachToolApprovalControls(streamKey, payload.tool_name, payload, {
-        onApprove: async () => {
-            await resolveToolApproval(runId, payload.tool_call_id, 'approve', '');
-        },
-        onDeny: async () => {
-            await resolveToolApproval(runId, payload.tool_call_id, 'deny', '');
-        },
-        onError: (e) => {
-            sysLog(`Tool approval failed: ${e.message}`, 'log-error');
-        },
+    const runId = eventMeta?.run_id || eventMeta?.trace_id || '';
+    markToolApprovalRequested(payload);
+    if (runId && payload?.tool_call_id) {
+        document.dispatchEvent(
+            new CustomEvent('tool-approval-requested', {
+                detail: {
+                    runId,
+                    toolCallId: payload.tool_call_id,
+                },
+            }),
+        );
+    }
+    const bound = attachToolApprovalControls(streamKey, payload.tool_name, payload, {}, {
+        runId,
+        roleId: payload?.role_id || '',
     });
     if (!bound) {
         sysLog(`Approval requested for ${payload.tool_name}`, 'log-info');
     }
 }
 
-export function handleToolApprovalResolved(payload, instanceId) {
+export function handleToolApprovalResolved(payload, instanceId, eventMeta = null, roleId = '') {
     const streamKey = instanceId || 'coordinator';
-    markToolApprovalResolved(streamKey, payload);
+    markRecoveryToolApprovalResolved(payload?.tool_call_id || '');
+    markToolApprovalResolved(streamKey, payload, {
+        runId: eventMeta?.run_id || eventMeta?.trace_id || '',
+        roleId,
+    });
 }

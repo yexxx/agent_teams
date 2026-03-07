@@ -1,22 +1,29 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.coordination.task_execution_service import TaskExecutionService
 from agent_teams.roles.registry import RoleRegistry
-from agent_teams.runs.enums import InjectionSource
 from agent_teams.runs.injection_queue import RunInjectionManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.message_repo import MessageRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
-from agent_teams.workflow.runtime_graph import get_ready_tasks, load_graph, save_graph
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workflow.runtime_graph import get_ready_tasks
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
+from agent_teams.workflow.status_snapshot import (
+    build_task_status_row,
+    build_task_status_snapshot,
+)
 
 WorkflowType = Literal["spec_flow", "custom"]
 DispatchAction = Literal["next", "revise"]
@@ -36,19 +43,23 @@ class WorkflowOrchestrationService:
         *,
         task_repo: TaskRepository,
         shared_store: SharedStore,
+        workflow_graph_repo: WorkflowGraphRepository,
         role_registry: RoleRegistry,
         instance_pool: InstancePool,
         agent_repo: AgentInstanceRepository,
         task_execution_service: TaskExecutionService,
         injection_manager: RunInjectionManager,
+        message_repo: MessageRepository,
     ) -> None:
         self._task_repo: TaskRepository = task_repo
         self._shared_store: SharedStore = shared_store
+        self._workflow_graph_repo: WorkflowGraphRepository = workflow_graph_repo
         self._role_registry: RoleRegistry = role_registry
         self._instance_pool: InstancePool = instance_pool
         self._agent_repo: AgentInstanceRepository = agent_repo
         self._task_execution_service: TaskExecutionService = task_execution_service
         self._injection_manager: RunInjectionManager = injection_manager
+        self._message_repo: MessageRepository = message_repo
 
     def create_workflow_graph(
         self,
@@ -59,7 +70,8 @@ class WorkflowOrchestrationService:
         tasks: list[WorkflowTaskSpecInput] | None = None,
     ) -> dict[str, object]:
         root = self._get_root_task(run_id=run_id)
-        existing = load_graph(self._shared_store, task_id=root.envelope.task_id)
+        existing_records = self._workflow_graph_repo.get_by_run(run_id)
+        existing = existing_records[-1].graph if existing_records else None
         if existing is not None:
             return {
                 "ok": True,
@@ -117,7 +129,13 @@ class WorkflowOrchestrationService:
                 for spec in parsed_tasks
             },
         }
-        save_graph(self._shared_store, task_id=root.envelope.task_id, graph=graph)
+        self._workflow_graph_repo.upsert(
+            workflow_id=workflow_id,
+            run_id=run_id,
+            session_id=root.envelope.session_id,
+            root_task_id=root.envelope.task_id,
+            graph=graph,
+        )
 
         return {
             "ok": True,
@@ -138,8 +156,8 @@ class WorkflowOrchestrationService:
     def get_workflow_status(
         self, *, run_id: str, workflow_id: str
     ) -> dict[str, object]:
-        root = self._get_root_task(run_id=run_id)
-        graph = load_graph(self._shared_store, task_id=root.envelope.task_id)
+        graph_record = self._workflow_graph_repo.get(workflow_id)
+        graph = graph_record.graph if graph_record is not None else None
         if graph is None:
             raise KeyError("workflow_graph not found, call create_workflow_graph first")
         if graph.get("workflow_id") != workflow_id:
@@ -155,20 +173,7 @@ class WorkflowOrchestrationService:
         if not isinstance(tasks, dict):
             raise ValueError("invalid workflow graph tasks")
 
-        task_status: dict[str, dict[str, object]] = {}
-        for task_name, task_info in tasks.items():
-            task_id = str(task_info.get("task_id", ""))
-            role_id = str(task_info.get("role_id", ""))
-            record = records.get(task_id)
-            if record is None:
-                task_status[task_name] = {"status": "missing", "role_id": role_id}
-                continue
-            row: dict[str, object] = {"status": record.status.value, "role_id": role_id}
-            if record.result:
-                row["result"] = record.result
-            if record.error_message:
-                row["error"] = record.error_message
-            task_status[task_name] = row
+        task_status = build_task_status_snapshot(tasks=tasks, records=records)
 
         return {
             "ok": True,
@@ -187,8 +192,8 @@ class WorkflowOrchestrationService:
         feedback: str = "",
         max_dispatch: int = 1,
     ) -> dict[str, object]:
-        root = self._get_root_task(run_id=run_id)
-        graph = load_graph(self._shared_store, task_id=root.envelope.task_id)
+        graph_record = self._workflow_graph_repo.get(workflow_id)
+        graph = graph_record.graph if graph_record is not None else None
         if graph is None:
             raise KeyError("workflow_graph not found, call create_workflow_graph first")
         if graph.get("workflow_id") != workflow_id:
@@ -233,12 +238,13 @@ class WorkflowOrchestrationService:
         records = _records_by_task_id(self._task_repo.list_by_trace(run_id))
         bounded_dispatch = max(1, min(int(max_dispatch), 8))
         dispatched: list[dict[str, str]] = []
-        executed: list[dict[str, str]] = []
-        failed: list[dict[str, str]] = []
+        executed: list[JsonObject] = []
+        failed: list[JsonObject] = []
 
         async def _ensure_and_execute(
             task_id: str, task_name: str, role_id: str
         ) -> None:
+            nonlocal records
             if len(dispatched) >= bounded_dispatch:
                 return
             record = records.get(task_id)
@@ -259,11 +265,12 @@ class WorkflowOrchestrationService:
                 assigned_instance_id=instance.instance_id,
             )
             if feedback.strip():
-                _ = self._injection_manager.enqueue(
-                    run_id=run_id,
-                    recipient_instance_id=instance.instance_id,
-                    source=InjectionSource.SYSTEM,
-                    content=f"Coordinator note for this stage: {feedback}",
+                self._persist_followup_message(
+                    session_id=record.envelope.session_id,
+                    instance_id=instance.instance_id,
+                    task_id=task_id,
+                    trace_id=run_id,
+                    content=feedback,
                 )
             dispatched.append(
                 {
@@ -279,18 +286,25 @@ class WorkflowOrchestrationService:
                     role_id=instance.role_id,
                     task=record.envelope,
                 )
+                records = _records_by_task_id(self._task_repo.list_by_trace(run_id))
                 executed.append(
-                    {"task_id": task_id, "task_name": task_name, "status": "completed"}
+                    build_task_status_row(
+                        task_name=task_name,
+                        task_id=task_id,
+                        role_id=role_id,
+                        record=records.get(task_id),
+                    )
                 )
             except Exception as exc:
-                failed.append(
-                    {
-                        "task_id": task_id,
-                        "task_name": task_name,
-                        "status": "failed",
-                        "error": str(exc),
-                    }
+                records = _records_by_task_id(self._task_repo.list_by_trace(run_id))
+                failed_entry = build_task_status_row(
+                    task_name=task_name,
+                    task_id=task_id,
+                    role_id=role_id,
+                    record=records.get(task_id),
                 )
+                failed_entry["error"] = str(exc)
+                failed.append(failed_entry)
 
         for task_name, task_info in get_ready_tasks(graph, records):
             task_id = str(task_info.get("task_id", ""))
@@ -309,6 +323,7 @@ class WorkflowOrchestrationService:
             "dispatched": dispatched,
             "executed": executed,
             "failed": failed,
+            "task_status": build_task_status_snapshot(tasks=tasks, records=records),
             "converged_stage": converged_stage,
             "next_action": _next_action(converged_stage, failed),
             "remaining_budget": max(0, bounded_dispatch - len(dispatched)),
@@ -326,14 +341,21 @@ class WorkflowOrchestrationService:
         tasks = graph.get("tasks", {})
         if not isinstance(tasks, dict):
             raise ValueError("invalid workflow graph tasks")
+        if not str(feedback or "").strip():
+            return {
+                "ok": False,
+                "workflow_id": workflow_id,
+                "action": "revise",
+                "message": "feedback is required for revise.",
+            }
         records = _records_by_task_id(self._task_repo.list_by_trace(run_id))
-        latest = _latest_completed_task(tasks=tasks, records=records)
+        latest = _latest_revisable_task(tasks=tasks, records=records)
         if latest is None:
             return {
                 "ok": False,
                 "workflow_id": workflow_id,
                 "action": "revise",
-                "message": "No completed task to revise.",
+                "message": "No completed task available to revise.",
             }
 
         task_name, task_id = latest
@@ -349,13 +371,13 @@ class WorkflowOrchestrationService:
                 "message": "Task has no assigned instance.",
             }
         instance = self._instance_pool.get(instance_id)
-        if feedback.strip():
-            _ = self._injection_manager.enqueue(
-                run_id=run_id,
-                recipient_instance_id=instance_id,
-                source=InjectionSource.USER,
-                content=f"Please revise your previous output based on this feedback: {feedback}",
-            )
+        self._persist_followup_message(
+            session_id=record.envelope.session_id,
+            instance_id=instance_id,
+            task_id=task_id,
+            trace_id=run_id,
+            content=feedback,
+        )
         try:
             _ = await self._task_execution_service.execute(
                 instance_id=instance.instance_id,
@@ -363,22 +385,72 @@ class WorkflowOrchestrationService:
                 task=record.envelope,
             )
         except Exception as exc:
+            refreshed_records = _records_by_task_id(
+                self._task_repo.list_by_trace(run_id)
+            )
             return {
                 "ok": False,
                 "workflow_id": workflow_id,
                 "action": "revise",
                 "task_name": task_name,
                 "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "role_id": instance.role_id,
+                "task": build_task_status_row(
+                    task_name=task_name,
+                    task_id=task_id,
+                    role_id=instance.role_id,
+                    record=refreshed_records.get(task_id),
+                ),
+                "task_status": build_task_status_snapshot(
+                    tasks=tasks,
+                    records=refreshed_records,
+                ),
                 "error": str(exc),
             }
+        refreshed_records = _records_by_task_id(self._task_repo.list_by_trace(run_id))
+        progress = _progress(tasks=tasks, records=refreshed_records)
+        converged_stage = _converged_stage(progress=progress, failed=[])
         return {
             "ok": True,
             "workflow_id": workflow_id,
             "action": "revise",
             "task_name": task_name,
             "task_id": task_id,
+            "instance_id": instance.instance_id,
+            "role_id": instance.role_id,
+            "task": build_task_status_row(
+                task_name=task_name,
+                task_id=task_id,
+                role_id=instance.role_id,
+                record=refreshed_records.get(task_id),
+            ),
+            "task_status": build_task_status_snapshot(
+                tasks=tasks,
+                records=refreshed_records,
+            ),
             "message": "Revision completed successfully.",
+            "converged_stage": converged_stage,
+            "next_action": _next_action(converged_stage, []),
+            "progress": progress,
         }
+
+    def _persist_followup_message(
+        self,
+        *,
+        session_id: str,
+        instance_id: str,
+        task_id: str,
+        trace_id: str,
+        content: str,
+    ) -> None:
+        self._message_repo.append_user_prompt_if_missing(
+            session_id=session_id,
+            instance_id=instance_id,
+            task_id=task_id,
+            trace_id=trace_id,
+            content=content,
+        )
 
 
 def _records_by_task_id(records: tuple[TaskRecord, ...]) -> dict[str, TaskRecord]:
@@ -488,6 +560,31 @@ def _latest_completed_task(
     return None
 
 
+def _latest_revisable_task(
+    *,
+    tasks: dict[str, dict[str, object]],
+    records: dict[str, TaskRecord],
+) -> tuple[str, str] | None:
+    revisable_statuses = {
+        TaskStatus.COMPLETED,
+        TaskStatus.RUNNING,
+        TaskStatus.ASSIGNED,
+        TaskStatus.STOPPED,
+    }
+    ordered_task_names = list(tasks.keys())
+    for task_name in reversed(ordered_task_names):
+        task_info = tasks.get(task_name, {})
+        task_id = task_info.get("task_id", "")
+        if not isinstance(task_id, str) or not task_id:
+            continue
+        record = records.get(task_id)
+        if record is None:
+            continue
+        if record.status in revisable_statuses:
+            return task_name, task_id
+    return None
+
+
 def _progress(
     *, tasks: dict[str, dict[str, object]], records: dict[str, TaskRecord]
 ) -> dict[str, int]:
@@ -501,7 +598,9 @@ def _progress(
     return {"completed": len(completed_tasks), "total": len(all_tasks)}
 
 
-def _converged_stage(*, progress: dict[str, int], failed: list[dict[str, str]]) -> str:
+def _converged_stage(
+    *, progress: dict[str, int], failed: Sequence[Mapping[str, object]]
+) -> str:
     if failed:
         return "failed"
     completed_count = progress["completed"]
@@ -513,7 +612,7 @@ def _converged_stage(*, progress: dict[str, int], failed: list[dict[str, str]]) 
     return "no_progress"
 
 
-def _next_action(converged_stage: str, failed: list[dict[str, str]]) -> str:
+def _next_action(converged_stage: str, failed: Sequence[Mapping[str, object]]) -> str:
     if failed:
         return "revise"
     if converged_stage == "all_completed":
@@ -523,4 +622,3 @@ def _next_action(converged_stage: str, failed: list[dict[str, str]]) -> str:
     if converged_stage.startswith("progress_"):
         return "next"
     return "inspect_status"
-

@@ -3,6 +3,7 @@
  * Panel DOM factory and inject-message bindings.
  */
 import { injectSubagentMessage, stopRun } from '../../core/api.js';
+import { refreshSessionRecovery, resumeRecoverableRun } from '../../app/recovery.js';
 import { state } from '../../core/state.js';
 import { sysLog } from '../../utils/logger.js';
 import { getDrawer } from './dom.js';
@@ -63,12 +64,25 @@ export function createPanel(instanceId, roleId, onClose) {
     async function sendInject() {
         const text = textarea.value.trim();
         if (!text || !state.activeRunId) return;
+        const shouldResume = !!(
+            state.currentRecoverySnapshot?.pausedSubagent &&
+            state.currentRecoverySnapshot?.activeRun?.run_id === state.activeRunId
+        );
         textarea.value = '';
         textarea.style.height = 'auto';
         try {
             await injectSubagentMessage(state.activeRunId, instanceId, text);
             if (state.pausedSubagent && state.pausedSubagent.instanceId === instanceId) {
                 state.pausedSubagent = null;
+            }
+            if (shouldResume) {
+                await resumeRecoverableRun(state.activeRunId, {
+                    sessionId: state.currentSessionId,
+                    reason: 'subagent follow-up',
+                    quiet: true,
+                });
+            } else if (state.currentSessionId) {
+                await refreshSessionRecovery(state.currentSessionId, { quiet: true });
             }
         } catch (e) {
             sysLog(`Failed to message subagent: ${e.message}`, 'log-error');
@@ -92,5 +106,7 @@ export function createPanel(instanceId, roleId, onClose) {
         scrollEl: panelEl.querySelector('.agent-panel-scroll'),
         instanceId,
         roleId,
+        loadedSessionId: '',
+        loadedRunId: '',
     };
 }

@@ -10,7 +10,6 @@ from agent_teams.prompting.runtime_prompt_builder import (
     PromptBuildInput,
     RuntimePromptBuilder,
 )
-from agent_teams.prompting.user_input import UserPromptBuildInput, build_user_prompt
 from agent_teams.roles.models import RoleDefinition
 from agent_teams.workflow.models import TaskEnvelope
 
@@ -25,7 +24,7 @@ class SubAgentRequest(BaseModel):
     instance_id: str
     role_id: str
     system_prompt: str
-    user_prompt: str
+    user_prompt: str | None
 
 
 class SubAgentRunner(BaseModel):
@@ -48,7 +47,6 @@ class SubAgentRunner(BaseModel):
                 shared_state_snapshot=shared_state_snapshot,
             )
         )
-        user_prompt = build_user_prompt(UserPromptBuildInput(objective=task.objective))
         generate = cast(
             Callable[[object], Awaitable[str]], getattr(self.provider, "generate")
         )
@@ -61,6 +59,6 @@ class SubAgentRunner(BaseModel):
                 instance_id=instance_id,
                 role_id=self.role.role_id,
                 system_prompt=system_prompt,
-                user_prompt=user_prompt,
+                user_prompt=None,
             )
         )

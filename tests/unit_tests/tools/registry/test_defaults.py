@@ -17,7 +17,6 @@ def test_registry_contains_only_role_mounted_tools() -> None:
     assert registry.list_names() == (
         "create_workflow_graph",
         "dispatch_tasks",
-        "get_workflow_status",
         "glob",
         "grep",
         "list_available_roles",

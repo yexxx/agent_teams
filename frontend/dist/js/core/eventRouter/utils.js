@@ -16,8 +16,8 @@ export function coordinatorContainerFor(eventMeta) {
         const section = document.querySelector(`.session-round-section[data-run-id="${runId}"]`);
         if (section) return section;
     }
-    const live = document.querySelector('.session-round-section[data-run-id="__live__"]');
-    if (live) return live;
+    const latest = els.chatMessages?.querySelector('.session-round-section:last-of-type');
+    if (latest) return latest;
     return els.chatMessages;
 }
 

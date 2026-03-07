@@ -9,7 +9,6 @@ from pydantic_ai import Agent
 from agent_teams.shared_types.json_types import JsonObject
 from agent_teams.roles.registry import RoleRegistry
 from agent_teams.tools.runtime import ToolContext, ToolDeps, execute_tool
-from agent_teams.workflow.runtime_graph import load_graph, save_graph
 from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
 
 
@@ -34,7 +33,10 @@ def register(agent: Agent[ToolDeps, str]) -> None:
     ) -> JsonObject:
         def _action() -> dict[str, object]:
             parsed_tasks = tasks
-            existing = load_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id)
+            existing_records = ctx.deps.workflow_graph_repo.get_by_run(
+                ctx.deps.trace_id
+            )
+            existing = existing_records[-1].graph if existing_records else None
             if existing is not None:
                 return {
                     "ok": True,
@@ -98,7 +100,22 @@ def register(agent: Agent[ToolDeps, str]) -> None:
                     for spec in parsed_tasks
                 },
             }
-            save_graph(ctx.deps.shared_store, task_id=ctx.deps.task_id, graph=graph)
+            ctx.deps.workflow_graph_repo.upsert(
+                workflow_id=workflow_id,
+                run_id=ctx.deps.trace_id,
+                session_id=ctx.deps.session_id,
+                root_task_id=ctx.deps.task_id,
+                graph=graph,
+            )
+            ctx.deps.run_runtime_repo.ensure(
+                run_id=ctx.deps.run_id,
+                session_id=ctx.deps.session_id,
+                root_task_id=ctx.deps.task_id,
+            )
+            ctx.deps.run_runtime_repo.update(
+                ctx.deps.run_id,
+                active_workflow_id=workflow_id,
+            )
 
             task_list = [
                 {

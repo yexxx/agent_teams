@@ -90,6 +90,7 @@
 
                 <!-- Input Area -->
                 <div class="input-container">
+                    <div id="recovery-banner-host" class="recovery-banner-host" style="display:none;"></div>
                     <form id="chat-form">
                         <div class="input-wrapper">
                             <textarea id="prompt-input" placeholder="What would you like the agents to do?" rows="1"
@@ -100,7 +101,12 @@
                                         stroke-width="2" stroke-linejoin="round" />
                                 </svg>
                             </button>
-                            <button type="button" id="stop-btn" title="Stop" style="display:none;">Stop</button>
+                            <button type="button" id="stop-btn" title="Stop run" style="display:none;">
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" stroke-width="2" />
+                                </svg>
+                                <span>Stop</span>
+                            </button>
                         </div>
                     </form>
                     <div class="input-controls">

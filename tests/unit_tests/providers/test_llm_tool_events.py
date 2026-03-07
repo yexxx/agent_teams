@@ -19,10 +19,13 @@ from agent_teams.runs.control import RunControlManager
 from agent_teams.runs.event_stream import RunEventHub
 from agent_teams.tools.runtime import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.runtime import ToolApprovalPolicy
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.mcp.registry import McpRegistry
@@ -79,6 +82,9 @@ def _provider_with_hub(hub: _FakeRunEventHub) -> OpenAICompatibleProvider:
         injection_manager=cast(RunInjectionManager, object()),
         run_event_hub=cast(RunEventHub, cast(object, hub)),
         agent_repo=cast(AgentInstanceRepository, object()),
+        workflow_graph_repo=cast(WorkflowGraphRepository, object()),
+        approval_ticket_repo=cast(ApprovalTicketRepository, object()),
+        run_runtime_repo=cast(RunRuntimeRepository, object()),
         workspace_root=Path("."),
         tool_registry=cast(ToolRegistry, object()),
         mcp_registry=cast(McpRegistry, object()),
@@ -144,7 +150,11 @@ def test_publish_tool_events_emits_call_validation_failure_and_result() -> None:
         ),
     ]
 
-    provider._publish_tool_events_from_messages(
+    provider._publish_tool_call_events_from_messages(
+        request=_request(),
+        messages=messages,
+    )
+    provider._publish_committed_tool_outcome_events_from_messages(
         request=_request(),
         messages=messages,
     )
@@ -181,9 +191,50 @@ def test_publish_tool_events_skips_retry_without_tool_name() -> None:
     hub = _FakeRunEventHub()
     provider = _provider_with_hub(hub)
 
-    provider._publish_tool_events_from_messages(
+    provider._publish_committed_tool_outcome_events_from_messages(
         request=_request(),
         messages=[ModelRequest(parts=[RetryPromptPart(content="retry output")])],
     )
 
     assert hub.events == []
+
+
+def test_publish_tool_events_sanitizes_stale_task_status_error() -> None:
+    hub = _FakeRunEventHub()
+    provider = _provider_with_hub(hub)
+
+    provider._publish_committed_tool_outcome_events_from_messages(
+        request=_request(),
+        messages=[
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name="dispatch_tasks",
+                        tool_call_id="dispatch_tasks:1",
+                        content={
+                            "ok": True,
+                            "data": {
+                                "task_status": {
+                                    "ask_time": {
+                                        "task_name": "ask_time",
+                                        "task_id": "task-1",
+                                        "role_id": "time",
+                                        "instance_id": "inst-1",
+                                        "status": "completed",
+                                        "result": "当前时间是 2026-03-07 00:41:29。",
+                                        "error": "Task stopped by user",
+                                    }
+                                }
+                            },
+                        },
+                    )
+                ]
+            )
+        ],
+    )
+
+    payload = json.loads(hub.events[0].payload_json)
+    task_status = payload["result"]["data"]["task_status"]["ask_time"]
+    assert task_status["status"] == "completed"
+    assert task_status["result"] == "当前时间是 2026-03-07 00:41:29。"
+    assert "error" not in task_status

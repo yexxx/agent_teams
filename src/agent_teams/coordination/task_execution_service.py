@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -16,11 +16,18 @@ from agent_teams.roles.models import RoleDefinition
 from agent_teams.runs.injection_queue import RunInjectionManager
 from agent_teams.runs.control import RunControlManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
 from agent_teams.state.scope_models import ScopeRef, ScopeType
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.events import EventEnvelope, EventType
 from agent_teams.workflow.models import TaskEnvelope
@@ -39,16 +46,29 @@ class TaskExecutionService(BaseModel):
     event_bus: EventLog
     agent_repo: AgentInstanceRepository
     message_repo: MessageRepository
+    workflow_graph_repo: WorkflowGraphRepository
+    approval_ticket_repo: ApprovalTicketRepository
+    run_runtime_repo: RunRuntimeRepository
     prompt_builder: RuntimePromptBuilder
     provider_factory: Callable[[RoleDefinition], object]
     injection_manager: RunInjectionManager | None = None
     run_control_manager: RunControlManager | None = None
 
     async def execute(
-        self, *, instance_id: str, role_id: str, task: TaskEnvelope
+        self,
+        *,
+        instance_id: str,
+        role_id: str,
+        task: TaskEnvelope,
+        user_prompt_override: str | None = None,
     ) -> str:
         worker = asyncio.create_task(
-            self._execute_inner(instance_id=instance_id, role_id=role_id, task=task)
+            self._execute_inner(
+                instance_id=instance_id,
+                role_id=role_id,
+                task=task,
+                user_prompt_override=user_prompt_override,
+            )
         )
         if self.run_control_manager is not None:
             self.run_control_manager.register_instance_task(
@@ -69,7 +89,12 @@ class TaskExecutionService(BaseModel):
                 )
 
     async def _execute_inner(
-        self, *, instance_id: str, role_id: str, task: TaskEnvelope
+        self,
+        *,
+        instance_id: str,
+        role_id: str,
+        task: TaskEnvelope,
+        user_prompt_override: str | None,
     ) -> str:
         log_event(
             LOGGER,
@@ -87,6 +112,33 @@ class TaskExecutionService(BaseModel):
         _ = self.instance_pool.mark_running(instance_id)
         _ = self.agent_repo.mark_status(instance_id, InstanceStatus.RUNNING)
         _ = self.task_repo.update_status(task.task_id, TaskStatus.RUNNING)
+        self.run_runtime_repo.ensure(
+            run_id=task.trace_id,
+            session_id=task.session_id,
+            root_task_id=task.parent_task_id or task.task_id,
+            status=RunRuntimeStatus.RUNNING,
+            phase=(
+                RunRuntimePhase.COORDINATOR_RUNNING
+                if role_id == ROLE_COORDINATOR
+                else RunRuntimePhase.SUBAGENT_RUNNING
+            ),
+        )
+        self.run_runtime_repo.update(
+            task.trace_id,
+            status=RunRuntimeStatus.RUNNING,
+            phase=(
+                RunRuntimePhase.COORDINATOR_RUNNING
+                if role_id == ROLE_COORDINATOR
+                else RunRuntimePhase.SUBAGENT_RUNNING
+            ),
+            active_instance_id=instance_id,
+            active_task_id=task.task_id,
+            active_role_id=role_id,
+            active_subagent_instance_id=(
+                None if role_id == ROLE_COORDINATOR else instance_id
+            ),
+            last_error=None,
+        )
         self.event_bus.emit(
             EventEnvelope(
                 event_type=EventType.TASK_STARTED,
@@ -112,6 +164,11 @@ class TaskExecutionService(BaseModel):
             )
         )
         try:
+            self._ensure_committed_task_prompt(
+                instance_id=instance_id,
+                task=task,
+                user_prompt_override=user_prompt_override,
+            )
             result = await runner.run(
                 task=task,
                 instance_id=instance_id,
@@ -122,6 +179,16 @@ class TaskExecutionService(BaseModel):
             )
             _ = self.instance_pool.mark_completed(instance_id)
             _ = self.agent_repo.mark_status(instance_id, InstanceStatus.COMPLETED)
+            self.run_runtime_repo.update(
+                task.trace_id,
+                status=RunRuntimeStatus.RUNNING,
+                phase=RunRuntimePhase.IDLE,
+                active_instance_id=None,
+                active_task_id=None,
+                active_role_id=None,
+                active_subagent_instance_id=None,
+                last_error=None,
+            )
             self.event_bus.emit(
                 EventEnvelope(
                     event_type=EventType.TASK_COMPLETED,
@@ -147,10 +214,26 @@ class TaskExecutionService(BaseModel):
             )
             return result
         except asyncio.CancelledError:
+            paused_subagent = False
             if self.run_control_manager is not None:
+                run_stop_requested = self.run_control_manager.is_run_stop_requested(
+                    task.trace_id
+                )
+                subagent_stop_requested = (
+                    self.run_control_manager.is_subagent_stop_requested(
+                        run_id=task.trace_id,
+                        instance_id=instance_id,
+                    )
+                )
                 stopped = self.run_control_manager.handle_instance_cancelled(
                     task=task,
                     instance_id=instance_id,
+                )
+                paused_subagent = (
+                    stopped
+                    and role_id != ROLE_COORDINATOR
+                    and subagent_stop_requested
+                    and not run_stop_requested
                 )
             else:
                 stopped = False
@@ -171,6 +254,22 @@ class TaskExecutionService(BaseModel):
                         payload_json="{}",
                     )
                 )
+            self.run_runtime_repo.update(
+                task.trace_id,
+                status=RunRuntimeStatus.STOPPED if stopped else RunRuntimeStatus.FAILED,
+                phase=(
+                    RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP
+                    if paused_subagent
+                    else RunRuntimePhase.TERMINAL
+                    if not stopped
+                    else RunRuntimePhase.IDLE
+                ),
+                active_instance_id=None,
+                active_task_id=task.task_id if paused_subagent else None,
+                active_role_id=role_id if paused_subagent else None,
+                active_subagent_instance_id=(instance_id if paused_subagent else None),
+                last_error="Task stopped by user" if stopped else "Task cancelled",
+            )
             log_event(
                 LOGGER,
                 logging.DEBUG,
@@ -193,6 +292,16 @@ class TaskExecutionService(BaseModel):
             )
             _ = self.instance_pool.mark_timeout(instance_id)
             _ = self.agent_repo.mark_status(instance_id, InstanceStatus.TIMEOUT)
+            self.run_runtime_repo.update(
+                task.trace_id,
+                status=RunRuntimeStatus.FAILED,
+                phase=RunRuntimePhase.TERMINAL,
+                active_instance_id=None,
+                active_task_id=None,
+                active_role_id=None,
+                active_subagent_instance_id=None,
+                last_error="Task timeout",
+            )
             self.event_bus.emit(
                 EventEnvelope(
                     event_type=EventType.TASK_TIMEOUT,
@@ -223,6 +332,16 @@ class TaskExecutionService(BaseModel):
             )
             _ = self.instance_pool.mark_failed(instance_id)
             _ = self.agent_repo.mark_status(instance_id, InstanceStatus.FAILED)
+            self.run_runtime_repo.update(
+                task.trace_id,
+                status=RunRuntimeStatus.FAILED,
+                phase=RunRuntimePhase.TERMINAL,
+                active_instance_id=None,
+                active_task_id=None,
+                active_role_id=None,
+                active_subagent_instance_id=None,
+                last_error=str(exc),
+            )
             self.event_bus.emit(
                 EventEnvelope(
                     event_type=EventType.TASK_FAILED,
@@ -244,3 +363,31 @@ class TaskExecutionService(BaseModel):
             )
             raise
 
+    def _ensure_committed_task_prompt(
+        self,
+        *,
+        instance_id: str,
+        task: TaskEnvelope,
+        user_prompt_override: str | None,
+    ) -> None:
+        prompt = str(user_prompt_override or "").strip()
+        if prompt:
+            self.message_repo.append_user_prompt_if_missing(
+                session_id=task.session_id,
+                instance_id=instance_id,
+                task_id=task.task_id,
+                trace_id=task.trace_id,
+                content=prompt,
+            )
+            return
+
+        task_history = self.message_repo.get_history_for_task(instance_id, task.task_id)
+        if task_history:
+            return
+        self.message_repo.append_user_prompt_if_missing(
+            session_id=task.session_id,
+            instance_id=instance_id,
+            task_id=task.task_id,
+            trace_id=task.trace_id,
+            content=task.objective,
+        )

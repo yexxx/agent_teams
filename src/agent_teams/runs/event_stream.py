@@ -4,12 +4,18 @@ import asyncio
 
 from agent_teams.runs.models import RunEvent
 from agent_teams.state.event_log import EventLog
+from agent_teams.state.run_state_repo import RunStateRepository
 
 
 class RunEventHub:
-    def __init__(self, event_log: EventLog | None = None) -> None:
+    def __init__(
+        self,
+        event_log: EventLog | None = None,
+        run_state_repo: RunStateRepository | None = None,
+    ) -> None:
         self._subscribers: dict[str, list[asyncio.Queue[RunEvent]]] = {}
         self._event_log = event_log
+        self._run_state_repo = run_state_repo
 
     def subscribe(self, run_id: str) -> asyncio.Queue[RunEvent]:
         queue: asyncio.Queue[RunEvent] = asyncio.Queue()
@@ -17,8 +23,11 @@ class RunEventHub:
         return queue
 
     def publish(self, event: RunEvent) -> None:
+        event_id = 0
         if self._event_log:
-            self._event_log.emit_run_event(event)
+            event_id = self._event_log.emit_run_event(event)
+        if self._run_state_repo is not None and event_id > 0:
+            self._run_state_repo.apply_event(event_id=event_id, event=event)
 
         listeners = self._subscribers.get(event.run_id, [])
         for queue in listeners:
@@ -26,3 +35,6 @@ class RunEventHub:
 
     def unsubscribe_all(self, run_id: str) -> None:
         self._subscribers.pop(run_id, None)
+
+    def has_subscribers(self, run_id: str) -> bool:
+        return bool(self._subscribers.get(run_id))

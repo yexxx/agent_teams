@@ -1,0 +1,332 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from agent_teams.agents.enums import InstanceStatus
+from agent_teams.runs.event_stream import RunEventHub
+from agent_teams.sessions.service import SessionService
+from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
+from agent_teams.state.event_log import EventLog
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
+from agent_teams.state.session_repo import SessionRepository
+from agent_teams.state.task_repo import TaskRepository
+from agent_teams.state.token_usage_repo import TokenUsageRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
+
+
+def _build_service(
+    db_path: Path,
+    *,
+    run_event_hub: RunEventHub | None = None,
+    resolve_active_run_id=None,
+) -> SessionService:
+    return SessionService(
+        session_repo=SessionRepository(db_path),
+        task_repo=TaskRepository(db_path),
+        agent_repo=AgentInstanceRepository(db_path),
+        message_repo=MessageRepository(db_path),
+        workflow_graph_repo=WorkflowGraphRepository(db_path),
+        approval_ticket_repo=ApprovalTicketRepository(db_path),
+        run_runtime_repo=RunRuntimeRepository(db_path),
+        token_usage_repo=TokenUsageRepository(db_path),
+        run_event_hub=run_event_hub,
+        resolve_active_run_id=resolve_active_run_id,
+        event_log=EventLog(db_path),
+    )
+
+
+def _seed_root_task(db_path: Path, *, run_id: str, session_id: str) -> None:
+    task_repo = TaskRepository(db_path)
+    _ = task_repo.create(
+        TaskEnvelope(
+            task_id="task-root-1",
+            session_id=session_id,
+            parent_task_id=None,
+            trace_id=run_id,
+            objective="do work",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+
+
+def test_get_recovery_snapshot_returns_active_run_and_pause_state(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery.db"
+    hub = RunEventHub()
+    service = _build_service(db_path, run_event_hub=hub)
+
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-active", session_id="session-1")
+    agent_repo = AgentInstanceRepository(db_path)
+    agent_repo.upsert_instance(
+        run_id="run-active",
+        trace_id="run-active",
+        session_id="session-1",
+        instance_id="inst-2",
+        role_id="spec_coder",
+        status=InstanceStatus.RUNNING,
+    )
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+    )
+    runtime_repo.update(
+        "run-active",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+        active_instance_id="inst-2",
+        active_task_id="task-root-1",
+        active_role_id="spec_coder",
+        active_subagent_instance_id="inst-2",
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+
+    active_run = snapshot.get("active_run")
+    assert isinstance(active_run, dict)
+    assert active_run.get("run_id") == "run-active"
+    assert active_run.get("is_recoverable") is True
+    assert active_run.get("stream_connected") is False
+    assert active_run.get("should_show_recover") is True
+    assert active_run.get("phase") == "awaiting_subagent_followup"
+    assert active_run.get("pending_tool_approval_count") == 0
+
+    paused_subagent = snapshot.get("paused_subagent")
+    assert isinstance(paused_subagent, dict)
+    assert paused_subagent.get("instance_id") == "inst-2"
+    assert paused_subagent.get("role_id") == "spec_coder"
+
+    round_snapshot = snapshot.get("round_snapshot")
+    assert isinstance(round_snapshot, dict)
+    assert round_snapshot.get("run_id") == "run-active"
+
+
+def test_get_recovery_snapshot_marks_connected_stream_without_recover_button(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery_connected.db"
+    hub = RunEventHub()
+    service = _build_service(db_path, run_event_hub=hub)
+
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-active", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+    )
+    runtime_repo.update(
+        "run-active",
+        status=RunRuntimeStatus.RUNNING,
+        phase=RunRuntimePhase.COORDINATOR_RUNNING,
+    )
+    _ = hub.subscribe("run-active")
+
+    snapshot = service.get_recovery_snapshot("session-1")
+    active_run = snapshot.get("active_run")
+    assert isinstance(active_run, dict)
+    assert active_run.get("stream_connected") is True
+    assert active_run.get("is_recoverable") is True
+    assert active_run.get("should_show_recover") is False
+    assert active_run.get("phase") == "running"
+    assert active_run.get("pending_tool_approval_count") == 0
+
+
+def test_get_recovery_snapshot_uses_runtime_active_run_when_events_not_written(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery_runtime_active.db"
+    service = _build_service(
+        db_path,
+        resolve_active_run_id=lambda session_id: (
+            "run-runtime-active" if session_id == "session-1" else None
+        ),
+    )
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-runtime-active", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-runtime-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+        status=RunRuntimeStatus.QUEUED,
+        phase=RunRuntimePhase.IDLE,
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+
+    active_run = snapshot.get("active_run")
+    assert isinstance(active_run, dict)
+    assert active_run.get("run_id") == "run-runtime-active"
+    assert active_run.get("status") == "queued"
+    assert active_run.get("is_recoverable") is True
+    assert active_run.get("stream_connected") is False
+    assert active_run.get("should_show_recover") is True
+    assert active_run.get("phase") == "queued"
+    assert active_run.get("pending_tool_approval_count") == 0
+
+
+def test_get_recovery_snapshot_prefers_approval_phase(tmp_path: Path) -> None:
+    db_path = tmp_path / "recovery_approval.db"
+    service = _build_service(db_path)
+
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-active", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+    )
+    runtime_repo.update(
+        "run-active",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.COORDINATOR_RUNNING,
+    )
+    approval_repo = ApprovalTicketRepository(db_path)
+    approval_repo.upsert_requested(
+        tool_call_id="call-1",
+        run_id="run-active",
+        session_id="session-1",
+        task_id="task-root-1",
+        instance_id="inst-1",
+        role_id="coordinator_agent",
+        tool_name="dispatch_tasks",
+        args_preview='{"action":"revise"}',
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+
+    active_run = snapshot.get("active_run")
+    assert isinstance(active_run, dict)
+    assert active_run.get("phase") == "awaiting_tool_approval"
+    assert active_run.get("pending_tool_approval_count") == 1
+    pending = snapshot.get("pending_tool_approvals")
+    assert isinstance(pending, list)
+    assert len(pending) == 1
+    first_pending = pending[0]
+    assert isinstance(first_pending, dict)
+    assert first_pending.get("tool_call_id") == "call-1"
+
+
+def test_get_recovery_snapshot_keeps_approval_phase_for_stopped_recoverable_run(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery_stopped_approval.db"
+    service = _build_service(db_path)
+
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-active", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+    )
+    runtime_repo.update(
+        "run-active",
+        status=RunRuntimeStatus.STOPPED,
+        phase=RunRuntimePhase.IDLE,
+    )
+    approval_repo = ApprovalTicketRepository(db_path)
+    approval_repo.upsert_requested(
+        tool_call_id="call-1",
+        run_id="run-active",
+        session_id="session-1",
+        task_id="task-root-1",
+        instance_id="inst-1",
+        role_id="coordinator_agent",
+        tool_name="dispatch_tasks",
+        args_preview='{"action":"next"}',
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+
+    active_run = snapshot.get("active_run")
+    assert isinstance(active_run, dict)
+    assert active_run.get("status") == "stopped"
+    assert active_run.get("phase") == "awaiting_tool_approval"
+    assert active_run.get("pending_tool_approval_count") == 1
+
+
+def test_get_recovery_snapshot_round_snapshot_keeps_persisted_workflow_graph(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery_graph.db"
+    service = _build_service(db_path)
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-active", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+        status=RunRuntimeStatus.RUNNING,
+        phase=RunRuntimePhase.COORDINATOR_RUNNING,
+    )
+    WorkflowGraphRepository(db_path).upsert(
+        workflow_id="wf-1",
+        run_id="run-active",
+        session_id="session-1",
+        root_task_id="task-root-1",
+        graph={
+            "workflow_id": "wf-1",
+            "tasks": {
+                "ask_time": {
+                    "task_id": "task-sub-1",
+                    "role_id": "time",
+                    "depends_on": [],
+                }
+            },
+        },
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+    round_snapshot = snapshot.get("round_snapshot")
+    assert isinstance(round_snapshot, dict)
+    workflows = round_snapshot.get("workflows")
+    assert isinstance(workflows, list)
+    assert len(workflows) == 1
+    assert workflows[0]["workflow_id"] == "wf-1"
+
+
+def test_failed_terminal_run_is_exposed_through_round_projection_not_recovery(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "recovery_failed.db"
+    service = _build_service(db_path)
+
+    _ = service.create_session(session_id="session-1")
+    _seed_root_task(db_path, run_id="run-failed", session_id="session-1")
+    runtime_repo = RunRuntimeRepository(db_path)
+    runtime_repo.ensure(
+        run_id="run-failed",
+        session_id="session-1",
+        root_task_id="task-root-1",
+    )
+    runtime_repo.update(
+        "run-failed",
+        status=RunRuntimeStatus.FAILED,
+        phase=RunRuntimePhase.TERMINAL,
+        last_error="Task not completed yet",
+    )
+
+    snapshot = service.get_recovery_snapshot("session-1")
+    assert snapshot.get("active_run") is None
+
+    round_snapshot = service.get_round("session-1", "run-failed")
+    assert round_snapshot["run_id"] == "run-failed"
+    assert round_snapshot["run_status"] == "failed"
+    assert round_snapshot["run_phase"] == "failed"
+    assert round_snapshot["is_recoverable"] is False

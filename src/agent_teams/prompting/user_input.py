@@ -11,4 +11,4 @@ class UserPromptBuildInput(BaseModel):
 
 
 def build_user_prompt(data: UserPromptBuildInput) -> str:
-    return f"## Objective\n{data.objective}"
+    return data.objective

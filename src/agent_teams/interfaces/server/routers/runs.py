@@ -217,6 +217,8 @@ def resolve_tool_approval(
         return {"status": "ok", "action": req.action}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{run_id}/stop")
@@ -260,6 +262,20 @@ def stop_run(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{run_id}:resume")
+async def resume_run(
+    run_id: str,
+    service: Annotated[RunManager, Depends(get_run_service)],
+) -> dict[str, str]:
+    try:
+        session_id = service.resume_run(run_id)
+        return {"status": "ok", "run_id": run_id, "session_id": session_id}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{run_id}/subagents/{instance_id}/inject")

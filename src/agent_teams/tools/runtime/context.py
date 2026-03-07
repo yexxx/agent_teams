@@ -14,9 +14,13 @@ from agent_teams.runs.control import RunControlManager
 from agent_teams.runs.event_stream import RunEventHub
 from agent_teams.runs.injection_queue import RunInjectionManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.runtime.approval_state import ToolApprovalManager
 from agent_teams.tools.runtime.policy import ToolApprovalPolicy
 
@@ -32,6 +36,10 @@ class ToolDeps(BaseModel):
     instance_pool: SkipValidation[InstancePool]
     shared_store: SkipValidation[SharedStore]
     event_bus: SkipValidation[EventLog]
+    message_repo: SkipValidation[MessageRepository]
+    workflow_graph_repo: SkipValidation[WorkflowGraphRepository]
+    approval_ticket_repo: SkipValidation[ApprovalTicketRepository]
+    run_runtime_repo: SkipValidation[RunRuntimeRepository]
     injection_manager: SkipValidation[RunInjectionManager]
     run_event_hub: SkipValidation[RunEventHub]
     agent_repo: SkipValidation[AgentInstanceRepository]

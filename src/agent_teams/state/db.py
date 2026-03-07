@@ -3,30 +3,50 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-MEMORY_DSN = 'file:agent_teams_shared?mode=memory&cache=shared'
+MEMORY_DSN = "file:agent_teams_shared?mode=memory&cache=shared"
+SQLITE_TIMEOUT_SECONDS = 30.0
+SQLITE_BUSY_TIMEOUT_MS = 30_000
 
 
-def _can_write(conn: sqlite3.Connection) -> bool:
+def _configure_connection(
+    conn: sqlite3.Connection,
+    *,
+    enable_wal: bool,
+) -> sqlite3.Connection:
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA synchronous = NORMAL")
     try:
-        conn.execute('CREATE TABLE IF NOT EXISTS __healthcheck__(id INTEGER PRIMARY KEY)')
-        conn.execute('DROP TABLE IF EXISTS __healthcheck__')
-        conn.commit()
-        return True
+        if enable_wal:
+            conn.execute("PRAGMA journal_mode = WAL")
     except sqlite3.OperationalError:
-        return False
+        # WAL is best-effort. In-memory fallback and some filesystems do not support it.
+        pass
+    return conn
 
 
 def open_sqlite(db_path: Path) -> sqlite3.Connection:
-    file_dsn = str(db_path)
+    file_path = Path(db_path)
     try:
-        conn = sqlite3.connect(file_dsn, timeout=30.0, check_same_thread=False)
-        if _can_write(conn):
-            conn.execute('PRAGMA foreign_keys = ON')
-            return conn
-        conn.close()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        return _configure_connection(
+            sqlite3.connect(
+                str(file_path),
+                timeout=SQLITE_TIMEOUT_SECONDS,
+                check_same_thread=False,
+            ),
+            enable_wal=True,
+        )
     except sqlite3.OperationalError:
         pass
 
-    conn = sqlite3.connect(MEMORY_DSN, uri=True, timeout=30.0, check_same_thread=False)
-    conn.execute('PRAGMA foreign_keys = ON')
-    return conn
+    return _configure_connection(
+        sqlite3.connect(
+            MEMORY_DSN,
+            uri=True,
+            timeout=SQLITE_TIMEOUT_SECONDS,
+            check_same_thread=False,
+        ),
+        enable_wal=False,
+    )

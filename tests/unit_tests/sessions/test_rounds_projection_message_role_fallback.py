@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import cast
+
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+
+from agent_teams.agents.enums import InstanceStatus
+from agent_teams.sessions.rounds_projection import build_session_rounds
+from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
+from agent_teams.state.task_repo import TaskRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
+
+
+def test_build_session_rounds_maps_role_by_instance_across_runs(tmp_path: Path) -> None:
+    db_path = tmp_path / "rounds_projection_role_fallback.db"
+    session_id = "session-1"
+    old_run_id = "run-old"
+    new_run_id = "run-new"
+    coordinator_instance_id = "inst-coordinator-1"
+
+    task_repo = TaskRepository(db_path)
+    agent_repo = AgentInstanceRepository(db_path)
+    message_repo = MessageRepository(db_path)
+    workflow_graph_repo = WorkflowGraphRepository(db_path)
+    run_runtime_repo = RunRuntimeRepository(db_path)
+
+    _ = task_repo.create(
+        TaskEnvelope(
+            task_id="task-root-old",
+            session_id=session_id,
+            parent_task_id=None,
+            trace_id=old_run_id,
+            objective="old objective",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+    _ = task_repo.create(
+        TaskEnvelope(
+            task_id="task-root-new",
+            session_id=session_id,
+            parent_task_id=None,
+            trace_id=new_run_id,
+            objective="new objective",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+    agent_repo.upsert_instance(
+        run_id=old_run_id,
+        trace_id=old_run_id,
+        session_id=session_id,
+        instance_id=coordinator_instance_id,
+        role_id="coordinator_agent",
+        status=InstanceStatus.COMPLETED,
+    )
+    run_runtime_repo.ensure(
+        run_id=new_run_id,
+        session_id=session_id,
+        root_task_id="task-root-new",
+    )
+
+    message_repo.append(
+        session_id=session_id,
+        instance_id=coordinator_instance_id,
+        task_id="task-root-new",
+        trace_id=new_run_id,
+        messages=[
+            ModelRequest(parts=[UserPromptPart(content="彩虹是什么颜色的")]),
+            ModelResponse(parts=[TextPart(content="彩虹通常有七种颜色。")]),
+        ],
+    )
+
+    def _session_messages(sid: str) -> list[dict[str, object]]:
+        return cast(list[dict[str, object]], message_repo.get_messages_by_session(sid))
+
+    rounds = build_session_rounds(
+        session_id=session_id,
+        agent_repo=agent_repo,
+        task_repo=task_repo,
+        workflow_graph_repo=workflow_graph_repo,
+        approval_tickets_by_run={},
+        run_runtime_repo=run_runtime_repo,
+        get_session_messages=_session_messages,
+    )
+    round_new = next(item for item in rounds if item["run_id"] == new_run_id)
+
+    assert round_new["has_user_messages"] is True
+    coordinator_messages = cast(
+        list[dict[str, object]], round_new["coordinator_messages"]
+    )
+    assert len(coordinator_messages) == 1
+    assert coordinator_messages[0].get("role_id") == "coordinator_agent"

@@ -20,12 +20,12 @@ import {
     getPanel,
     getPanels,
     getPendingApprovalsForPanel,
-    getPendingStreamTextForPanel,
     getActiveRoundRunId,
     setActiveRoundContext,
     setActiveInstanceId,
     setPanel,
 } from './state.js';
+import { getInstanceStreamOverlay } from '../messageRenderer.js';
 
 function ensurePanel(instanceId, roleId) {
     let panel = getPanel(instanceId);
@@ -48,12 +48,21 @@ export function openAgentPanel(instanceId, roleId) {
     const existing = getPanel(instanceId);
     const panel = ensurePanel(instanceId, roleId);
     if (!panel) return;
-    if (!existing && state.currentSessionId) {
+    const activeRunId = getActiveRoundRunId();
+    const shouldRefreshHistory = !!(
+        state.currentSessionId && (
+            !existing
+            || !state.isGenerating
+            || panel.loadedSessionId !== (state.currentSessionId || '')
+            || panel.loadedRunId !== activeRunId
+        )
+    );
+    if (shouldRefreshHistory) {
         void loadAgentHistory(instanceId, roleId);
     } else if (existing && state.currentSessionId) {
         const approvals = getPendingApprovalsForPanel(instanceId, roleId);
-        const pendingStreamText = getPendingStreamTextForPanel(instanceId);
-        if (approvals.length > 0 || pendingStreamText.trim()) {
+        const overlay = getInstanceStreamOverlay(activeRunId, instanceId);
+        if (approvals.length > 0 || overlay) {
             void loadAgentHistory(instanceId, roleId);
         }
     }
@@ -147,8 +156,8 @@ export function removeGateCard(instanceId, taskId) {
     if (el) el.remove();
 }
 
-export function setRoundPendingApprovals(runId, pendingApprovals, pendingStreamsByInstance = {}) {
-    setActiveRoundContext(runId, pendingApprovals, pendingStreamsByInstance);
+export function setRoundPendingApprovals(runId, pendingApprovals) {
+    setActiveRoundContext(runId, pendingApprovals);
 }
 
 export { getActiveInstanceId, getPanels, getActiveRoundRunId } from './state.js';

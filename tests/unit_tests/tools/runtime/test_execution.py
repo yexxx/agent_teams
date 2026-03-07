@@ -3,12 +3,23 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
+from tempfile import mkdtemp
 from typing import cast
 
 from agent_teams.notifications import NotificationService, default_notification_config
 from agent_teams.runs.enums import RunEventType
 from agent_teams.runs.event_stream import RunEventHub
 from agent_teams.shared_types.json_types import JsonObject
+from agent_teams.state.approval_ticket_repo import (
+    ApprovalTicketRepository,
+    ApprovalTicketStatus,
+)
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
 from agent_teams.tools.runtime import ToolContext, execute_tool
 
 
@@ -33,13 +44,17 @@ class _FakeApprovalManager:
     def open_approval(self, **kwargs) -> None:
         self.last_open = kwargs
 
+    def get_approval(self, **kwargs):
+        _ = kwargs
+        return None
+
     def wait_for_approval(self, **kwargs):
         if self.timeout:
             raise TimeoutError("timeout")
         return self.wait_result or ("approve", "")
 
     def close_approval(self, **kwargs) -> None:
-        return None
+        _ = kwargs
 
 
 @dataclass(frozen=True)
@@ -48,11 +63,13 @@ class _FakePolicy:
     timeout_seconds: float = 0.01
 
     def requires_approval(self, tool_name: str) -> bool:
+        _ = tool_name
         return self.needs_approval
 
 
 class _FakeDeps:
     def __init__(self, *, manager: _FakeApprovalManager, policy: _FakePolicy) -> None:
+        db_path = Path(mkdtemp()) / "runtime.db"
         self.run_id = "run-1"
         self.trace_id = "trace-1"
         self.task_id = "task-1"
@@ -64,6 +81,15 @@ class _FakeDeps:
         self.tool_approval_manager = manager
         self.tool_approval_policy = policy
         self.notification_service = _build_notification_service(self.run_event_hub)
+        self.approval_ticket_repo = ApprovalTicketRepository(db_path)
+        self.run_runtime_repo = RunRuntimeRepository(db_path)
+        self.run_runtime_repo.ensure(
+            run_id=self.run_id,
+            session_id=self.session_id,
+            root_task_id=self.task_id,
+            status=RunRuntimeStatus.RUNNING,
+            phase=RunRuntimePhase.COORDINATOR_RUNNING,
+        )
 
 
 class _FakeCtx:
@@ -75,9 +101,11 @@ class _FakeCtx:
 
 class _FakeRunControlManager:
     def is_run_stop_requested(self, run_id: str) -> bool:
+        _ = run_id
         return False
 
     def is_subagent_stop_requested(self, *, run_id: str, instance_id: str) -> bool:
+        _ = (run_id, instance_id)
         return False
 
     def raise_if_cancelled(
@@ -86,7 +114,7 @@ class _FakeRunControlManager:
         run_id: str,
         instance_id: str | None = None,
     ) -> None:
-        return None
+        _ = (run_id, instance_id)
 
 
 def _build_notification_service(
@@ -113,11 +141,15 @@ def test_execute_tool_returns_standard_envelope() -> None:
         )
     )
     meta = cast(JsonObject, result["meta"])
+    runtime = deps.run_runtime_repo.get(deps.run_id)
     assert result["ok"] is True
     assert result["tool"] == "read"
     assert result["data"] == "hello"
     assert result["error"] is None
     assert meta["approval_required"] is False
+    assert runtime is not None
+    assert runtime.status == RunRuntimeStatus.RUNNING
+    assert runtime.phase == RunRuntimePhase.SUBAGENT_RUNNING
 
 
 def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
@@ -126,6 +158,7 @@ def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
         policy=_FakePolicy(needs_approval=True),
     )
     ctx = _FakeCtx(deps)
+    ctx.tool_call_id = "call-model-deny"
     result = asyncio.run(
         execute_tool(
             cast(ToolContext, cast(object, ctx)),
@@ -136,6 +169,7 @@ def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
     )
     error = cast(JsonObject, result["error"])
     meta = cast(JsonObject, result["meta"])
+    ticket = deps.approval_ticket_repo.get("call-model-deny")
     assert result["ok"] is False
     assert error["type"] == "approval_denied"
     assert meta["approval_required"] is True
@@ -152,6 +186,8 @@ def test_execute_tool_returns_denied_error_when_approval_rejected() -> None:
         event.event_type == RunEventType.NOTIFICATION_REQUESTED
         for event in deps.run_event_hub.events
     )
+    assert ticket is not None
+    assert ticket.status == ApprovalTicketStatus.DENIED
 
 
 def test_execute_tool_returns_timeout_error_when_approval_times_out() -> None:
@@ -160,6 +196,7 @@ def test_execute_tool_returns_timeout_error_when_approval_times_out() -> None:
         policy=_FakePolicy(needs_approval=True, timeout_seconds=0.01),
     )
     ctx = _FakeCtx(deps)
+    ctx.tool_call_id = "call-model-123"
     result = asyncio.run(
         execute_tool(
             cast(ToolContext, cast(object, ctx)),
@@ -170,9 +207,12 @@ def test_execute_tool_returns_timeout_error_when_approval_times_out() -> None:
     )
     error = cast(JsonObject, result["error"])
     meta = cast(JsonObject, result["meta"])
+    ticket = deps.approval_ticket_repo.get("call-model-123")
     assert result["ok"] is False
     assert error["type"] == "approval_timeout"
     assert meta["approval_status"] == "timeout"
+    assert ticket is not None
+    assert ticket.status == ApprovalTicketStatus.TIMED_OUT
 
 
 def test_execute_tool_approval_uses_model_tool_call_id_when_present() -> None:
@@ -191,6 +231,93 @@ def test_execute_tool_approval_uses_model_tool_call_id_when_present() -> None:
             action=lambda: "ok",
         )
     )
+    ticket = deps.approval_ticket_repo.get("call-model-123")
     assert result["ok"] is True
     assert manager.last_open is not None
     assert manager.last_open["tool_call_id"] == "call-model-123"
+    assert ticket is not None
+    assert ticket.status == ApprovalTicketStatus.COMPLETED
+
+
+def test_execute_tool_reuses_approved_ticket_without_reopening_request() -> None:
+    manager = _FakeApprovalManager(wait_result=("approve", ""))
+    deps = _FakeDeps(
+        manager=manager,
+        policy=_FakePolicy(needs_approval=True),
+    )
+    ctx = _FakeCtx(deps)
+    ctx.tool_call_id = "call-model-123"
+    deps.approval_ticket_repo.upsert_requested(
+        tool_call_id="call-model-123",
+        run_id=deps.run_id,
+        session_id=deps.session_id,
+        task_id=deps.task_id,
+        instance_id=deps.instance_id,
+        role_id=deps.role_id,
+        tool_name="write",
+        args_preview='{"path": "a.txt"}',
+    )
+    deps.approval_ticket_repo.resolve(
+        tool_call_id="call-model-123",
+        status=ApprovalTicketStatus.APPROVED,
+    )
+
+    result = asyncio.run(
+        execute_tool(
+            cast(ToolContext, cast(object, ctx)),
+            tool_name="write",
+            args_summary={"path": "a.txt"},
+            action=lambda: "fresh",
+        )
+    )
+
+    ticket = deps.approval_ticket_repo.get("call-model-123")
+    assert result["ok"] is True
+    assert result["data"] == "fresh"
+    assert manager.last_open is None
+    assert not any(
+        event.event_type == RunEventType.TOOL_APPROVAL_REQUESTED
+        for event in deps.run_event_hub.events
+    )
+    assert ticket is not None
+    assert ticket.status == ApprovalTicketStatus.COMPLETED
+
+
+def test_execute_tool_republishes_requested_ticket_when_reopened() -> None:
+    manager = _FakeApprovalManager(wait_result=("approve", ""))
+    deps = _FakeDeps(
+        manager=manager,
+        policy=_FakePolicy(needs_approval=True),
+    )
+    ctx = _FakeCtx(deps)
+    ctx.tool_call_id = "call-model-123"
+    deps.approval_ticket_repo.upsert_requested(
+        tool_call_id="call-model-123",
+        run_id=deps.run_id,
+        session_id=deps.session_id,
+        task_id=deps.task_id,
+        instance_id=deps.instance_id,
+        role_id=deps.role_id,
+        tool_name="write",
+        args_preview='{"path": "a.txt"}',
+    )
+
+    result = asyncio.run(
+        execute_tool(
+            cast(ToolContext, cast(object, ctx)),
+            tool_name="write",
+            args_summary={"path": "a.txt"},
+            action=lambda: "fresh",
+        )
+    )
+
+    ticket = deps.approval_ticket_repo.get("call-model-123")
+    assert result["ok"] is True
+    assert result["data"] == "fresh"
+    assert manager.last_open is not None
+    assert any(
+        event.event_type == RunEventType.TOOL_APPROVAL_REQUESTED
+        for event in deps.run_event_hub.events
+    )
+    assert ticket is not None
+    assert ticket.status == ApprovalTicketStatus.COMPLETED

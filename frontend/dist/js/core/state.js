@@ -15,6 +15,7 @@ export const state = {
     taskInstanceMap: {}, // taskId -> instanceId
     taskStatusMap: {}, // taskId -> task status
     autoSwitchedSubagentInstances: {}, // instanceId -> true, auto-opened once per run
+    currentRecoverySnapshot: null,
 };
 
 export const els = {

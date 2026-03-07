@@ -32,7 +32,9 @@ def create_session(
 
 
 @router.get("", response_model=list[SessionRecord])
-def list_sessions(service: SessionService = Depends(get_session_service)) -> list[SessionRecord]:
+def list_sessions(
+    service: SessionService = Depends(get_session_service),
+) -> list[SessionRecord]:
     return list(service.list_sessions())
 
 
@@ -86,6 +88,17 @@ def get_session_rounds(
     )
 
 
+@router.get("/{session_id}/recovery")
+def get_session_recovery(
+    session_id: str,
+    service: SessionService = Depends(get_session_service),
+) -> dict[str, object]:
+    try:
+        return service.get_recovery_snapshot(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+
+
 @router.get("/{session_id}/rounds/{run_id}")
 def get_round(
     session_id: str,
@@ -103,7 +116,9 @@ def list_session_agents(
     session_id: str,
     service: SessionService = Depends(get_session_service),
 ) -> list[dict[str, object]]:
-    return [record.model_dump() for record in service.list_agents_in_session(session_id)]
+    return [
+        record.model_dump() for record in service.list_agents_in_session(session_id)
+    ]
 
 
 @router.get("/{session_id}/events")
@@ -146,20 +161,20 @@ def get_session_token_usage(
 ) -> dict[str, object]:
     summary = service.get_token_usage_by_session(session_id)
     return {
-        'session_id': summary.session_id,
-        'total_input_tokens': summary.total_input_tokens,
-        'total_output_tokens': summary.total_output_tokens,
-        'total_tokens': summary.total_tokens,
-        'total_requests': summary.total_requests,
-        'total_tool_calls': summary.total_tool_calls,
-        'by_role': {
+        "session_id": summary.session_id,
+        "total_input_tokens": summary.total_input_tokens,
+        "total_output_tokens": summary.total_output_tokens,
+        "total_tokens": summary.total_tokens,
+        "total_requests": summary.total_requests,
+        "total_tool_calls": summary.total_tool_calls,
+        "by_role": {
             role_id: {
-                'role_id': agent.role_id,
-                'input_tokens': agent.input_tokens,
-                'output_tokens': agent.output_tokens,
-                'total_tokens': agent.total_tokens,
-                'requests': agent.requests,
-                'tool_calls': agent.tool_calls,
+                "role_id": agent.role_id,
+                "input_tokens": agent.input_tokens,
+                "output_tokens": agent.output_tokens,
+                "total_tokens": agent.total_tokens,
+                "requests": agent.requests,
+                "tool_calls": agent.tool_calls,
             }
             for role_id, agent in summary.by_role.items()
         },
@@ -174,21 +189,21 @@ def get_run_token_usage(
 ) -> dict[str, object]:
     usage = service.get_token_usage_by_run(run_id)
     return {
-        'run_id': usage.run_id,
-        'total_input_tokens': usage.total_input_tokens,
-        'total_output_tokens': usage.total_output_tokens,
-        'total_tokens': usage.total_tokens,
-        'total_requests': usage.total_requests,
-        'total_tool_calls': usage.total_tool_calls,
-        'by_agent': [
+        "run_id": usage.run_id,
+        "total_input_tokens": usage.total_input_tokens,
+        "total_output_tokens": usage.total_output_tokens,
+        "total_tokens": usage.total_tokens,
+        "total_requests": usage.total_requests,
+        "total_tool_calls": usage.total_tool_calls,
+        "by_agent": [
             {
-                'instance_id': a.instance_id,
-                'role_id': a.role_id,
-                'input_tokens': a.input_tokens,
-                'output_tokens': a.output_tokens,
-                'total_tokens': a.total_tokens,
-                'requests': a.requests,
-                'tool_calls': a.tool_calls,
+                "instance_id": a.instance_id,
+                "role_id": a.role_id,
+                "input_tokens": a.input_tokens,
+                "output_tokens": a.output_tokens,
+                "total_tokens": a.total_tokens,
+                "requests": a.requests,
+                "tool_calls": a.tool_calls,
             }
             for a in usage.by_agent
         ],

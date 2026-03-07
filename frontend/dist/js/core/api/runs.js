@@ -83,6 +83,16 @@ export async function stopRun(runId, { scope = 'main', instanceId = null } = {})
     );
 }
 
+export async function resumeRun(runId) {
+    return requestJson(
+        `/api/runs/${runId}:resume`,
+        {
+            method: 'POST',
+        },
+        'Failed to resume run',
+    );
+}
+
 export async function injectSubagentMessage(runId, instanceId, content) {
     return requestJson(
         `/api/runs/${runId}/subagents/${instanceId}/inject`,

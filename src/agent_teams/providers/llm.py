@@ -39,10 +39,13 @@ from agent_teams.runs.control import RunControlManager
 from agent_teams.runs.event_stream import RunEventHub
 from agent_teams.runs.models import RunEvent
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.message_repo import MessageRepository
 from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.agents.builders.collaboration_agent import build_collaboration_agent
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import (
@@ -58,6 +61,7 @@ from agent_teams.prompting.provider_augment import (
     build_provider_augmented_system_prompt,
 )
 from agent_teams.skills.registry import SkillRegistry
+from agent_teams.workflow.task_status_sanitizer import sanitize_task_status_payload
 
 if TYPE_CHECKING:
     from agent_teams.coordination.task_execution_service import TaskExecutionService
@@ -85,7 +89,7 @@ class LLMRequest(BaseModel):
     instance_id: str
     role_id: str
     system_prompt: str
-    user_prompt: str
+    user_prompt: str | None
 
 
 class LLMProvider:
@@ -96,7 +100,7 @@ class LLMProvider:
 class EchoProvider(LLMProvider):
     @override
     async def generate(self, request: LLMRequest) -> str:
-        return f"ECHO: {request.user_prompt}"
+        return f"ECHO: {request.user_prompt or ''}"
 
 
 @final
@@ -112,6 +116,9 @@ class OpenAICompatibleProvider(LLMProvider):
         injection_manager: RunInjectionManager,
         run_event_hub: RunEventHub,
         agent_repo: AgentInstanceRepository,
+        workflow_graph_repo: WorkflowGraphRepository,
+        approval_ticket_repo: ApprovalTicketRepository,
+        run_runtime_repo: RunRuntimeRepository,
         workspace_root: Path,
         tool_registry: ToolRegistry,
         mcp_registry: McpRegistry,
@@ -136,6 +143,9 @@ class OpenAICompatibleProvider(LLMProvider):
         self._injection_manager = injection_manager
         self._run_event_hub = run_event_hub
         self._agent_repo = agent_repo
+        self._workflow_graph_repo = workflow_graph_repo
+        self._approval_ticket_repo = approval_ticket_repo
+        self._run_runtime_repo = run_runtime_repo
         self._workspace_root = workspace_root
         self._tool_registry = tool_registry
         self._mcp_registry = mcp_registry
@@ -223,6 +233,10 @@ class OpenAICompatibleProvider(LLMProvider):
             instance_pool=self._instance_pool,
             shared_store=self._shared_store,
             event_bus=self._event_bus,
+            message_repo=self._message_repo,
+            workflow_graph_repo=self._workflow_graph_repo,
+            approval_ticket_repo=self._approval_ticket_repo,
+            run_runtime_repo=self._run_runtime_repo,
             injection_manager=self._injection_manager,
             run_event_hub=self._run_event_hub,
             agent_repo=self._agent_repo,
@@ -247,13 +261,22 @@ class OpenAICompatibleProvider(LLMProvider):
 
         printed_any = False
         emitted_text_chunks: list[str] = []
-        history: list[ModelRequest | ModelResponse] = self._filter_model_messages(
-            self._message_repo.get_history(request.instance_id)
+        history: list[ModelRequest | ModelResponse] = (
+            self._truncate_history_to_safe_boundary(
+                self._filter_model_messages(
+                    self._message_repo.get_history(request.instance_id)
+                )
+            )
         )
-        saved_count = 0
+        history = self._persist_user_prompt_if_needed(
+            request=request,
+            history=history,
+            content=request.user_prompt,
+        )
+        seen_count = 0
+        buffered_messages: list[ModelRequest | ModelResponse] = []
         restarted = False
         result: _AgentRunResult | None = None
-        is_first_iteration = True
         request_level_input_tokens = 0
         request_level_output_tokens = 0
         request_level_requests = 0
@@ -262,10 +285,8 @@ class OpenAICompatibleProvider(LLMProvider):
         while True:
             control_ctx.raise_if_cancelled()
             restarted = False
-            prompt_for_iteration = request.user_prompt if is_first_iteration else None
-            is_first_iteration = False
             async with agent.iter(
-                prompt_for_iteration,
+                None,
                 deps=deps,
                 message_history=history,
             ) as agent_run:
@@ -320,22 +341,19 @@ class OpenAICompatibleProvider(LLMProvider):
                     # After each node (ModelRequestNode or others like CallToolsNode),
                     # scan for new messages to emit tool call/result events
                     all_new = agent_run.new_messages()
-                    new_to_process = list(all_new)[saved_count:]
+                    new_to_process = list(all_new)[seen_count:]
                     if new_to_process:
-                        self._publish_tool_events_from_messages(
+                        self._publish_tool_call_events_from_messages(
                             request=request,
                             messages=new_to_process,
                         )
-
-                        # Persist to repo
-                        self._message_repo.append(
-                            session_id=request.session_id,
-                            instance_id=request.instance_id,
-                            task_id=request.task_id,
-                            trace_id=request.trace_id,
-                            messages=new_to_process,
+                        buffered_messages.extend(new_to_process)
+                        history, buffered_messages = self._commit_ready_messages(
+                            request=request,
+                            history=history,
+                            pending_messages=buffered_messages,
                         )
-                        saved_count += len(new_to_process)
+                        seen_count += len(new_to_process)
 
                     # Drain pending user injections at this boundary (already handled in previous version, check if needed here)
                     injections = self._injection_manager.drain_at_boundary(
@@ -359,11 +377,19 @@ class OpenAICompatibleProvider(LLMProvider):
                                     payload_json=msg.model_dump_json(),
                                 )
                             )
-                        # Restart iter() with injected messages appended to history
-                        history = self._filter_model_messages(
-                            list(agent_run.new_messages()) + extra
+                        self._message_repo.append(
+                            session_id=request.session_id,
+                            instance_id=request.instance_id,
+                            task_id=request.task_id,
+                            trace_id=request.trace_id,
+                            messages=extra,
                         )
-                        saved_count = len(history) - len(extra)
+                        # Restart iter() with injected messages appended to committed history
+                        history = self._filter_model_messages(
+                            self._message_repo.get_history(request.instance_id)
+                        )
+                        seen_count = 0
+                        buffered_messages = []
                         restarted = True
                         break  # break inner for-loop, restart while
 
@@ -375,15 +401,18 @@ class OpenAICompatibleProvider(LLMProvider):
                 result = maybe_result
                 # Flush any remaining messages (e.g. final tool results)
                 all_new = result.new_messages()
-                to_save = list(all_new)[saved_count:]
+                to_save = list(all_new)[seen_count:]
                 if to_save:
-                    self._message_repo.append(
-                        session_id=request.session_id,
-                        instance_id=request.instance_id,
-                        task_id=request.task_id,
-                        trace_id=request.trace_id,
+                    self._publish_tool_call_events_from_messages(
+                        request=request,
                         messages=to_save,
                     )
+                    buffered_messages.extend(to_save)
+                history, buffered_messages = self._commit_all_safe_messages(
+                    request=request,
+                    history=history,
+                    pending_messages=buffered_messages,
+                )
                 # Record and publish token usage
                 usage = result.usage()
                 input_tokens = request_level_input_tokens
@@ -524,7 +553,152 @@ class OpenAICompatibleProvider(LLMProvider):
     ) -> list[ModelRequest | ModelResponse]:
         return list(messages)
 
-    def _publish_tool_events_from_messages(
+    def _collect_pending_tool_calls(
+        self, messages: Sequence[ModelRequest | ModelResponse]
+    ) -> list[tuple[str, str]]:
+        pending_tool_call_ids: dict[str, str] = {}
+        for msg in messages:
+            if isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if not isinstance(part, ToolCallPart):
+                        continue
+                    tool_call_id = str(part.tool_call_id or "").strip()
+                    if tool_call_id:
+                        pending_tool_call_ids[tool_call_id] = str(part.tool_name)
+                continue
+            for part in msg.parts:
+                tool_call_id = str(getattr(part, "tool_call_id", "") or "").strip()
+                if not tool_call_id:
+                    continue
+                if isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                    pending_tool_call_ids.pop(tool_call_id, None)
+        return list(pending_tool_call_ids.items())
+
+    def _truncate_history_to_safe_boundary(
+        self,
+        history: Sequence[ModelRequest | ModelResponse],
+    ) -> list[ModelRequest | ModelResponse]:
+        messages = list(history)
+        safe_index = self._last_committable_index(messages)
+        return messages[:safe_index]
+
+    def _persist_user_prompt_if_needed(
+        self,
+        *,
+        request: LLMRequest,
+        history: list[ModelRequest | ModelResponse],
+        content: str | None,
+    ) -> list[ModelRequest | ModelResponse]:
+        prompt = str(content or "").strip()
+        if not prompt:
+            return history
+        if self._history_ends_with_user_prompt(history, prompt):
+            return history
+        self._message_repo.prune_history_to_safe_boundary(request.instance_id)
+        prompt_message = ModelRequest(parts=[UserPromptPart(content=prompt)])
+        self._message_repo.append(
+            session_id=request.session_id,
+            instance_id=request.instance_id,
+            task_id=request.task_id,
+            trace_id=request.trace_id,
+            messages=[prompt_message],
+        )
+        return self._filter_model_messages(
+            self._message_repo.get_history(request.instance_id)
+        )
+
+    def _history_ends_with_user_prompt(
+        self,
+        history: Sequence[ModelRequest | ModelResponse],
+        content: str,
+    ) -> bool:
+        target = str(content or "").strip()
+        if not target or not history:
+            return False
+        last = history[-1]
+        if not isinstance(last, ModelRequest):
+            return False
+        parts = [part for part in last.parts if isinstance(part, UserPromptPart)]
+        if len(parts) != len(last.parts):
+            return False
+        return (
+            "\n".join(str(part.content or "").strip() for part in parts).strip()
+            == target
+        )
+
+    def _commit_ready_messages(
+        self,
+        *,
+        request: LLMRequest,
+        history: list[ModelRequest | ModelResponse],
+        pending_messages: list[ModelRequest | ModelResponse],
+    ) -> tuple[list[ModelRequest | ModelResponse], list[ModelRequest | ModelResponse]]:
+        safe_index = self._last_committable_index(pending_messages)
+        if safe_index <= 0:
+            return history, pending_messages
+        ready = pending_messages[:safe_index]
+        self._message_repo.append(
+            session_id=request.session_id,
+            instance_id=request.instance_id,
+            task_id=request.task_id,
+            trace_id=request.trace_id,
+            messages=ready,
+        )
+        self._publish_committed_tool_outcome_events_from_messages(
+            request=request,
+            messages=ready,
+        )
+        next_history = self._filter_model_messages(
+            self._message_repo.get_history(request.instance_id)
+        )
+        return next_history, pending_messages[safe_index:]
+
+    def _commit_all_safe_messages(
+        self,
+        *,
+        request: LLMRequest,
+        history: list[ModelRequest | ModelResponse],
+        pending_messages: list[ModelRequest | ModelResponse],
+    ) -> tuple[list[ModelRequest | ModelResponse], list[ModelRequest | ModelResponse]]:
+        next_history = history
+        remaining = list(pending_messages)
+        while remaining:
+            safe_index = self._last_committable_index(remaining)
+            if safe_index <= 0:
+                break
+            next_history, remaining = self._commit_ready_messages(
+                request=request,
+                history=next_history,
+                pending_messages=remaining,
+            )
+        return next_history, remaining
+
+    def _last_committable_index(
+        self,
+        messages: Sequence[ModelRequest | ModelResponse],
+    ) -> int:
+        pending: set[str] = set()
+        last_safe_index = 0
+        for index, msg in enumerate(messages, start=1):
+            if isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if not isinstance(part, ToolCallPart):
+                        continue
+                    tool_call_id = str(part.tool_call_id or "").strip()
+                    if tool_call_id:
+                        pending.add(tool_call_id)
+            else:
+                for part in msg.parts:
+                    tool_call_id = str(getattr(part, "tool_call_id", "") or "").strip()
+                    if not tool_call_id:
+                        continue
+                    if isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                        pending.discard(tool_call_id)
+            if not pending:
+                last_safe_index = index
+        return last_safe_index
+
+    def _publish_tool_call_events_from_messages(
         self,
         *,
         request: LLMRequest,
@@ -555,63 +729,75 @@ class OpenAICompatibleProvider(LLMProvider):
                             ),
                         )
                     )
-            else:
-                for part in msg.parts:
-                    if isinstance(part, ToolReturnPart):
-                        result_payload = self._to_json_compatible(
-                            cast(object, part.content)
+
+    def _publish_committed_tool_outcome_events_from_messages(
+        self,
+        *,
+        request: LLMRequest,
+        messages: Sequence[ModelResponse | ModelRequest],
+    ) -> None:
+        for msg in messages:
+            if isinstance(msg, ModelResponse):
+                continue
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    result_payload = cast(
+                        JsonValue,
+                        sanitize_task_status_payload(
+                            self._to_json_compatible(cast(object, part.content))
+                        ),
+                    )
+                    is_error = False
+                    if isinstance(result_payload, dict):
+                        payload_map = cast(dict[str, object], result_payload)
+                        is_error = payload_map.get("ok") is False
+                    self._run_event_hub.publish(
+                        RunEvent(
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            trace_id=request.trace_id,
+                            task_id=request.task_id,
+                            instance_id=request.instance_id,
+                            role_id=request.role_id,
+                            event_type=RunEventType.TOOL_RESULT,
+                            payload_json=self._to_json(
+                                {
+                                    "tool_name": str(part.tool_name),
+                                    "tool_call_id": (
+                                        str(part.tool_call_id)
+                                        if part.tool_call_id
+                                        else ""
+                                    ),
+                                    "result": result_payload,
+                                    "error": is_error,
+                                    "role_id": request.role_id,
+                                    "instance_id": request.instance_id,
+                                }
+                            ),
                         )
-                        is_error = False
-                        if isinstance(result_payload, dict):
-                            payload_map = cast(dict[str, object], result_payload)
-                            is_error = payload_map.get("ok") is False
-                        self._run_event_hub.publish(
-                            RunEvent(
-                                session_id=request.session_id,
-                                run_id=request.run_id,
-                                trace_id=request.trace_id,
-                                task_id=request.task_id,
-                                instance_id=request.instance_id,
-                                role_id=request.role_id,
-                                event_type=RunEventType.TOOL_RESULT,
-                                payload_json=self._to_json(
-                                    {
-                                        "tool_name": str(part.tool_name),
-                                        "tool_call_id": (
-                                            str(part.tool_call_id)
-                                            if part.tool_call_id
-                                            else ""
-                                        ),
-                                        "result": result_payload,
-                                        "error": is_error,
-                                        "role_id": request.role_id,
-                                        "instance_id": request.instance_id,
-                                    }
-                                ),
-                            )
+                    )
+                elif isinstance(part, RetryPromptPart) and part.tool_name:
+                    self._run_event_hub.publish(
+                        RunEvent(
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            trace_id=request.trace_id,
+                            task_id=request.task_id,
+                            instance_id=request.instance_id,
+                            role_id=request.role_id,
+                            event_type=RunEventType.TOOL_INPUT_VALIDATION_FAILED,
+                            payload_json=self._to_json(
+                                {
+                                    "tool_name": part.tool_name,
+                                    "tool_call_id": part.tool_call_id,
+                                    "reason": "Input validation failed before tool execution.",
+                                    "details": part.content,
+                                    "role_id": request.role_id,
+                                    "instance_id": request.instance_id,
+                                }
+                            ),
                         )
-                    elif isinstance(part, RetryPromptPart) and part.tool_name:
-                        self._run_event_hub.publish(
-                            RunEvent(
-                                session_id=request.session_id,
-                                run_id=request.run_id,
-                                trace_id=request.trace_id,
-                                task_id=request.task_id,
-                                instance_id=request.instance_id,
-                                role_id=request.role_id,
-                                event_type=RunEventType.TOOL_INPUT_VALIDATION_FAILED,
-                                payload_json=self._to_json(
-                                    {
-                                        "tool_name": part.tool_name,
-                                        "tool_call_id": part.tool_call_id,
-                                        "reason": "Input validation failed before tool execution.",
-                                        "details": part.content,
-                                        "role_id": request.role_id,
-                                        "instance_id": request.instance_id,
-                                    }
-                                ),
-                            )
-                        )
+                    )
 
     def _to_json_compatible(self, value: object) -> JsonValue:
         if isinstance(value, (str, int, float, bool)) or value is None:

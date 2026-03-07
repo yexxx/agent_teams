@@ -1,46 +1,49 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import json
 from typing import cast
 
+from agent_teams.agents.enums import InstanceStatus
+from agent_teams.agents.models import AgentRuntimeRecord
 from agent_teams.sessions.rounds_projection import build_session_rounds
-from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
-from agent_teams.runs.enums import RunEventType
 from agent_teams.state.agent_repo import AgentInstanceRepository
-from agent_teams.state.event_log import EventLog
-from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRecord,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
 from agent_teams.state.task_repo import TaskRepository
-
-
-class _FakeEventLog:
-    def __init__(self, events: list[dict[str, object]]) -> None:
-        self._events = tuple(events)
-
-    def list_by_session(self, session_id: str) -> tuple[dict[str, object], ...]:
-        return self._events
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
+from agent_teams.workflow.models import TaskEnvelope, TaskRecord, VerificationPlan
 
 
 class _FakeAgentRepo:
-    def list_by_session(self, session_id: str) -> tuple[object, ...]:
-        return ()
+    def __init__(self, agents: tuple[AgentRuntimeRecord, ...] = ()) -> None:
+        self._agents = agents
+
+    def list_by_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
+        return self._agents
 
 
 class _FakeTaskRepo:
-    def list_by_session(self, session_id: str) -> tuple[object, ...]:
-        return ()
-
-
-class _FakeTaskRepoWithTasks:
-    def __init__(self, tasks: tuple[TaskRecord, ...]) -> None:
+    def __init__(self, tasks: tuple[TaskRecord, ...] = ()) -> None:
         self._tasks = tasks
 
     def list_by_session(self, session_id: str) -> tuple[TaskRecord, ...]:
         return self._tasks
 
 
-class _FakeSharedStore:
-    def get_state(self, scope, key: str):  # pragma: no cover - shape-only fake
-        return None
+class _FakeWorkflowGraphRepo:
+    def list_by_session(self, session_id: str) -> tuple[object, ...]:
+        return ()
+
+
+class _FakeRunRuntimeRepo:
+    def __init__(self, runtimes: tuple[RunRuntimeRecord, ...] = ()) -> None:
+        self._runtimes = runtimes
+
+    def list_by_session(self, session_id: str) -> tuple[RunRuntimeRecord, ...]:
+        return self._runtimes
 
 
 def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
@@ -48,43 +51,44 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
     run_id = "run-1"
     role_id = "spec_coder"
 
-    events: list[dict[str, object]] = [
-        {
-            "event_type": RunEventType.MODEL_STEP_STARTED.value,
-            "trace_id": run_id,
-            "session_id": session_id,
-            "task_id": "task-1",
-            "instance_id": "inst-old",
-            "payload_json": json.dumps(
-                {
-                    "role_id": role_id,
-                    "instance_id": "inst-old",
-                }
-            ),
-            "occurred_at": "2026-03-04T01:00:00+00:00",
-        },
-        {
-            "event_type": RunEventType.MODEL_STEP_STARTED.value,
-            "trace_id": run_id,
-            "session_id": session_id,
-            "task_id": "task-1",
-            "instance_id": "inst-new",
-            "payload_json": json.dumps(
-                {
-                    "role_id": role_id,
-                    "instance_id": "inst-new",
-                }
-            ),
-            "occurred_at": "2026-03-04T01:00:01+00:00",
-        },
-    ]
+    agent_old = AgentRuntimeRecord(
+        run_id=run_id,
+        trace_id=run_id,
+        session_id=session_id,
+        instance_id="inst-old",
+        role_id=role_id,
+        status=InstanceStatus.IDLE,
+    )
+    agent_new = AgentRuntimeRecord(
+        run_id=run_id,
+        trace_id=run_id,
+        session_id=session_id,
+        instance_id="inst-new",
+        role_id=role_id,
+        status=InstanceStatus.IDLE,
+    )
+    runtime = RunRuntimeRecord(
+        run_id=run_id,
+        session_id=session_id,
+        status=RunRuntimeStatus.RUNNING,
+        phase=RunRuntimePhase.COORDINATOR_RUNNING,
+    )
 
     rounds = build_session_rounds(
         session_id=session_id,
-        event_log=cast(EventLog, cast(object, _FakeEventLog(events))),
-        agent_repo=cast(AgentInstanceRepository, cast(object, _FakeAgentRepo())),
+        agent_repo=cast(
+            AgentInstanceRepository,
+            cast(object, _FakeAgentRepo((agent_old, agent_new))),
+        ),
         task_repo=cast(TaskRepository, cast(object, _FakeTaskRepo())),
-        shared_store=cast(SharedStore, cast(object, _FakeSharedStore())),
+        workflow_graph_repo=cast(
+            WorkflowGraphRepository, cast(object, _FakeWorkflowGraphRepo())
+        ),
+        approval_tickets_by_run={},
+        run_runtime_repo=cast(
+            RunRuntimeRepository,
+            cast(object, _FakeRunRuntimeRepo((runtime,))),
+        ),
         get_session_messages=lambda _: [],
     )
 
@@ -102,17 +106,17 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
 def test_build_session_rounds_includes_task_instance_map() -> None:
     session_id = "session-1"
     run_id = "run-1"
-    events: list[dict[str, object]] = [
-        {
-            "event_type": RunEventType.RUN_STARTED.value,
-            "trace_id": run_id,
-            "session_id": session_id,
-            "task_id": None,
-            "instance_id": None,
-            "payload_json": "{}",
-            "occurred_at": "2026-03-04T01:00:00+00:00",
-        }
-    ]
+    root_task = TaskRecord(
+        envelope=TaskEnvelope(
+            task_id="task-root",
+            session_id=session_id,
+            parent_task_id=None,
+            trace_id=run_id,
+            objective="root",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        ),
+        assigned_instance_id=None,
+    )
     task_first = TaskRecord(
         envelope=TaskEnvelope(
             task_id="task-first",
@@ -149,16 +153,24 @@ def test_build_session_rounds_includes_task_instance_map() -> None:
 
     rounds = build_session_rounds(
         session_id=session_id,
-        event_log=cast(EventLog, cast(object, _FakeEventLog(events))),
         agent_repo=cast(AgentInstanceRepository, cast(object, _FakeAgentRepo())),
         task_repo=cast(
             TaskRepository,
             cast(
                 object,
-                _FakeTaskRepoWithTasks((task_first, task_second, task_without_instance)),
+                _FakeTaskRepo(
+                    (root_task, task_first, task_second, task_without_instance)
+                ),
             ),
         ),
-        shared_store=cast(SharedStore, cast(object, _FakeSharedStore())),
+        workflow_graph_repo=cast(
+            WorkflowGraphRepository, cast(object, _FakeWorkflowGraphRepo())
+        ),
+        approval_tickets_by_run={},
+        run_runtime_repo=cast(
+            RunRuntimeRepository,
+            cast(object, _FakeRunRuntimeRepo()),
+        ),
         get_session_messages=lambda _: [],
     )
 
@@ -171,8 +183,8 @@ def test_build_session_rounds_includes_task_instance_map() -> None:
         "task-second": "inst-second",
     }
     assert task_status_map == {
+        "task-root": "created",
         "task-first": "created",
         "task-second": "created",
         "task-unassigned": "created",
     }
-

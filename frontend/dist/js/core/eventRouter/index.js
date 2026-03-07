@@ -2,6 +2,7 @@
  * core/eventRouter/index.js
  * Event switchboard for SSE RunEventType payloads.
  */
+import { scheduleRecoveryContinuityRefresh } from '../../app/recovery.js';
 import { state } from '../state.js';
 import { sysLog } from '../../utils/logger.js';
 import { refreshDagNodeStatuses } from '../../components/workflow.js';
@@ -35,6 +36,8 @@ export function routeEvent(evType, payload, eventMeta) {
     if (eventMeta?.run_id) state.activeRunId = eventMeta.run_id;
     if (eventMeta?.trace_id && !state.activeRunId) state.activeRunId = eventMeta.trace_id;
 
+    scheduleContinuityRefreshForEvent(evType);
+
     const instanceId = payload?.instance_id || eventMeta?.instance_id || null;
     const taskId = payload?.task_id || eventMeta?.task_id || null;
     const roleId = payload?.role_id || eventMeta?.role_id || null;
@@ -59,6 +62,8 @@ export function routeEvent(evType, payload, eventMeta) {
 
     if (evType === 'run_started') {
         handleRunStarted(eventMeta);
+    } else if (evType === 'run_resumed') {
+        handleRunStarted(eventMeta);
     } else if (evType === 'model_step_started') {
         handleModelStepStarted(instanceId, roleId);
     } else if (evType === 'text_delta') {
@@ -74,13 +79,13 @@ export function routeEvent(evType, payload, eventMeta) {
     } else if (evType === 'tool_call') {
         handleToolCall(payload, eventMeta, instanceId, roleId);
     } else if (evType === 'tool_input_validation_failed') {
-        handleToolInputValidationFailed(payload, instanceId);
+        handleToolInputValidationFailed(payload, instanceId, eventMeta, roleId);
     } else if (evType === 'tool_result') {
-        handleToolResult(payload, instanceId);
+        handleToolResult(payload, instanceId, eventMeta, roleId);
     } else if (evType === 'tool_approval_requested') {
         handleToolApprovalRequested(payload, eventMeta, instanceId);
     } else if (evType === 'tool_approval_resolved') {
-        handleToolApprovalResolved(payload, instanceId);
+        handleToolApprovalResolved(payload, instanceId, eventMeta, roleId);
     } else if (evType === 'notification_requested') {
         handleNotificationRequested(payload);
     } else if (evType === 'awaiting_human_dispatch') {
@@ -97,6 +102,64 @@ export function routeEvent(evType, payload, eventMeta) {
         handleGateResolved(payload, instanceId);
     } else {
         sysLog(`[evt] ${evType}`, 'log-info');
+    }
+}
+
+function scheduleContinuityRefreshForEvent(evType) {
+    const sessionId = state.currentSessionId;
+    if (!sessionId) return;
+
+    if (evType === 'run_started' || evType === 'run_resumed') {
+        scheduleRecoveryContinuityRefresh({
+            sessionId,
+            delayMs: 0,
+            includeRounds: false,
+            quiet: true,
+            reason: evType,
+        });
+        return;
+    }
+
+    if (evType === 'tool_call') {
+        scheduleRecoveryContinuityRefresh({
+            sessionId,
+            delayMs: 500,
+            includeRounds: false,
+            quiet: true,
+            reason: evType,
+        });
+        return;
+    }
+
+    if (
+        evType === 'tool_result'
+        || evType === 'tool_approval_requested'
+        || evType === 'tool_approval_resolved'
+        || evType === 'subagent_stopped'
+        || evType === 'subagent_resumed'
+        || evType === 'notification_requested'
+        || evType === 'awaiting_human_dispatch'
+        || evType === 'human_task_dispatched'
+        || evType === 'gate_resolved'
+    ) {
+        scheduleRecoveryContinuityRefresh({
+            sessionId,
+            delayMs: 0,
+            includeRounds: false,
+            quiet: true,
+            reason: evType,
+        });
+        return;
+    }
+
+    if (evType === 'run_completed' || evType === 'run_failed' || evType === 'run_stopped') {
+        scheduleRecoveryContinuityRefresh({
+            sessionId,
+            delayMs: 0,
+            includeRounds: false,
+            quiet: true,
+            reason: evType,
+        });
     }
 }
 

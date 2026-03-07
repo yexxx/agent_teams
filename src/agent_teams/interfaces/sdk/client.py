@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from collections.abc import Generator
@@ -158,6 +158,13 @@ class AgentTeamsClient:
             {"scope": "main"},
         )
 
+    def resume_run(self, run_id: str) -> JsonObject:
+        return self._request_json(
+            "POST",
+            f"/api/runs/{run_id}:resume",
+            {},
+        )
+
     def stop_subagent(self, run_id: str, instance_id: str) -> JsonObject:
         return self._request_json(
             "POST",
@@ -266,5 +273,3 @@ def _expect_str(value: JsonValue | None, field_name: str) -> str:
     if isinstance(value, str):
         return value
     raise RuntimeError(f"Expected string field '{field_name}' in server response")
-
-

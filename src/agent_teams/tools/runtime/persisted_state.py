@@ -1,0 +1,512 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from enum import Enum
+from collections.abc import Callable, Mapping
+from typing import cast
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from agent_teams.runs.enums import RunEventType
+from agent_teams.shared_types.json_types import JsonObject, JsonValue
+from agent_teams.state.event_log import EventLog
+from agent_teams.state.scope_models import ScopeRef, ScopeType, StateMutation
+from agent_teams.state.shared_store import SharedStore
+from agent_teams.state.task_repo import TaskRepository
+from agent_teams.workflow.dispatch_prompts import build_revise_followup_prompt
+from agent_teams.workflow.enums import TaskStatus
+from agent_teams.workflow.models import TaskRecord
+from agent_teams.workflow.runtime_graph import load_graph
+
+
+class ToolApprovalStatus(str, Enum):
+    NOT_REQUIRED = "not_required"
+    PENDING = "pending"
+    APPROVE = "approve"
+    DENY = "deny"
+    TIMEOUT = "timeout"
+
+
+class ToolExecutionStatus(str, Enum):
+    WAITING_APPROVAL = "waiting_approval"
+    READY = "ready"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PersistedToolCallState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tool_call_id: str = Field(min_length=1)
+    tool_name: str = Field(min_length=1)
+    instance_id: str = Field(min_length=1)
+    role_id: str = Field(min_length=1)
+    args_preview: str = ""
+    approval_status: ToolApprovalStatus = ToolApprovalStatus.PENDING
+    approval_feedback: str = ""
+    execution_status: ToolExecutionStatus = ToolExecutionStatus.WAITING_APPROVAL
+    result_envelope: JsonObject | None = None
+    call_state: JsonObject = Field(default_factory=dict)
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc).isoformat()
+    )
+    updated_at: str = Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc).isoformat()
+    )
+
+
+def load_tool_call_state(
+    *,
+    shared_store: SharedStore,
+    task_id: str,
+    tool_call_id: str,
+) -> PersistedToolCallState | None:
+    raw = shared_store.get_state(_task_scope(task_id), _state_key(tool_call_id))
+    if raw is None:
+        return None
+    try:
+        return PersistedToolCallState.model_validate_json(raw)
+    except Exception:
+        return None
+
+
+def merge_tool_call_state(
+    *,
+    shared_store: SharedStore,
+    task_id: str,
+    tool_call_id: str,
+    tool_name: str,
+    instance_id: str,
+    role_id: str,
+    args_preview: str | None = None,
+    approval_status: ToolApprovalStatus | None = None,
+    approval_feedback: str | None = None,
+    execution_status: ToolExecutionStatus | None = None,
+    result_envelope: JsonObject | None = None,
+    call_state: JsonObject | None = None,
+) -> PersistedToolCallState:
+    current = load_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+    )
+    now = datetime.now(tz=timezone.utc).isoformat()
+    if current is None:
+        current = PersistedToolCallState(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            instance_id=instance_id,
+            role_id=role_id,
+            args_preview=args_preview or "",
+            updated_at=now,
+        )
+    update: dict[str, object] = {
+        "tool_name": tool_name,
+        "instance_id": instance_id,
+        "role_id": role_id,
+        "updated_at": now,
+    }
+    if args_preview is not None:
+        update["args_preview"] = args_preview
+    if approval_status is not None:
+        update["approval_status"] = approval_status
+    if approval_feedback is not None:
+        update["approval_feedback"] = approval_feedback
+    if execution_status is not None:
+        update["execution_status"] = execution_status
+    if result_envelope is not None:
+        update["result_envelope"] = result_envelope
+    if call_state is not None:
+        update["call_state"] = call_state
+    next_state = current.model_copy(update=update)
+    shared_store.manage_state(
+        StateMutation(
+            scope=_task_scope(task_id),
+            key=_state_key(tool_call_id),
+            value_json=next_state.model_dump_json(),
+        )
+    )
+    return next_state
+
+
+def load_or_recover_tool_call_state(
+    *,
+    shared_store: SharedStore,
+    event_log: EventLog,
+    trace_id: str,
+    task_id: str,
+    tool_call_id: str,
+    task_repo: TaskRepository | None = None,
+) -> PersistedToolCallState | None:
+    current = load_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+    )
+    if current is not None:
+        return current
+    return recover_tool_call_state_from_event_log(
+        event_log=event_log,
+        shared_store=shared_store,
+        trace_id=trace_id,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+        task_repo=task_repo,
+    )
+
+
+def update_tool_call_call_state(
+    *,
+    shared_store: SharedStore,
+    task_id: str,
+    tool_call_id: str,
+    tool_name: str,
+    instance_id: str,
+    role_id: str,
+    mutate: Callable[[JsonObject], JsonObject],
+) -> PersistedToolCallState:
+    current = load_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+    )
+    base_state = dict(current.call_state) if current is not None else {}
+    next_call_state = mutate(base_state)
+    return merge_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        instance_id=instance_id,
+        role_id=role_id,
+        call_state=next_call_state,
+    )
+
+
+def recover_tool_call_state_from_event_log(
+    *,
+    event_log: EventLog,
+    shared_store: SharedStore,
+    trace_id: str,
+    task_id: str,
+    tool_call_id: str,
+    task_repo: TaskRepository | None = None,
+) -> PersistedToolCallState | None:
+    recovered = load_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+    )
+    if recovered is not None:
+        return recovered
+
+    state: PersistedToolCallState | None = None
+    tool_args: JsonObject = {}
+    for row in event_log.list_by_trace(trace_id):
+        if str(row.get("task_id") or "") != task_id:
+            continue
+        payload = _parse_payload(row.get("payload_json"))
+        if str(payload.get("tool_call_id") or "") != tool_call_id:
+            continue
+        event_type = str(row.get("event_type") or "")
+        if event_type == RunEventType.TOOL_CALL.value:
+            tool_args = _parse_tool_args(payload)
+        tool_name = str(payload.get("tool_name") or (state.tool_name if state else ""))
+        instance_id = str(
+            payload.get("instance_id")
+            or row.get("instance_id")
+            or (state.instance_id if state else "")
+        )
+        role_id = str(payload.get("role_id") or (state.role_id if state else ""))
+        args_preview = str(
+            payload.get("args_preview")
+            or payload.get("args")
+            or (state.args_preview if state else "")
+        )
+        if not tool_name or not instance_id or not role_id:
+            continue
+        if state is None:
+            state = PersistedToolCallState(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                instance_id=instance_id,
+                role_id=role_id,
+                args_preview=args_preview,
+                approval_status=ToolApprovalStatus.NOT_REQUIRED,
+                execution_status=ToolExecutionStatus.READY,
+            )
+        else:
+            state = state.model_copy(
+                update={
+                    "tool_name": tool_name,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                    "args_preview": args_preview,
+                }
+            )
+
+        if event_type == RunEventType.TOOL_APPROVAL_REQUESTED.value:
+            state = state.model_copy(
+                update={
+                    "approval_status": ToolApprovalStatus.PENDING,
+                    "execution_status": ToolExecutionStatus.WAITING_APPROVAL,
+                }
+            )
+        elif event_type == RunEventType.TOOL_APPROVAL_RESOLVED.value:
+            action = str(payload.get("action") or "").strip().lower()
+            if action == "approve":
+                state = state.model_copy(
+                    update={
+                        "approval_status": ToolApprovalStatus.APPROVE,
+                        "approval_feedback": str(payload.get("feedback") or ""),
+                        "execution_status": ToolExecutionStatus.READY,
+                    }
+                )
+            elif action == "deny":
+                state = state.model_copy(
+                    update={
+                        "approval_status": ToolApprovalStatus.DENY,
+                        "approval_feedback": str(payload.get("feedback") or ""),
+                        "execution_status": ToolExecutionStatus.FAILED,
+                    }
+                )
+            elif action == "timeout":
+                state = state.model_copy(
+                    update={
+                        "approval_status": ToolApprovalStatus.TIMEOUT,
+                        "execution_status": ToolExecutionStatus.FAILED,
+                    }
+                )
+        elif event_type == RunEventType.TOOL_RESULT.value:
+            result = payload.get("result")
+            if isinstance(result, dict):
+                meta = result.get("meta")
+                approval_status = None
+                if isinstance(meta, dict):
+                    approval_text = (
+                        str(meta.get("approval_status") or "").strip().lower()
+                    )
+                    if approval_text == ToolApprovalStatus.APPROVE.value:
+                        approval_status = ToolApprovalStatus.APPROVE
+                    elif approval_text == ToolApprovalStatus.DENY.value:
+                        approval_status = ToolApprovalStatus.DENY
+                    elif approval_text == ToolApprovalStatus.TIMEOUT.value:
+                        approval_status = ToolApprovalStatus.TIMEOUT
+                    elif approval_text == ToolApprovalStatus.NOT_REQUIRED.value:
+                        approval_status = ToolApprovalStatus.NOT_REQUIRED
+                state = state.model_copy(
+                    update={
+                        "approval_status": approval_status or state.approval_status,
+                        "execution_status": ToolExecutionStatus.COMPLETED,
+                        "result_envelope": result,
+                    }
+                )
+
+    if state is None:
+        return None
+    recovered_call_state = dict(state.call_state)
+    if not recovered_call_state:
+        recovered_call_state = _recover_call_state(
+            tool_name=state.tool_name,
+            trace_id=trace_id,
+            task_id=task_id,
+            tool_args=tool_args,
+            shared_store=shared_store,
+            task_repo=task_repo,
+        )
+    return merge_tool_call_state(
+        shared_store=shared_store,
+        task_id=task_id,
+        tool_call_id=tool_call_id,
+        tool_name=state.tool_name,
+        instance_id=state.instance_id,
+        role_id=state.role_id,
+        args_preview=state.args_preview,
+        approval_status=state.approval_status,
+        approval_feedback=state.approval_feedback,
+        execution_status=state.execution_status,
+        result_envelope=state.result_envelope,
+        call_state=recovered_call_state,
+    )
+
+
+def _task_scope(task_id: str) -> ScopeRef:
+    return ScopeRef(scope_type=ScopeType.TASK, scope_id=task_id)
+
+
+def _state_key(tool_call_id: str) -> str:
+    return f"tool_call_state:{tool_call_id}"
+
+
+def _parse_payload(raw_payload: object) -> JsonObject:
+    if not isinstance(raw_payload, str) or not raw_payload:
+        return {}
+    try:
+        decoded = json.loads(raw_payload)
+    except Exception:
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _parse_tool_args(payload: JsonObject) -> JsonObject:
+    raw_args = payload.get("args")
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str) and raw_args.strip():
+        try:
+            decoded = json.loads(raw_args)
+        except Exception:
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
+    return {}
+
+
+def _recover_call_state(
+    *,
+    tool_name: str,
+    trace_id: str,
+    task_id: str,
+    tool_args: JsonObject,
+    shared_store: SharedStore,
+    task_repo: TaskRepository | None,
+) -> JsonObject:
+    if tool_name != "dispatch_tasks" or task_repo is None:
+        return {}
+    graph = load_graph(shared_store, task_id=task_id)
+    if graph is None:
+        return {}
+    return _recover_dispatch_tasks_call_state(
+        trace_id=trace_id,
+        tool_args=tool_args,
+        graph=cast(JsonObject, graph),
+        task_repo=task_repo,
+    )
+
+
+def _recover_dispatch_tasks_call_state(
+    *,
+    trace_id: str,
+    tool_args: JsonObject,
+    graph: JsonObject,
+    task_repo: TaskRepository,
+) -> JsonObject:
+    workflow_id = str(tool_args.get("workflow_id") or graph.get("workflow_id") or "")
+    if not workflow_id:
+        return {}
+    action = str(tool_args.get("action") or "").strip().lower()
+    if action not in {"next", "revise"}:
+        return {}
+    feedback = str(tool_args.get("feedback") or "")
+    max_dispatch = _bounded_max_dispatch(tool_args.get("max_dispatch"))
+    records = {
+        record.envelope.task_id: record for record in task_repo.list_by_trace(trace_id)
+    }
+    tasks = graph.get("tasks")
+    if not isinstance(tasks, dict):
+        return {}
+
+    if action == "revise":
+        latest = _latest_completed_task(tasks=tasks, records=records)
+        if latest is None:
+            return {}
+        task_name, task_id = latest
+        task_info = tasks.get(task_name, {})
+        if not isinstance(task_info, dict):
+            return {}
+        record = records.get(task_id)
+        if record is None:
+            return {}
+        instance_id = str(record.assigned_instance_id or "")
+        if not instance_id:
+            return {}
+        return {
+            "kind": "dispatch_tasks",
+            "action": "revise",
+            "workflow_id": workflow_id,
+            "feedback": feedback,
+            "followup_prompt": build_revise_followup_prompt(feedback),
+            "task_name": task_name,
+            "task_id": task_id,
+            "instance_id": instance_id,
+            "role_id": str(task_info.get("role_id") or ""),
+            "execution_started": record.status
+            not in {TaskStatus.CREATED, TaskStatus.ASSIGNED},
+        }
+
+    selected_tasks: list[JsonValue] = []
+    for task_name, task_info_raw in tasks.items():
+        if len(selected_tasks) >= max_dispatch:
+            break
+        if not isinstance(task_info_raw, dict):
+            continue
+        task_id = str(task_info_raw.get("task_id") or "")
+        role_id = str(task_info_raw.get("role_id") or "")
+        if not task_id or not role_id:
+            continue
+        record = records.get(task_id)
+        if record is None:
+            continue
+        if (
+            record.status == TaskStatus.CREATED
+            and not str(record.assigned_instance_id or "").strip()
+        ):
+            continue
+        selected_tasks.append(
+            {
+                "task_id": task_id,
+                "task_name": str(task_name),
+                "role_id": role_id,
+                "instance_id": str(record.assigned_instance_id or ""),
+                "feedback_recorded": bool(feedback.strip()),
+            }
+        )
+    if not selected_tasks:
+        return {}
+    return {
+        "kind": "dispatch_tasks",
+        "action": "next",
+        "workflow_id": workflow_id,
+        "feedback": feedback,
+        "max_dispatch": max_dispatch,
+        "selected_tasks": selected_tasks,
+    }
+
+
+def _latest_completed_task(
+    *,
+    tasks: Mapping[str, object],
+    records: dict[str, TaskRecord],
+) -> tuple[str, str] | None:
+    for task_name in reversed(list(tasks.keys())):
+        task_info = tasks.get(task_name)
+        if not isinstance(task_info, dict):
+            continue
+        task_id = str(task_info.get("task_id") or "")
+        if not task_id:
+            continue
+        record = records.get(task_id)
+        if record is None:
+            continue
+        if record.status == TaskStatus.COMPLETED:
+            return str(task_name), task_id
+    return None
+
+
+def _bounded_max_dispatch(raw_value: object) -> int:
+    if isinstance(raw_value, bool):
+        return 1
+    if isinstance(raw_value, int):
+        value = raw_value
+    elif isinstance(raw_value, float):
+        value = int(raw_value)
+    elif isinstance(raw_value, str) and raw_value.strip():
+        try:
+            value = int(raw_value.strip())
+        except ValueError:
+            value = 1
+    else:
+        value = 1
+    return max(1, min(value, 8))

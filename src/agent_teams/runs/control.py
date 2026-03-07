@@ -7,12 +7,16 @@ from threading import Lock
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
-from pydantic_ai.messages import ModelRequest, UserPromptPart
 
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.models import AgentRuntimeRecord
 from agent_teams.runs.enums import InjectionSource, RunEventType
 from agent_teams.runs.models import InjectionMessage, RunEvent
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.events import EventEnvelope, EventType
 from agent_teams.workflow.models import TaskEnvelope
@@ -78,7 +82,6 @@ class _RunTaskRegistry:
     def unregister_run_task(self, run_id: str) -> None:
         with self._lock:
             self._run_tasks.pop(run_id, None)
-            self._run_stop_requested.discard(run_id)
 
     def request_run_stop(self, run_id: str) -> bool:
         with self._lock:
@@ -213,6 +216,7 @@ class RunControlManager:
         self._message_repo: MessageRepository | None = None
         self._instance_pool: InstancePool | None = None
         self._event_bus: EventLog | None = None
+        self._run_runtime_repo: RunRuntimeRepository | None = None
 
     def bind_runtime(
         self,
@@ -224,6 +228,7 @@ class RunControlManager:
         message_repo: MessageRepository,
         instance_pool: InstancePool,
         event_bus: EventLog,
+        run_runtime_repo: RunRuntimeRepository,
     ) -> None:
         self._run_event_hub = run_event_hub
         self._injection_manager = injection_manager
@@ -232,6 +237,7 @@ class RunControlManager:
         self._message_repo = message_repo
         self._instance_pool = instance_pool
         self._event_bus = event_bus
+        self._run_runtime_repo = run_runtime_repo
 
     def context(
         self, *, run_id: str, instance_id: str | None = None
@@ -384,6 +390,17 @@ class RunControlManager:
                 ),
             )
         )
+        if self._run_runtime_repo is not None:
+            self._run_runtime_repo.update(
+                run_id,
+                status=RunRuntimeStatus.PAUSED,
+                phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+                active_instance_id=instance_id,
+                active_task_id=paused.task_id,
+                active_role_id=record.role_id,
+                active_subagent_instance_id=instance_id,
+                last_error="Subagent stopped by user",
+            )
         return {
             "status": "paused",
             "instance_id": instance_id,
@@ -418,12 +435,12 @@ class RunControlManager:
                 assigned_instance_id=instance_id,
             )
 
-        self._require_message_repo().append(
+        self._require_message_repo().append_user_prompt_if_missing(
             session_id=record.session_id,
             instance_id=instance_id,
             task_id=task_id or "subagent-followup",
             trace_id=run_id,
-            messages=[ModelRequest(parts=[UserPromptPart(content=content)])],
+            content=content,
         )
 
         if (
@@ -442,6 +459,17 @@ class RunControlManager:
             session_id=record.session_id, instance_id=instance_id
         )
         self._require_agent_repo().mark_status(instance_id, InstanceStatus.IDLE)
+        if self._run_runtime_repo is not None:
+            self._run_runtime_repo.update(
+                run_id,
+                status=RunRuntimeStatus.RUNNING,
+                phase=RunRuntimePhase.SUBAGENT_RUNNING,
+                active_instance_id=instance_id,
+                active_task_id=task_id,
+                active_role_id=record.role_id,
+                active_subagent_instance_id=instance_id,
+                last_error=None,
+            )
 
         self._require_run_event_hub().publish(
             RunEvent(
@@ -561,11 +589,9 @@ class RunControlManager:
             run_id=run_id, instance_id=instance_id
         )
 
-    def get_paused_subagent(self, session_id: str) -> PausedSubagent | None:
-        return self._paused.get(session_id)
-
     def is_subagent_paused(self, *, session_id: str, instance_id: str) -> bool:
-        return self._paused.is_paused(session_id=session_id, instance_id=instance_id)
+        paused = self.get_paused_subagent(session_id)
+        return paused is not None and paused.instance_id == instance_id
 
     def release_paused_subagent(
         self,
@@ -574,6 +600,11 @@ class RunControlManager:
         instance_id: str | None = None,
     ) -> PausedSubagent | None:
         paused = self._paused.release(session_id=session_id, instance_id=instance_id)
+        if paused is None:
+            paused = self._paused_from_runtime(
+                session_id=session_id,
+                instance_id=instance_id,
+            )
         if paused is not None:
             self._run_tasks.clear_subagent_stop(
                 run_id=paused.run_id, instance_id=paused.instance_id
@@ -588,6 +619,12 @@ class RunControlManager:
 
     def get_coordinator_instance_id(self, session_id: str) -> str | None:
         return self._require_agent_repo().get_coordinator_instance_id(session_id)
+
+    def get_paused_subagent(self, session_id: str) -> PausedSubagent | None:
+        paused = self._paused.get(session_id)
+        if paused is not None:
+            return paused
+        return self._paused_from_runtime(session_id=session_id)
 
     def _find_task_for_instance(self, *, run_id: str, instance_id: str) -> str | None:
         for record in self._require_task_repo().list_by_trace(run_id):
@@ -617,6 +654,49 @@ class RunControlManager:
                 payload_json=created.model_dump_json(),
             )
         )
+
+    def _paused_from_runtime(
+        self,
+        *,
+        session_id: str,
+        instance_id: str | None = None,
+    ) -> PausedSubagent | None:
+        if self._run_runtime_repo is None:
+            return None
+        runtimes = sorted(
+            self._run_runtime_repo.list_by_session(session_id),
+            key=lambda item: item.updated_at,
+            reverse=True,
+        )
+        for runtime in runtimes:
+            if runtime.phase != RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP:
+                continue
+            paused_instance_id = (
+                runtime.active_subagent_instance_id or runtime.active_instance_id
+            )
+            if not paused_instance_id:
+                continue
+            if instance_id is not None and paused_instance_id != instance_id:
+                continue
+            role_id = runtime.active_role_id or paused_instance_id
+            task_id = runtime.active_task_id
+            if self._agent_repo is not None:
+                try:
+                    record = self._agent_repo.get_instance(paused_instance_id)
+                except KeyError:
+                    record = None
+                if record is not None:
+                    role_id = record.role_id
+            return PausedSubagent(
+                session_id=session_id,
+                run_id=runtime.run_id,
+                instance_id=paused_instance_id,
+                role_id=role_id,
+                task_id=task_id,
+                reason=runtime.last_error or "stopped_by_user",
+                paused_at=runtime.updated_at,
+            )
+        return None
 
     def _require_run_event_hub(self) -> RunEventHub:
         if self._run_event_hub is None:

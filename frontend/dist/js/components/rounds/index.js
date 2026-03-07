@@ -3,11 +3,13 @@
  * Public API for rounds timeline modules.
  */
 export {
+    appendRoundUserMessage,
     currentRound,
     currentRounds,
     createLiveRound,
     goBackToSessions,
     loadSessionRounds,
+    overlayRoundRecoveryState,
     selectRound,
 } from './timeline.js';
 export { toggleWorkflow } from './workflow.js';

@@ -4,12 +4,11 @@
  */
 import { fetchAgentMessages, fetchRunTokenUsage } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { renderHistoricalMessageList } from '../messageRenderer.js';
+import { getInstanceStreamOverlay, renderHistoricalMessageList } from '../messageRenderer.js';
 import {
     getActiveRoundRunId,
     getPanel,
     getPendingApprovalsForPanel,
-    getPendingStreamTextForPanel,
 } from './state.js';
 
 function renderTokenBadge(panelEl, instanceId, runUsage) {
@@ -36,27 +35,27 @@ export async function loadAgentHistory(instanceId, roleId = null) {
     const panel = getPanel(instanceId);
     if (!panel) return;
     const scrollEl = panel.scrollEl;
+    const runId = getActiveRoundRunId();
     try {
         scrollEl.innerHTML = '<div class="panel-loading">Loading history...</div>';
-        const runId = getActiveRoundRunId();
         const [messages, runUsage] = await Promise.all([
             fetchAgentMessages(state.currentSessionId, instanceId),
             runId && runId !== '__live__' ? fetchRunTokenUsage(state.currentSessionId, runId) : Promise.resolve(null),
         ]);
         const pendingToolApprovals = getPendingApprovalsForPanel(instanceId, roleId);
-        const pendingStreamText = getPendingStreamTextForPanel(instanceId);
+        const streamOverlayEntry = getInstanceStreamOverlay(runId, instanceId);
         scrollEl.innerHTML = '';
-        if (messages.length === 0 && pendingToolApprovals.length === 0 && !pendingStreamText.trim()) {
+        if (messages.length === 0 && pendingToolApprovals.length === 0 && !streamOverlayEntry) {
             scrollEl.innerHTML = '<div class="panel-empty">No messages yet.</div>';
         } else {
             renderHistoricalMessageList(scrollEl, messages, {
                 pendingToolApprovals,
                 runId,
-                pendingStreamText,
-                pendingStreamRoleId: roleId || '',
-                pendingStreamInstanceId: instanceId,
+                streamOverlayEntry,
             });
         }
+        panel.loadedSessionId = state.currentSessionId || '';
+        panel.loadedRunId = runId || '';
         renderTokenBadge(panel.panelEl, instanceId, runUsage);
     } catch (e) {
         scrollEl.innerHTML = '<div class="panel-empty" style="color:var(--danger)">Failed to load history.</div>';

@@ -23,11 +23,14 @@ from agent_teams.runs.injection_queue import RunInjectionManager
 from agent_teams.runs.runtime_config import RuntimeConfig
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolApprovalManager, ToolApprovalPolicy
 
@@ -42,6 +45,9 @@ def create_provider_factory(
     injection_manager: RunInjectionManager,
     run_event_hub: RunEventHub,
     agent_repo: AgentInstanceRepository,
+    workflow_graph_repo: WorkflowGraphRepository,
+    approval_ticket_repo: ApprovalTicketRepository,
+    run_runtime_repo: RunRuntimeRepository,
     tool_registry: ToolRegistry,
     mcp_registry: McpRegistry,
     skill_registry: SkillRegistry,
@@ -70,6 +76,9 @@ def create_provider_factory(
                 injection_manager=injection_manager,
                 run_event_hub=run_event_hub,
                 agent_repo=agent_repo,
+                workflow_graph_repo=workflow_graph_repo,
+                approval_ticket_repo=approval_ticket_repo,
+                run_runtime_repo=run_runtime_repo,
                 workspace_root=Path.cwd(),
                 tool_registry=tool_registry,
                 mcp_registry=mcp_registry,
@@ -101,6 +110,9 @@ def create_task_execution_service(
     event_log: EventLog,
     agent_repo: AgentInstanceRepository,
     message_repo: MessageRepository,
+    workflow_graph_repo: WorkflowGraphRepository,
+    approval_ticket_repo: ApprovalTicketRepository,
+    run_runtime_repo: RunRuntimeRepository,
     provider_factory: Callable[[RoleDefinition], LLMProvider],
     injection_manager: RunInjectionManager,
     run_control_manager: RunControlManager,
@@ -113,6 +125,9 @@ def create_task_execution_service(
         event_bus=event_log,
         agent_repo=agent_repo,
         message_repo=message_repo,
+        workflow_graph_repo=workflow_graph_repo,
+        approval_ticket_repo=approval_ticket_repo,
+        run_runtime_repo=run_runtime_repo,
         prompt_builder=RuntimePromptBuilder(),
         provider_factory=provider_factory,
         injection_manager=injection_manager,

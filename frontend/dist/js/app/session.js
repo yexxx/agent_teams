@@ -4,14 +4,31 @@
  */
 import { clearAllPanels } from '../components/agentPanel.js';
 import { clearAllStreamState } from '../components/messageRenderer.js';
-import { loadSessionRounds } from '../components/rounds.js';
 import { setRoundsMode } from '../components/sidebar.js';
+import {
+    clearSessionRecovery,
+    hydrateSessionView,
+    stopSessionContinuity,
+} from './recovery.js';
 import { state } from '../core/state.js';
+import { endStream } from '../core/stream.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 
 export async function selectSession(sessionId) {
     const isSameSession = state.currentSessionId === sessionId;
+    const previousSessionId = state.currentSessionId;
+    if (isSameSession && (state.isGenerating || state.activeEventSource)) {
+        await hydrateSessionView(sessionId, { includeRounds: false, quiet: true });
+        sysLog(`Synced live session: ${sessionId}`);
+        return;
+    }
+    if (!isSameSession && state.activeEventSource) {
+        endStream();
+    }
+    if (!isSameSession && previousSessionId) {
+        stopSessionContinuity(previousSessionId);
+    }
     state.currentSessionId = sessionId;
     state.instanceRoleMap = {};
     state.roleInstanceMap = {};
@@ -21,6 +38,7 @@ export async function selectSession(sessionId) {
     state.activeAgentInstanceId = null;
     state.autoSwitchedSubagentInstances = {};
     state.pausedSubagent = null;
+    clearSessionRecovery();
 
     document.querySelectorAll('.session-item').forEach(el => {
         const isActive = el.querySelector('.session-id')?.textContent === sessionId;
@@ -33,6 +51,6 @@ export async function selectSession(sessionId) {
     clearAllPanels();
     clearAllStreamState();
 
-    await loadSessionRounds(sessionId);
+    await hydrateSessionView(sessionId, { includeRounds: true, quiet: true });
     sysLog(`${isSameSession ? 'Reloaded' : 'Switched to'} session: ${sessionId}`);
 }

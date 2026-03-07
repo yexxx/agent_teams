@@ -1,35 +1,46 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from pydantic_ai.messages import ModelRequest, UserPromptPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 
 import agent_teams.providers.llm as llm_module
+from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.coordination.task_execution_service import TaskExecutionService
-from agent_teams.providers.model_config import ModelEndpointConfig
 from agent_teams.mcp.registry import McpRegistry
-from agent_teams.providers.llm import LLMRequest, OpenAICompatibleProvider
-from agent_teams.roles.registry import RoleRegistry
-from agent_teams.runs.injection_queue import RunInjectionManager
-from agent_teams.runs.control import RunControlManager
-from agent_teams.runs.event_stream import RunEventHub
-from agent_teams.tools.runtime import ToolApprovalManager
 from agent_teams.prompting.provider_augment import PromptSkillInstruction
+from agent_teams.providers.llm import LLMRequest, OpenAICompatibleProvider
+from agent_teams.providers.model_config import ModelEndpointConfig
+from agent_teams.roles.registry import RoleRegistry
+from agent_teams.runs.control import RunControlManager
+from agent_teams.runs.enums import RunEventType
+from agent_teams.runs.event_stream import RunEventHub
+from agent_teams.runs.injection_queue import RunInjectionManager
+from agent_teams.runs.models import RunEvent
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
-from agent_teams.runs.models import RunEvent
-from agent_teams.tools.runtime import ToolApprovalPolicy
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.registry import ToolRegistry
-from agent_teams.agents.management.instance_pool import InstancePool
+from agent_teams.tools.runtime import ToolApprovalManager, ToolApprovalPolicy
 
 
 class _FakeRunEventHub:
@@ -53,26 +64,33 @@ class _FakeRunControlManager:
         return _FakeControlContext()
 
 
+class _CountingRunControlManager:
+    def __init__(self, *, cancel_after: int | None = None) -> None:
+        self.cancel_after = cancel_after
+        self.calls = 0
+
+    def context(
+        self, *, run_id: str, instance_id: str | None = None
+    ) -> _FakeControlContext:
+        _ = (run_id, instance_id)
+        manager = self
+
+        class _Ctx:
+            def raise_if_cancelled(self) -> None:
+                manager.calls += 1
+                if (
+                    manager.cancel_after is not None
+                    and manager.calls >= manager.cancel_after
+                ):
+                    raise asyncio.CancelledError
+
+        return cast(_FakeControlContext, cast(object, _Ctx()))
+
+
 class _FakeInjectionManager:
     def drain_at_boundary(self, run_id: str, instance_id: str) -> list[object]:
         _ = (run_id, instance_id)
         return []
-
-
-class _FakeTaskRepository:
-    pass
-
-
-class _FakeInstancePool:
-    pass
-
-
-class _FakeSharedStore:
-    pass
-
-
-class _FakeEventLog:
-    pass
 
 
 class _FakeSkillRegistry:
@@ -85,18 +103,6 @@ class _FakeSkillRegistry:
     ) -> tuple[PromptSkillInstruction, ...]:
         self.requested.append(skill_names)
         return self._entries
-
-
-class _FakeMessageRepo:
-    def __init__(self) -> None:
-        self.history = [ModelRequest(parts=[UserPromptPart(content="previous turn")])]
-
-    def get_history(self, instance_id: str) -> list[ModelRequest]:
-        _ = instance_id
-        return list(self.history)
-
-    def append(self, **kwargs: object) -> None:
-        _ = kwargs
 
 
 class _FakeResult:
@@ -147,6 +153,133 @@ class _FakeAgent:
         _ = (deps, message_history)
         self.prompts.append(prompt)
         return _FakeAgentRun()
+
+
+class _StreamingTextNode:
+    def __init__(self, chunks: list[str]) -> None:
+        self._chunks = chunks
+
+    def stream(self, ctx: object):
+        _ = ctx
+        chunks = list(self._chunks)
+
+        class _Stream:
+            async def stream_text(self, *, delta: bool):
+                _ = delta
+                for chunk in chunks:
+                    yield chunk
+
+            def usage(self) -> SimpleNamespace:
+                return SimpleNamespace(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    requests=1,
+                    tool_calls=0,
+                )
+
+        class _Ctx:
+            async def __aenter__(self):
+                return _Stream()
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        return _Ctx()
+
+
+class _ScriptedResult:
+    def __init__(
+        self,
+        *,
+        response: object,
+        messages: list[object],
+    ) -> None:
+        self.response = response
+        self._messages = messages
+
+    def new_messages(self) -> list[object]:
+        return list(self._messages)
+
+    def usage(self) -> SimpleNamespace:
+        return SimpleNamespace(
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            requests=1,
+            tool_calls=0,
+        )
+
+
+class _ScriptedAgentRun:
+    def __init__(
+        self,
+        *,
+        nodes: list[object],
+        messages_by_step: list[list[object]],
+        result: _ScriptedResult,
+        raise_on_exhaust: BaseException | None = None,
+    ) -> None:
+        self._nodes = list(nodes)
+        self._messages_by_step = list(messages_by_step)
+        self._yielded = 0
+        self._raise_on_exhaust = raise_on_exhaust
+        self.ctx = object()
+        self.result = result
+
+    async def __aenter__(self) -> _ScriptedAgentRun:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        _ = (exc_type, exc, tb)
+        return False
+
+    def __aiter__(self) -> _ScriptedAgentRun:
+        return self
+
+    async def __anext__(self):
+        if self._yielded < len(self._nodes):
+            node = self._nodes[self._yielded]
+            self._yielded += 1
+            return node
+        if self._raise_on_exhaust is not None:
+            exc = self._raise_on_exhaust
+            self._raise_on_exhaust = None
+            raise exc
+        raise StopAsyncIteration
+
+    def new_messages(self) -> list[object]:
+        collected: list[object] = []
+        for batch in self._messages_by_step[: self._yielded]:
+            collected.extend(batch)
+        return collected
+
+    def usage(self) -> SimpleNamespace:
+        return SimpleNamespace(
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            requests=0,
+            tool_calls=0,
+        )
+
+
+class _SequentialAgent:
+    def __init__(self, runs: list[_ScriptedAgentRun]) -> None:
+        self._runs = list(runs)
+        self.prompts: list[str | None] = []
+        self.histories: list[list[object]] = []
+
+    def iter(
+        self, prompt: str | None, *, deps: object, message_history: object
+    ) -> _ScriptedAgentRun:
+        _ = deps
+        self.prompts.append(prompt)
+        self.histories.append(list(cast(list[object], message_history)))
+        if not self._runs:
+            raise AssertionError("no scripted runs remaining")
+        return self._runs.pop(0)
 
 
 class _FakeNodeStream:
@@ -332,13 +465,14 @@ class _FakeAgentWithMutableUsageNode:
 
 
 def _build_provider(
-    message_repo: _FakeMessageRepo,
+    db_path: Path,
     hub: _FakeRunEventHub,
     *,
     allowed_tools: tuple[str, ...] = (),
     allowed_skills: tuple[str, ...] = (),
     skill_registry: object | None = None,
-) -> OpenAICompatibleProvider:
+    run_control_manager: object | None = None,
+) -> tuple[OpenAICompatibleProvider, MessageRepository]:
     registry = (
         cast(SkillRegistry, skill_registry)
         if skill_registry is not None
@@ -349,17 +483,21 @@ def _build_provider(
         base_url="http://localhost",
         api_key="test-key",
     )
-    return OpenAICompatibleProvider(
+    message_repo = MessageRepository(db_path)
+    provider = OpenAICompatibleProvider(
         config,
-        task_repo=cast(TaskRepository, cast(object, _FakeTaskRepository())),
-        instance_pool=cast(InstancePool, cast(object, _FakeInstancePool())),
-        shared_store=cast(SharedStore, cast(object, _FakeSharedStore())),
-        event_bus=cast(EventLog, cast(object, _FakeEventLog())),
+        task_repo=TaskRepository(db_path),
+        instance_pool=cast(InstancePool, cast(object, InstancePool())),
+        shared_store=SharedStore(db_path),
+        event_bus=EventLog(db_path),
         injection_manager=cast(
             RunInjectionManager, cast(object, _FakeInjectionManager())
         ),
         run_event_hub=cast(RunEventHub, cast(object, hub)),
-        agent_repo=cast(AgentInstanceRepository, object()),
+        agent_repo=AgentInstanceRepository(db_path),
+        workflow_graph_repo=WorkflowGraphRepository(db_path),
+        approval_ticket_repo=ApprovalTicketRepository(db_path),
+        run_runtime_repo=RunRuntimeRepository(db_path),
         workspace_root=Path("."),
         tool_registry=cast(ToolRegistry, object()),
         mcp_registry=cast(McpRegistry, object()),
@@ -367,26 +505,54 @@ def _build_provider(
         allowed_tools=allowed_tools,
         allowed_mcp_servers=(),
         allowed_skills=allowed_skills,
-        message_repo=cast(MessageRepository, cast(object, message_repo)),
+        message_repo=message_repo,
         role_registry=cast(RoleRegistry, object()),
         task_execution_service=cast(TaskExecutionService, object()),
         run_control_manager=cast(
             RunControlManager,
-            cast(object, _FakeRunControlManager()),
+            cast(object, run_control_manager or _FakeRunControlManager()),
         ),
         tool_approval_manager=cast(ToolApprovalManager, object()),
         tool_approval_policy=cast(ToolApprovalPolicy, object()),
     )
+    return provider, message_repo
+
+
+def _seed_request(
+    message_repo: MessageRepository,
+    *,
+    session_id: str,
+    instance_id: str,
+    task_id: str,
+    trace_id: str,
+    content: str,
+) -> None:
+    message_repo.append(
+        session_id=session_id,
+        instance_id=instance_id,
+        task_id=task_id,
+        trace_id=trace_id,
+        messages=[ModelRequest(parts=[UserPromptPart(content=content)])],
+    )
 
 
 @pytest.mark.asyncio
-async def test_generate_passes_current_turn_prompt_even_with_existing_history(
+async def test_generate_persists_current_turn_prompt_even_with_existing_history(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_agent = _FakeAgent()
-    fake_message_repo = _FakeMessageRepo()
     fake_hub = _FakeRunEventHub()
-    provider = _build_provider(fake_message_repo, fake_hub)
+    provider, message_repo = _build_provider(tmp_path / "current_turn.db", fake_hub)
+
+    _seed_request(
+        message_repo,
+        session_id="session-2",
+        instance_id="inst-2",
+        task_id="task-2",
+        trace_id="run-2",
+        content="previous turn",
+    )
 
     monkeypatch.setattr(
         llm_module,
@@ -407,17 +573,74 @@ async def test_generate_passes_current_turn_prompt_even_with_existing_history(
 
     _ = await provider.generate(request)
 
-    assert fake_agent.prompts == ["current turn"]
+    history = message_repo.get_history("inst-2")
+    assert fake_agent.prompts == [None]
+    assert isinstance(history[-1], ModelRequest)
+    assert history[-1].parts[0].content == "current turn"
+
+
+@pytest.mark.asyncio
+async def test_generate_prunes_pending_tool_call_tail_before_persisting_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_agent = _FakeAgent()
+    fake_hub = _FakeRunEventHub()
+    provider, message_repo = _build_provider(tmp_path / "pending_tail.db", fake_hub)
+    message_repo.append(
+        session_id="session-pending-tool",
+        instance_id="inst-pending-tool",
+        task_id="task-pending-tool",
+        trace_id="run-pending-tool",
+        messages=[
+            ModelRequest(parts=[UserPromptPart(content="previous turn")]),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name="create_workflow_graph",
+                        args={"objective": "x"},
+                        tool_call_id="call-1",
+                    )
+                ]
+            ),
+        ],
+    )
+
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: fake_agent,
+    )
+
+    request = LLMRequest(
+        run_id="run-pending-tool",
+        trace_id="run-pending-tool",
+        task_id="task-pending-tool",
+        session_id="session-pending-tool",
+        instance_id="inst-pending-tool",
+        role_id="coordinator_agent",
+        system_prompt="system",
+        user_prompt="current turn",
+    )
+
+    _ = await provider.generate(request)
+
+    history = message_repo.get_history("inst-pending-tool")
+    assert fake_agent.prompts == [None]
+    assert len(history) == 2
+    assert isinstance(history[0], ModelRequest)
+    assert isinstance(history[1], ModelRequest)
+    assert history[1].parts[0].content == "current turn"
 
 
 @pytest.mark.asyncio
 async def test_generate_enables_continuous_stream_usage_stats(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_agent = _FakeAgent()
-    fake_message_repo = _FakeMessageRepo()
     fake_hub = _FakeRunEventHub()
-    provider = _build_provider(fake_message_repo, fake_hub)
+    provider, _ = _build_provider(tmp_path / "settings.db", fake_hub)
     captured_kwargs: dict[str, object] = {}
 
     def _fake_builder(**kwargs: object) -> _FakeAgent:
@@ -450,9 +673,9 @@ async def test_generate_enables_continuous_stream_usage_stats(
 @pytest.mark.asyncio
 async def test_generate_builds_augmented_system_prompt(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_agent = _FakeAgent()
-    fake_message_repo = _FakeMessageRepo()
     fake_hub = _FakeRunEventHub()
     fake_skill_registry = _FakeSkillRegistry(
         (
@@ -462,8 +685,8 @@ async def test_generate_builds_augmented_system_prompt(
             ),
         )
     )
-    provider = _build_provider(
-        fake_message_repo,
+    provider, _ = _build_provider(
+        tmp_path / "prompt_aug.db",
         fake_hub,
         allowed_tools=("dispatch_tasks",),
         allowed_skills=("time",),
@@ -485,7 +708,7 @@ async def test_generate_builds_augmented_system_prompt(
         instance_id="inst-augment",
         role_id="coordinator_agent",
         system_prompt="## Role\nBase system prompt.",
-        user_prompt="## Objective\ncurrent turn",
+        user_prompt="current turn",
     )
 
     _ = await provider.generate(request)
@@ -503,10 +726,10 @@ async def test_generate_builds_augmented_system_prompt(
 @pytest.mark.asyncio
 async def test_generate_token_usage_tracks_request_level_delta(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    fake_message_repo = _FakeMessageRepo()
     fake_hub = _FakeRunEventHub()
-    provider = _build_provider(fake_message_repo, fake_hub)
+    provider, _ = _build_provider(tmp_path / "token_usage.db", fake_hub)
     usage_after_request = SimpleNamespace(
         input_tokens=130,
         output_tokens=19,
@@ -554,10 +777,10 @@ async def test_generate_token_usage_tracks_request_level_delta(
 @pytest.mark.asyncio
 async def test_generate_token_usage_delta_works_with_mutated_usage_object(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    fake_message_repo = _FakeMessageRepo()
     fake_hub = _FakeRunEventHub()
-    provider = _build_provider(fake_message_repo, fake_hub)
+    provider, _ = _build_provider(tmp_path / "token_usage_mut.db", fake_hub)
     fake_agent = _FakeAgentWithMutableUsageNode()
 
     monkeypatch.setattr(
@@ -594,3 +817,333 @@ async def test_generate_token_usage_delta_works_with_mutated_usage_object(
     assert payload["total_tokens"] == 39
     assert payload["requests"] == 1
     assert payload["tool_calls"] == 5
+
+
+@pytest.mark.asyncio
+async def test_subagent_resume_after_stream_cancellation_reuses_db_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "subagent_stream_cancel.db"
+    cancel_hub = _FakeRunEventHub()
+    provider, message_repo = _build_provider(
+        db_path,
+        cancel_hub,
+        run_control_manager=_CountingRunControlManager(cancel_after=4),
+    )
+    _seed_request(
+        message_repo,
+        session_id="session-sub",
+        instance_id="inst-sub",
+        task_id="task-sub",
+        trace_id="run-sub",
+        content="query time",
+    )
+
+    cancelled_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[_StreamingTextNode(["partial ", "answer"])],
+                messages_by_step=[[]],
+                result=_ScriptedResult(response="unused", messages=[]),
+                raise_on_exhaust=asyncio.CancelledError(),
+            )
+        ]
+    )
+    monkeypatch.setattr(llm_module, "ModelRequestNode", _StreamingTextNode)
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: cancelled_agent,
+    )
+    request = LLMRequest(
+        run_id="run-sub",
+        trace_id="run-sub",
+        task_id="task-sub",
+        session_id="session-sub",
+        instance_id="inst-sub",
+        role_id="time",
+        system_prompt="system",
+        user_prompt=None,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await provider.generate(request)
+
+    history_after_cancel = message_repo.get_history("inst-sub")
+    assert len(history_after_cancel) == 1
+    assert isinstance(history_after_cancel[0], ModelRequest)
+    assert history_after_cancel[0].parts[0].content == "query time"
+
+    resume_hub = _FakeRunEventHub()
+    resume_provider, resume_repo = _build_provider(db_path, resume_hub)
+    resumed_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[],
+                messages_by_step=[],
+                result=_ScriptedResult(
+                    response=ModelResponse(parts=[TextPart(content="fresh answer")]),
+                    messages=[ModelResponse(parts=[TextPart(content="fresh answer")])],
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: resumed_agent,
+    )
+
+    result = await resume_provider.generate(request)
+
+    assert result == "fresh answer"
+    assert resumed_agent.prompts == [None]
+    history_after_resume = resume_repo.get_history("inst-sub")
+    assert len(history_after_resume) == 2
+    assert isinstance(history_after_resume[-1], ModelResponse)
+    assert isinstance(history_after_resume[-1].parts[0], TextPart)
+    assert history_after_resume[-1].parts[0].content == "fresh answer"
+
+
+@pytest.mark.asyncio
+async def test_subagent_resume_after_tool_call_cancellation_replays_from_safe_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "subagent_tool_call_cancel.db"
+    cancel_hub = _FakeRunEventHub()
+    provider, message_repo = _build_provider(db_path, cancel_hub)
+    _seed_request(
+        message_repo,
+        session_id="session-sub",
+        instance_id="inst-sub",
+        task_id="task-sub",
+        trace_id="run-sub",
+        content="query time",
+    )
+
+    cancelled_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[object()],
+                messages_by_step=[
+                    [
+                        ModelResponse(
+                            parts=[
+                                ToolCallPart(
+                                    tool_name="current_time",
+                                    args={"timezone": "UTC"},
+                                    tool_call_id="call-pre",
+                                )
+                            ]
+                        )
+                    ]
+                ],
+                result=_ScriptedResult(response="unused", messages=[]),
+                raise_on_exhaust=asyncio.CancelledError(),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: cancelled_agent,
+    )
+    request = LLMRequest(
+        run_id="run-sub",
+        trace_id="run-sub",
+        task_id="task-sub",
+        session_id="session-sub",
+        instance_id="inst-sub",
+        role_id="time",
+        system_prompt="system",
+        user_prompt=None,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await provider.generate(request)
+
+    history_after_cancel = message_repo.get_history("inst-sub")
+    assert len(history_after_cancel) == 1
+    assert any(
+        event.event_type == RunEventType.TOOL_CALL for event in cancel_hub.events
+    )
+    assert not any(
+        event.event_type == RunEventType.TOOL_RESULT for event in cancel_hub.events
+    )
+
+    resume_hub = _FakeRunEventHub()
+    resume_provider, resume_repo = _build_provider(db_path, resume_hub)
+    resumed_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[],
+                messages_by_step=[],
+                result=_ScriptedResult(
+                    response=ModelResponse(parts=[TextPart(content="done")]),
+                    messages=[
+                        ModelResponse(
+                            parts=[
+                                ToolCallPart(
+                                    tool_name="current_time",
+                                    args={"timezone": "UTC"},
+                                    tool_call_id="call-resume",
+                                )
+                            ]
+                        ),
+                        ModelRequest(
+                            parts=[
+                                ToolReturnPart(
+                                    tool_name="current_time",
+                                    tool_call_id="call-resume",
+                                    content={"time": "2026-03-07T10:00:00Z"},
+                                )
+                            ]
+                        ),
+                        ModelResponse(parts=[TextPart(content="done")]),
+                    ],
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: resumed_agent,
+    )
+
+    result = await resume_provider.generate(request)
+
+    assert result == "done"
+    history_after_resume = resume_repo.get_history("inst-sub")
+    tool_calls = [
+        part.tool_call_id
+        for message in history_after_resume
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+        if isinstance(part, ToolCallPart)
+    ]
+    tool_returns = [
+        part.tool_call_id
+        for message in history_after_resume
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert tool_calls == ["call-resume"]
+    assert tool_returns == ["call-resume"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_resume_after_tool_result_before_commit_retries_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "subagent_tool_result_commit_cancel.db"
+    cancel_hub = _FakeRunEventHub()
+    provider, message_repo = _build_provider(db_path, cancel_hub)
+    _seed_request(
+        message_repo,
+        session_id="session-sub",
+        instance_id="inst-sub",
+        task_id="task-sub",
+        trace_id="run-sub",
+        content="query time",
+    )
+    scripted_messages = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="current_time",
+                    args={"timezone": "UTC"},
+                    tool_call_id="call-once",
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="current_time",
+                    tool_call_id="call-once",
+                    content={"time": "2026-03-07T10:00:00Z"},
+                )
+            ]
+        ),
+        ModelResponse(parts=[TextPart(content="done")]),
+    ]
+    completed_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[],
+                messages_by_step=[],
+                result=_ScriptedResult(
+                    response=ModelResponse(parts=[TextPart(content="done")]),
+                    messages=scripted_messages,
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: completed_agent,
+    )
+    request = LLMRequest(
+        run_id="run-sub",
+        trace_id="run-sub",
+        task_id="task-sub",
+        session_id="session-sub",
+        instance_id="inst-sub",
+        role_id="time",
+        system_prompt="system",
+        user_prompt=None,
+    )
+
+    def _interrupt_commit(*args, **kwargs):
+        _ = (args, kwargs)
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(provider, "_commit_all_safe_messages", _interrupt_commit)
+
+    with pytest.raises(asyncio.CancelledError):
+        await provider.generate(request)
+
+    history_after_cancel = message_repo.get_history("inst-sub")
+    assert len(history_after_cancel) == 1
+
+    resume_hub = _FakeRunEventHub()
+    resume_provider, resume_repo = _build_provider(db_path, resume_hub)
+    resumed_agent = _SequentialAgent(
+        [
+            _ScriptedAgentRun(
+                nodes=[],
+                messages_by_step=[],
+                result=_ScriptedResult(
+                    response=ModelResponse(parts=[TextPart(content="done")]),
+                    messages=scripted_messages,
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "build_collaboration_agent",
+        lambda **kwargs: resumed_agent,
+    )
+
+    result = await resume_provider.generate(request)
+
+    assert result == "done"
+    history_after_resume = resume_repo.get_history("inst-sub")
+    tool_returns = [
+        part
+        for message in history_after_resume
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert len(tool_returns) == 1
+    assert tool_returns[0].tool_call_id == "call-once"
+    assert isinstance(tool_returns[0].content, dict)
+    assert tool_returns[0].content.get("time") == "2026-03-07T10:00:00Z"

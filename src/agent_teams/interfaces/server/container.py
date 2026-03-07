@@ -35,12 +35,17 @@ from agent_teams.sessions import SessionService
 from agent_teams.skills.config_reload_service import SkillsConfigReloadService
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.approval_ticket_repo import ApprovalTicketRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_intent_repo import RunIntentRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
+from agent_teams.state.run_state_repo import RunStateRepository
 from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.state.token_usage_repo import TokenUsageRepository
+from agent_teams.state.workflow_graph_repo import WorkflowGraphRepository
 from agent_teams.tools.registry import ToolRegistry, build_default_registry
 from agent_teams.tools.runtime import (
     ToolApprovalManager,
@@ -97,6 +102,21 @@ class ServerContainer:
             runtime.paths.db_path
         )
         self.message_repo: MessageRepository = MessageRepository(runtime.paths.db_path)
+        self.workflow_graph_repo: WorkflowGraphRepository = WorkflowGraphRepository(
+            runtime.paths.db_path
+        )
+        self.approval_ticket_repo: ApprovalTicketRepository = ApprovalTicketRepository(
+            runtime.paths.db_path
+        )
+        self.run_runtime_repo: RunRuntimeRepository = RunRuntimeRepository(
+            runtime.paths.db_path
+        )
+        self.run_intent_repo: RunIntentRepository = RunIntentRepository(
+            runtime.paths.db_path
+        )
+        self.run_state_repo: RunStateRepository = RunStateRepository(
+            runtime.paths.db_path
+        )
         self.session_repo: SessionRepository = SessionRepository(runtime.paths.db_path)
         self.token_usage_repo: TokenUsageRepository = TokenUsageRepository(
             runtime.paths.db_path
@@ -109,7 +129,10 @@ class ServerContainer:
         self.instance_pool: InstancePool = InstancePool.from_repo(self.agent_repo)
         self.injection_manager: RunInjectionManager = RunInjectionManager()
         self.run_control_manager: RunControlManager = RunControlManager()
-        self.run_event_hub: RunEventHub = RunEventHub(event_log=self.event_log)
+        self.run_event_hub: RunEventHub = RunEventHub(
+            event_log=self.event_log,
+            run_state_repo=self.run_state_repo,
+        )
         self.notification_service: NotificationService = NotificationService(
             run_event_hub=self.run_event_hub,
             get_config=self.notification_config_manager.get_notification_config,
@@ -125,6 +148,7 @@ class ServerContainer:
             message_repo=self.message_repo,
             instance_pool=self.instance_pool,
             event_bus=self.event_log,
+            run_runtime_repo=self.run_runtime_repo,
         )
 
         self._provider_factory: Callable[[RoleDefinition], LLMProvider]
@@ -142,6 +166,7 @@ class ServerContainer:
             prompt_builder=RuntimePromptBuilder(),
             provider_factory=self._provider_factory,
             task_execution_service=self.task_execution_service,
+            run_runtime_repo=self.run_runtime_repo,
             run_control_manager=self.run_control_manager,
             gate_manager=self.gate_manager,
             run_event_hub=self.run_event_hub,
@@ -154,16 +179,30 @@ class ServerContainer:
             run_control_manager=self.run_control_manager,
             tool_approval_manager=self.tool_approval_manager,
             session_repo=self.session_repo,
+            event_log=self.event_log,
+            task_repo=self.task_repo,
+            agent_repo=self.agent_repo,
+            message_repo=self.message_repo,
+            approval_ticket_repo=self.approval_ticket_repo,
+            run_runtime_repo=self.run_runtime_repo,
+            run_intent_repo=self.run_intent_repo,
+            run_state_repo=self.run_state_repo,
             notification_service=self.notification_service,
         )
         self.session_service: SessionService = SessionService(
             session_repo=self.session_repo,
             task_repo=self.task_repo,
             agent_repo=self.agent_repo,
-            shared_store=self.shared_store,
             message_repo=self.message_repo,
-            event_log=self.event_log,
+            workflow_graph_repo=self.workflow_graph_repo,
+            approval_ticket_repo=self.approval_ticket_repo,
+            run_runtime_repo=self.run_runtime_repo,
             token_usage_repo=self.token_usage_repo,
+            run_event_hub=self.run_event_hub,
+            resolve_active_run_id=lambda session_id: (
+                self.run_service._active_run_by_session.get(session_id)
+            ),
+            event_log=self.event_log,
         )
         self.config_status_service: ConfigStatusService = ConfigStatusService(
             get_runtime=lambda: self.runtime,
@@ -209,6 +248,9 @@ class ServerContainer:
             injection_manager=self.injection_manager,
             run_event_hub=self.run_event_hub,
             agent_repo=self.agent_repo,
+            workflow_graph_repo=self.workflow_graph_repo,
+            approval_ticket_repo=self.approval_ticket_repo,
+            run_runtime_repo=self.run_runtime_repo,
             tool_registry=self.tool_registry,
             mcp_registry=self.mcp_registry,
             skill_registry=self.skill_registry,
@@ -229,6 +271,9 @@ class ServerContainer:
             event_log=self.event_log,
             agent_repo=self.agent_repo,
             message_repo=self.message_repo,
+            workflow_graph_repo=self.workflow_graph_repo,
+            approval_ticket_repo=self.approval_ticket_repo,
+            run_runtime_repo=self.run_runtime_repo,
             provider_factory=self._provider_factory,
             injection_manager=self.injection_manager,
             run_control_manager=self.run_control_manager,
@@ -236,11 +281,13 @@ class ServerContainer:
         self.workflow_service = WorkflowOrchestrationService(
             task_repo=self.task_repo,
             shared_store=self.shared_store,
+            workflow_graph_repo=self.workflow_graph_repo,
             role_registry=self.role_registry,
             instance_pool=self.instance_pool,
             agent_repo=self.agent_repo,
             task_execution_service=self.task_execution_service,
             injection_manager=self.injection_manager,
+            message_repo=self.message_repo,
         )
 
     def _refresh_coordinator_runtime(self) -> None:

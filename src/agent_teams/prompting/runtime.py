@@ -23,7 +23,7 @@ def build_runtime_system_prompt(data: RuntimePromptBuildInput) -> str:
         sections.append(
             "## Runtime Contract\n"
             "- A coordinator turn can call tools many times, but delegated tasks run after the turn ends.\n"
-            "- Do not claim task started/completed without get_workflow_status evidence.\n"
+            "- Use dispatch_tasks return payloads as the source of truth for progress, task status, and stage outputs.\n"
             "- Prefer workflow tools over raw task-by-task creation."
         )
     sections.append(f"## Task Context\n- TaskRef: {data.task.task_id}")

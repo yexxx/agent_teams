@@ -51,6 +51,7 @@ def test_runtime_system_prompt_for_coordinator_has_contract_and_context() -> Non
 
     assert "## Role" in prompt
     assert "## Runtime Contract" in prompt
+    assert "dispatch_tasks return payloads" in prompt
     assert "- TaskRef: task-1" in prompt
     assert "- status: ready" in prompt
     assert "Deliver weekly summary" not in prompt
@@ -74,7 +75,7 @@ def test_provider_augmented_system_prompt_renders_tools_and_skills() -> None:
     prompt = build_provider_augmented_system_prompt(
         ProviderPromptAugmentInput(
             system_prompt="## Role\nYou are a planner.",
-            allowed_tools=("dispatch_tasks", "get_workflow_status"),
+            allowed_tools=("dispatch_tasks",),
             skill_instructions=(
                 PromptSkillInstruction(
                     name="time",
@@ -85,15 +86,15 @@ def test_provider_augmented_system_prompt_renders_tools_and_skills() -> None:
     )
 
     assert "## Tool Rules" in prompt
-    assert "dispatch_tasks, get_workflow_status" in prompt
+    assert "dispatch_tasks" in prompt
     assert "## Skill Instructions" in prompt
     assert "### Skill: time" in prompt
     assert "Always normalize to UTC." in prompt
 
 
-def test_user_prompt_builder_only_contains_objective_section() -> None:
+def test_user_prompt_builder_returns_raw_objective() -> None:
     prompt = build_user_prompt(
         UserPromptBuildInput(objective="Draft the release notes.")
     )
 
-    assert prompt == "## Objective\nDraft the release notes."
+    assert prompt == "Draft the release notes."

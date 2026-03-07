@@ -6,11 +6,15 @@ import { els } from '../../utils/dom.js';
 import { state } from '../../core/state.js';
 import { fetchRunTokenUsage } from '../../core/api.js';
 import { clearAllPanels, setRoundPendingApprovals } from '../agentPanel.js';
-import { clearAllStreamState, renderHistoricalMessageList } from '../messageRenderer.js';
+import {
+    clearAllStreamState,
+    getCoordinatorStreamOverlay,
+    renderHistoricalMessageList,
+} from '../messageRenderer.js';
 import { renderRoundNavigator, setActiveRoundNav } from './navigator.js';
 import { applyRoundPage, fetchInitialRoundsPage, fetchOlderRoundsPage } from './paging.js';
 import { roundsState } from './state.js';
-import { roundSectionId, esc } from './utils.js';
+import { roundSectionId, esc, roundStateLabel, roundStateTone } from './utils.js';
 import { updateWorkflowByRound } from './workflow.js';
 
 export let currentRounds = [];
@@ -27,24 +31,109 @@ export async function loadSessionRounds(sessionId) {
     }
 }
 
-export function createLiveRound(intentText) {
-    const liveRound = {
-        run_id: '__live__',
-        created_at: new Date().toISOString(),
-        intent: intentText,
-        coordinator_messages: [],
-        workflows: [],
-        instance_role_map: {},
-        role_instance_map: {},
-    };
+export function createLiveRound(runId, intentText) {
+    const safeRunId = String(runId || '').trim();
+    if (!safeRunId) return;
 
-    roundsState.currentRounds = [...roundsState.currentRounds, liveRound];
+    const existingIndex = roundsState.currentRounds.findIndex(round => round.run_id === safeRunId);
+    if (existingIndex === -1) {
+        roundsState.currentRounds = [
+            ...roundsState.currentRounds,
+            {
+                run_id: safeRunId,
+                created_at: new Date().toISOString(),
+                intent: intentText,
+                coordinator_messages: [],
+                workflows: [],
+                instance_role_map: {},
+                role_instance_map: {},
+                run_status: 'running',
+                run_phase: 'running',
+                is_recoverable: true,
+                pending_tool_approval_count: 0,
+            },
+        ];
+    } else {
+        roundsState.currentRounds = roundsState.currentRounds.map(round =>
+            round.run_id === safeRunId
+                ? {
+                    ...round,
+                    run_status: round.run_status || 'running',
+                    run_phase: round.run_phase || 'running',
+                    is_recoverable: round.is_recoverable !== false,
+                }
+                : round,
+        );
+    }
     syncExportedState();
     renderSessionTimeline(roundsState.currentRounds, { preserveScroll: false });
 
-    const section = document.getElementById(roundSectionId('__live__'));
+    const section = document.getElementById(roundSectionId(safeRunId));
     if (section) {
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+export function appendRoundUserMessage(runId, text) {
+    const safeRunId = String(runId || '').trim();
+    if (!safeRunId) return;
+    const roundIndex = roundsState.currentRounds.findIndex(round => round.run_id === safeRunId);
+    if (roundIndex >= 0) {
+        roundsState.currentRounds = roundsState.currentRounds.map(round =>
+            round.run_id === safeRunId
+                ? { ...round, has_user_messages: true }
+                : round,
+        );
+        if (roundsState.currentRound?.run_id === safeRunId) {
+            roundsState.currentRound = roundsState.currentRounds[roundIndex];
+        }
+        syncExportedState();
+    }
+    const section = document.querySelector(`.session-round-section[data-run-id="${safeRunId}"]`);
+    if (!section) return;
+    const empty = section.querySelector('.panel-empty');
+    if (empty) empty.remove();
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message';
+    messageEl.dataset.role = 'user';
+    messageEl.innerHTML = `
+        <div class="msg-header"><span class="msg-role role-user">YOU</span></div>
+        <div class="msg-content"><div class="msg-text">${esc(text || '')}</div></div>
+    `;
+    section.appendChild(messageEl);
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+export function overlayRoundRecoveryState(runId, overlay = {}) {
+    const safeRunId = String(runId || '').trim();
+    if (!safeRunId) return;
+
+    const roundIndex = roundsState.currentRounds.findIndex(round => round.run_id === safeRunId);
+    if (roundIndex === -1) return;
+
+    const current = roundsState.currentRounds[roundIndex];
+    const nextRound = {
+        ...current,
+        ...pickDefinedRoundOverlay(overlay),
+    };
+    roundsState.currentRounds = roundsState.currentRounds.map(round =>
+        round.run_id === safeRunId ? nextRound : round,
+    );
+    if (roundsState.currentRound?.run_id === safeRunId) {
+        roundsState.currentRound = nextRound;
+    }
+    syncExportedState();
+    patchRoundHeader(nextRound, roundIndex);
+    renderRoundNavigator(roundsState.currentRounds, selectRound);
+    setActiveRoundNav(roundsState.activeRunId);
+
+    if (roundsState.currentRound?.run_id === safeRunId) {
+        const pendingApprovals = Array.isArray(nextRound.pending_tool_approvals)
+            ? nextRound.pending_tool_approvals
+            : [];
+        setRoundPendingApprovals(safeRunId, pendingApprovals);
+        updateWorkflowByRound(nextRound);
     }
 }
 
@@ -98,10 +187,16 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
         section.id = roundSectionId(round.run_id);
 
         const time = new Date(round.created_at).toLocaleString();
+        const stateLabel = roundStateLabel(round);
+        const stateTone = roundStateTone(round);
+        const approvalCount = Number(round.pending_tool_approval_count || 0);
         const header = document.createElement('div');
         header.className = 'round-detail-header';
         header.innerHTML = `
-            <div class="round-detail-label">Round ${index + 1}${round.run_id === '__live__' ? ' <span class="live-badge">LIVE</span>' : ''}</div>
+            <div class="round-detail-topline">
+                <div class="round-detail-label">Round ${index + 1}${round.run_status === 'running' ? ' <span class="live-badge">LIVE</span>' : ''}</div>
+                <div class="round-detail-badges">${renderRoundBadges(round, stateLabel, stateTone, approvalCount)}</div>
+            </div>
             <div class="round-detail-time">${time}</div>
             <div class="round-detail-intent">
                 <span class="intent-label">Intent:</span>
@@ -113,31 +208,21 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
             const roleId = item?.role_id || '';
             return roleId === '' || roleId === 'coordinator_agent';
         });
-        const streamSnapshot = round.pending_streams || null;
-        const pendingCoordinatorStreamText = String(
-            streamSnapshot?.coordinator_text || streamSnapshot?.coordinatorText || '',
-        );
-        const pendingCoordinatorInstanceId = String(
-            streamSnapshot?.coordinator_instance_id || streamSnapshot?.coordinatorInstanceId || '',
-        );
+        const coordinatorOverlay = getCoordinatorStreamOverlay(round.run_id);
 
         if (round.coordinator_messages?.length > 0) {
             renderHistoricalMessageList(section, round.coordinator_messages, {
                 pendingToolApprovals: pendingCoordinatorApprovals,
                 runId: round.run_id,
-                pendingStreamText: pendingCoordinatorStreamText,
-                pendingStreamRoleId: 'coordinator_agent',
-                pendingStreamInstanceId: pendingCoordinatorInstanceId,
+                streamOverlayEntry: coordinatorOverlay,
             });
-        } else if (pendingCoordinatorApprovals.length > 0 || pendingCoordinatorStreamText.trim()) {
+        } else if (pendingCoordinatorApprovals.length > 0 || coordinatorOverlay) {
             renderHistoricalMessageList(section, [], {
                 pendingToolApprovals: pendingCoordinatorApprovals,
                 runId: round.run_id,
-                pendingStreamText: pendingCoordinatorStreamText,
-                pendingStreamRoleId: 'coordinator_agent',
-                pendingStreamInstanceId: pendingCoordinatorInstanceId,
+                streamOverlayEntry: coordinatorOverlay,
             });
-        } else if (round.run_id !== '__live__') {
+        } else if (!round.has_user_messages) {
             const empty = document.createElement('div');
             empty.className = 'panel-empty';
             empty.textContent = 'No coordinator messages in this round.';
@@ -146,8 +231,7 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
 
         container.appendChild(section);
 
-        // Lazily load token usage for completed (non-live) rounds
-        if (round.run_id !== '__live__' && state.currentSessionId) {
+        if (state.currentSessionId) {
             const headerEl = header;
             void fetchRunTokenUsage(state.currentSessionId, round.run_id).then(usage => {
                 if (!usage || usage.total_tokens === 0) return;
@@ -239,9 +323,7 @@ function activateRoundSection(section, visibleScore) {
     roundsState.activeVisibility = visibleScore;
     roundsState.currentRound = roundsState.currentRounds.find(r => r.run_id === runId) || null;
     const pendingApprovals = roundsState.currentRound?.pending_tool_approvals || [];
-    const snapshot = roundsState.currentRound?.pending_streams || null;
-    const pendingStreamsByInstance = snapshot?.by_instance || snapshot?.byInstance || {};
-    setRoundPendingApprovals(runId, pendingApprovals, pendingStreamsByInstance);
+    setRoundPendingApprovals(runId, pendingApprovals);
     syncExportedState();
 
     setActiveRoundNav(runId);
@@ -277,4 +359,45 @@ async function loadOlderRounds() {
 function syncExportedState() {
     currentRounds = roundsState.currentRounds;
     currentRound = roundsState.currentRound;
+}
+
+function pickDefinedRoundOverlay(overlay) {
+    const next = {};
+    [
+        'run_status',
+        'run_phase',
+        'is_recoverable',
+        'pending_tool_approval_count',
+        'pending_tool_approvals',
+    ].forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(overlay, key)) {
+            next[key] = overlay[key];
+        }
+    });
+    return next;
+}
+
+function patchRoundHeader(round, roundIndex) {
+    const section = document.querySelector(`.session-round-section[data-run-id="${round.run_id}"]`);
+    if (!section) return;
+
+    const labelEl = section.querySelector('.round-detail-label');
+    if (labelEl) {
+        labelEl.innerHTML = `Round ${roundIndex + 1}${round.run_status === 'running' ? ' <span class="live-badge">LIVE</span>' : ''}`;
+    }
+
+    const badgesEl = section.querySelector('.round-detail-badges');
+    if (badgesEl) {
+        const stateLabel = roundStateLabel(round);
+        const stateTone = roundStateTone(round);
+        const approvalCount = Number(round.pending_tool_approval_count || 0);
+        badgesEl.innerHTML = renderRoundBadges(round, stateLabel, stateTone, approvalCount);
+    }
+}
+
+function renderRoundBadges(round, stateLabel, stateTone, approvalCount) {
+    return `
+        ${stateLabel ? `<span class="round-state-pill round-state-${stateTone}">${esc(stateLabel)}</span>` : ''}
+        ${approvalCount > 0 ? `<span class="round-state-pill round-state-warning">${approvalCount} approval${approvalCount === 1 ? '' : 's'}</span>` : ''}
+    `;
 }

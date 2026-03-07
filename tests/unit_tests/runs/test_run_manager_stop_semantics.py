@@ -24,6 +24,7 @@ from agent_teams.tools.runtime import ToolApprovalManager
 from agent_teams.state.agent_repo import AgentInstanceRepository
 from agent_teams.state.event_log import EventLog
 from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import RunRuntimeRepository
 from agent_teams.state.session_models import SessionRecord
 from agent_teams.state.session_repo import SessionRepository
 from agent_teams.state.task_repo import TaskRepository
@@ -78,6 +79,12 @@ class _EventBus:
         return None
 
 
+class _RunRuntimeRepo:
+    def list_by_session(self, session_id: str):
+        _ = session_id
+        return ()
+
+
 class _SessionRepo:
     def get(self, session_id: str) -> SessionRecord:
         return SessionRecord(session_id=session_id)
@@ -99,6 +106,7 @@ def _make_run_manager(control: RunControlManager) -> RunManager:
         message_repo=cast(MessageRepository, cast(object, _MessageRepo())),
         instance_pool=cast(InstancePool, cast(object, _InstancePool())),
         event_bus=cast(EventLog, cast(object, _EventBus())),
+        run_runtime_repo=cast(RunRuntimeRepository, cast(object, _RunRuntimeRepo())),
     )
     return RunManager(
         meta_agent=cast(MetaAgent, cast(object, _MetaAgent())),
@@ -137,6 +145,7 @@ def test_stop_pending_run_emits_run_stopped_event() -> None:
         message_repo=cast(MessageRepository, cast(object, _MessageRepo())),
         instance_pool=cast(InstancePool, cast(object, _InstancePool())),
         event_bus=cast(EventLog, cast(object, _EventBus())),
+        run_runtime_repo=cast(RunRuntimeRepository, cast(object, _RunRuntimeRepo())),
     )
     manager = RunManager(
         meta_agent=cast(MetaAgent, cast(object, _MetaAgent())),

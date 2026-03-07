@@ -7,9 +7,9 @@ import { toggleWorkflow } from '../components/rounds.js';
 import { handleNewSessionClick, loadSessions } from '../components/sidebar.js';
 import { setupNavbarBindings } from '../components/navbar.js';
 import { primeNotificationPermission } from '../utils/notifications.js';
-import { stopRun } from '../core/api.js';
+import { resumeRecoverableRun } from './recovery.js';
 import { state } from '../core/state.js';
-import { endStream, resumeRunStream } from '../core/stream.js';
+import { requestStopCurrentRun } from '../core/stream.js';
 import { els } from '../utils/dom.js';
 import { sysLog } from '../utils/logger.js';
 
@@ -38,13 +38,13 @@ export function setupEventBindings(handleSend) {
     }
     if (els.stopBtn) {
         els.stopBtn.onclick = async () => {
-            if (!state.activeRunId) return;
             try {
-                await stopRun(state.activeRunId, { scope: 'main' });
+                const requested = await requestStopCurrentRun();
+                if (!requested) {
+                    return;
+                }
             } catch (e) {
                 sysLog(`Stop failed: ${e.message}`, 'log-error');
-            } finally {
-                endStream();
             }
         };
     }
@@ -55,7 +55,11 @@ export function setupEventBindings(handleSend) {
     document.addEventListener('run-approval-resolved', (event) => {
         const runId = event?.detail?.runId;
         if (!runId || typeof runId !== 'string') return;
-        resumeRunStream(runId);
+        void resumeRecoverableRun(runId, {
+            sessionId: state.currentSessionId,
+            reason: 'tool approval resolved',
+            quiet: true,
+        });
     });
 }
 

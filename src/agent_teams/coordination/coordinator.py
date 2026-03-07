@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -24,12 +24,22 @@ from agent_teams.runs.event_stream import RunEventHub
 from agent_teams.runs.ids import new_trace_id
 from agent_teams.runs.models import IntentInput, RunEvent
 from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRecord,
+    RunRuntimeRepository,
+)
 from agent_teams.state.shared_store import SharedStore
 from agent_teams.state.task_repo import TaskRepository
 from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.events import EventEnvelope, EventType
 from agent_teams.workflow.ids import new_task_id
-from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
+from agent_teams.workflow.models import (
+    TaskEnvelope,
+    TaskRecord,
+    VerificationPlan,
+    VerificationResult,
+)
 
 ROLE_COORDINATOR = "coordinator_agent"
 MAX_ORCHESTRATION_CYCLES = 8
@@ -48,6 +58,7 @@ class CoordinatorGraph(BaseModel):
     prompt_builder: RuntimePromptBuilder
     provider_factory: Callable[[RoleDefinition], LLMProvider]
     task_execution_service: TaskExecutionService
+    run_runtime_repo: RunRuntimeRepository
     run_control_manager: RunControlManager
     gate_manager: GateManager = Field(default_factory=GateManager)
     run_event_hub: RunEventHub | None = None
@@ -116,8 +127,11 @@ class CoordinatorGraph(BaseModel):
             raise ValueError(f"Unknown execution mode: {mode}")
 
         verification = verify_task(self.task_repo, self.event_bus, root_task.task_id)
-        status: Literal["completed", "failed"] = (
-            "completed" if verification.passed else "failed"
+        status = self._terminal_status_from_verification(
+            trace_id=trace_id,
+            root_task=root_task,
+            verification=verification,
+            output=result,
         )
         log_event(
             LOGGER,
@@ -127,6 +141,48 @@ class CoordinatorGraph(BaseModel):
                 f"[coord:finish] run={trace_id} mode={mode.value} "
                 f"status={status} root_task={root_task.task_id}"
             ),
+        )
+        return trace_id, root_task.task_id, status, result
+
+    async def resume(
+        self,
+        *,
+        trace_id: str,
+    ) -> tuple[str, str, Literal["completed", "failed"], str]:
+        root_task_record = self._get_root_task_by_trace(trace_id)
+        root_task = root_task_record.envelope
+        coordinator_instance_id = self._ensure_coordinator_instance(
+            session_id=root_task.session_id,
+            trace_id=trace_id,
+            root_task=root_task,
+        )
+        self._prepare_recovery(
+            trace_id=trace_id,
+            coordinator_instance_id=coordinator_instance_id,
+        )
+        runtime = self.run_runtime_repo.get(trace_id)
+        coordinator_first = not self._has_resumable_delegated_work(
+            trace_id=trace_id,
+            root_task_id=root_task.task_id,
+        )
+        if runtime is not None and runtime.phase in {
+            RunRuntimePhase.SUBAGENT_RUNNING,
+            RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+        }:
+            coordinator_first = False
+        result = await self._run_ai_mode(
+            trace_id=trace_id,
+            root_task=root_task,
+            coordinator_instance_id=coordinator_instance_id,
+            coordinator_first=coordinator_first,
+            initial_result=root_task_record.result or "",
+        )
+        verification = verify_task(self.task_repo, self.event_bus, root_task.task_id)
+        status = self._terminal_status_from_verification(
+            trace_id=trace_id,
+            root_task=root_task,
+            verification=verification,
+            output=result,
         )
         return trace_id, root_task.task_id, status, result
 
@@ -166,18 +222,22 @@ class CoordinatorGraph(BaseModel):
         trace_id: str,
         root_task: TaskEnvelope,
         coordinator_instance_id: str,
+        coordinator_first: bool = True,
+        initial_result: str = "",
     ) -> str:
-        coordinator_result = await self._task_executor(
-            instance_id=coordinator_instance_id,
-            role_id=ROLE_COORDINATOR,
-            task=root_task,
-        )
-        log_event(
-            LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message=f"[coord:ai:first-pass-done] run={trace_id}",
-        )
+        coordinator_result = initial_result
+        if coordinator_first:
+            coordinator_result = await self._task_executor(
+                instance_id=coordinator_instance_id,
+                role_id=ROLE_COORDINATOR,
+                task=root_task,
+            )
+            log_event(
+                LOGGER,
+                logging.DEBUG,
+                event="runtime.debug",
+                message=f"[coord:ai:first-pass-done] run={trace_id}",
+            )
 
         cycle = 0
         while cycle < MAX_ORCHESTRATION_CYCLES:
@@ -271,6 +331,117 @@ class CoordinatorGraph(BaseModel):
                 raise
             ran_any = True
         return ran_any
+
+    def _get_root_task_by_trace(self, trace_id: str) -> TaskRecord:
+        for record in self.task_repo.list_by_trace(trace_id):
+            if record.envelope.parent_task_id is None:
+                return record
+        raise KeyError(f"No root task found for run_id={trace_id}")
+
+    def _prepare_recovery(self, *, trace_id: str, coordinator_instance_id: str) -> None:
+        runtime = self.run_runtime_repo.get(trace_id)
+        records = self.task_repo.list_by_trace(trace_id)
+        incomplete_task_ids = {
+            record.envelope.task_id
+            for record in records
+            if record.status
+            not in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.TIMEOUT}
+        }
+        for record in records:
+            if record.status == TaskStatus.RUNNING or (
+                record.status == TaskStatus.STOPPED
+                and not self._is_paused_subagent_task(
+                    runtime=runtime,
+                    task_id=record.envelope.task_id,
+                    assigned_instance_id=record.assigned_instance_id,
+                )
+            ):
+                next_status = (
+                    TaskStatus.ASSIGNED
+                    if record.assigned_instance_id
+                    else TaskStatus.CREATED
+                )
+                self.task_repo.update_status(
+                    record.envelope.task_id,
+                    next_status,
+                    assigned_instance_id=record.assigned_instance_id,
+                )
+
+        for instance in self.agent_repo.list_by_run(trace_id):
+            should_reset = (
+                instance.instance_id == coordinator_instance_id
+                or instance.status == InstanceStatus.RUNNING
+                or any(
+                    record.assigned_instance_id == instance.instance_id
+                    and record.envelope.task_id in incomplete_task_ids
+                    for record in records
+                )
+            )
+            if (
+                runtime is not None
+                and runtime.phase == RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP
+                and runtime.active_subagent_instance_id == instance.instance_id
+            ):
+                should_reset = False
+            if not should_reset:
+                continue
+            try:
+                _ = self.instance_pool.mark_idle(instance.instance_id)
+            except KeyError:
+                pass
+            self.agent_repo.mark_status(instance.instance_id, InstanceStatus.IDLE)
+
+    def _has_resumable_delegated_work(
+        self, *, trace_id: str, root_task_id: str
+    ) -> bool:
+        runtime = self.run_runtime_repo.get(trace_id)
+        for record in self.task_repo.list_by_trace(trace_id):
+            task = record.envelope
+            if task.task_id == root_task_id:
+                continue
+            if record.status not in {
+                TaskStatus.CREATED,
+                TaskStatus.ASSIGNED,
+                TaskStatus.RUNNING,
+                TaskStatus.STOPPED,
+            }:
+                continue
+            if record.assigned_instance_id is None:
+                continue
+            if self._is_paused_subagent_task(
+                runtime=runtime,
+                task_id=task.task_id,
+                assigned_instance_id=record.assigned_instance_id,
+            ):
+                continue
+            if self.run_control_manager.is_subagent_paused(
+                session_id=task.session_id,
+                instance_id=record.assigned_instance_id,
+            ):
+                continue
+            return True
+        return False
+
+    def _is_paused_subagent_task(
+        self,
+        *,
+        runtime: RunRuntimeRecord | None,
+        task_id: str,
+        assigned_instance_id: str | None,
+    ) -> bool:
+        if (
+            runtime is None
+            or runtime.phase != RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP
+        ):
+            return False
+        if runtime.active_task_id and runtime.active_task_id == task_id:
+            return True
+        if (
+            assigned_instance_id is not None
+            and runtime.active_subagent_instance_id == assigned_instance_id
+        ):
+            return True
+        return False
 
     def _ensure_coordinator_instance(
         self,
@@ -367,10 +538,54 @@ class CoordinatorGraph(BaseModel):
             )
         )
 
+    def _terminal_status_from_verification(
+        self,
+        *,
+        trace_id: str,
+        root_task: TaskEnvelope,
+        verification: VerificationResult,
+        output: str,
+    ) -> Literal["completed", "failed"]:
+        passed = bool(getattr(verification, "passed", False))
+        if passed:
+            return "completed"
+
+        details = tuple(
+            str(item) for item in getattr(verification, "details", ()) if str(item)
+        )
+        failure_message = (
+            "; ".join(details)
+            if details
+            else (output.strip() if output.strip() else "Verification failed")
+        )
+        current = self.task_repo.get(root_task.task_id)
+        self.task_repo.update_status(
+            root_task.task_id,
+            TaskStatus.FAILED,
+            assigned_instance_id=current.assigned_instance_id,
+            result=current.result or output or None,
+            error_message=failure_message,
+        )
+        self.event_bus.emit(
+            EventEnvelope(
+                event_type=EventType.TASK_FAILED,
+                trace_id=trace_id,
+                session_id=root_task.session_id,
+                task_id=root_task.task_id,
+                instance_id=current.assigned_instance_id,
+                payload_json=dumps(
+                    {
+                        "reason": "verification_failed",
+                        "details": list(details),
+                    }
+                ),
+            )
+        )
+        return "failed"
+
     async def _task_executor(
         self, *, instance_id: str, role_id: str, task: TaskEnvelope
     ) -> str:
         return await self.task_execution_service.execute(
             instance_id=instance_id, role_id=role_id, task=task
         )
-

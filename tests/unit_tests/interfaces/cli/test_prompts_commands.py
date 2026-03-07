@@ -129,7 +129,7 @@ def test_prompts_get_default_output_prints_raw_prompt_sections(monkeypatch) -> N
             "skills": ["time"],
             "runtime_system_prompt": "## Role\nruntime line",
             "provider_system_prompt": "## Tool Rules\nprovider line",
-            "user_prompt": "## Objective\nuser line",
+            "user_prompt": "user line",
             "tool_prompt": "## Tool Rules\ntool line",
             "skill_prompt": "## Skill Instructions\nskill line",
         }

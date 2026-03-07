@@ -8,7 +8,7 @@ from agent_teams.workflow.enums import TaskStatus
 from agent_teams.workflow.models import TaskRecord
 from agent_teams.state.shared_store import SharedStore
 
-WORKFLOW_GRAPH_KEY = 'workflow_graph'
+WORKFLOW_GRAPH_KEY = "workflow_graph"
 
 
 def workflow_scope(task_id: str) -> ScopeRef:
@@ -21,7 +21,7 @@ def load_graph(store: SharedStore, *, task_id: str) -> dict[str, object] | None:
         return None
     value = json.loads(raw)
     if not isinstance(value, dict):
-        raise ValueError('workflow_graph must be a json object')
+        raise ValueError("workflow_graph must be a json object")
     return value
 
 
@@ -35,7 +35,9 @@ def save_graph(store: SharedStore, *, task_id: str, graph: dict[str, object]) ->
     )
 
 
-def node_ready(*, node_depends_on: tuple[str, ...], task_map: dict[str, TaskRecord]) -> bool:
+def node_ready(
+    *, node_depends_on: tuple[str, ...], task_map: dict[str, TaskRecord]
+) -> bool:
     for dep_id in node_depends_on:
         dep = task_map.get(dep_id)
         if dep is None:
@@ -44,31 +46,36 @@ def node_ready(*, node_depends_on: tuple[str, ...], task_map: dict[str, TaskReco
             return False
     return True
 
+
 def get_tasks_from_graph(graph: dict[str, object]) -> dict[str, dict[str, object]]:
-    tasks = graph.get('tasks')
+    tasks = graph.get("tasks")
     if not isinstance(tasks, dict):
         return {}
     return tasks
 
 
-def get_task_by_name(graph: dict[str, object], task_name: str) -> dict[str, object] | None:
+def get_task_by_name(
+    graph: dict[str, object], task_name: str
+) -> dict[str, object] | None:
     tasks = get_tasks_from_graph(graph)
     return tasks.get(task_name)
 
 
-def get_ready_tasks(graph: dict[str, object], task_records: dict[str, TaskRecord]) -> list[tuple[str, dict[str, object]]]:
+def get_ready_tasks(
+    graph: dict[str, object], task_records: dict[str, TaskRecord]
+) -> list[tuple[str, dict[str, object]]]:
     tasks = get_tasks_from_graph(graph)
     ready: list[tuple[str, dict[str, object]]] = []
     for task_name, task_info in tasks.items():
-        task_id = task_info.get('task_id')
+        task_id = task_info.get("task_id")
         if not isinstance(task_id, str) or not task_id:
             continue
         record = task_records.get(task_id)
         if record is None:
             continue
-        if record.status != TaskStatus.CREATED:
+        if record.status not in {TaskStatus.CREATED, TaskStatus.STOPPED}:
             continue
-        depends_on = task_info.get('depends_on', [])
+        depends_on = task_info.get("depends_on", [])
         if not isinstance(depends_on, list):
             depends_on = []
         dep_ids: list[str] = []
@@ -78,7 +85,7 @@ def get_ready_tasks(graph: dict[str, object], task_records: dict[str, TaskRecord
             dep_info = tasks.get(dep)
             if not isinstance(dep_info, dict):
                 continue
-            dep_id = dep_info.get('task_id')
+            dep_id = dep_info.get("task_id")
             if isinstance(dep_id, str) and dep_id:
                 dep_ids.append(dep_id)
         all_deps_completed = True

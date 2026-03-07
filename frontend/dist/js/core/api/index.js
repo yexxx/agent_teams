@@ -7,6 +7,7 @@ export {
     fetchAgentMessages,
     fetchSessionAgents,
     fetchSessionHistory,
+    fetchSessionRecovery,
     fetchSessionRounds,
     fetchSessions,
     fetchSessionWorkflows,
@@ -19,6 +20,7 @@ export {
     injectSubagentMessage,
     resolveGate,
     resolveToolApproval,
+    resumeRun,
     sendUserPrompt,
     stopRun,
 } from './runs.js';

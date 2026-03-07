@@ -11,6 +11,7 @@ export const els = {
     sessionsList: qs('#sessions-list'),
     roundsList: qs('#rounds-list'),
     backBtn: qs('#back-btn'),
+    recoveryBannerHost: qs('#recovery-banner-host'),
     inspectorPanel: qs('#rail-inspector'),
     systemLogs: qs('#system-logs'),
     chatMessages: qs('#chat-messages'),

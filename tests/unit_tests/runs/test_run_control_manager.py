@@ -1,8 +1,26 @@
-﻿import asyncio
+import asyncio
+from pathlib import Path
 
 import pytest
+from pydantic_ai.messages import UserPromptPart
 
+from agent_teams.agents.enums import InstanceStatus
+from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.runs.control import RunControlManager
+from agent_teams.runs.event_stream import RunEventHub
+from agent_teams.runs.injection_queue import RunInjectionManager
+from agent_teams.state.agent_repo import AgentInstanceRepository
+from agent_teams.state.event_log import EventLog
+from agent_teams.state.message_repo import MessageRepository
+from agent_teams.state.run_runtime_repo import (
+    RunRuntimePhase,
+    RunRuntimeRepository,
+    RunRuntimeStatus,
+)
+from agent_teams.state.run_state_repo import RunStateRepository
+from agent_teams.state.task_repo import TaskRepository
+from agent_teams.workflow.enums import TaskStatus
+from agent_teams.workflow.models import TaskEnvelope, VerificationPlan
 
 
 def test_request_run_stop_cancels_run_task() -> None:
@@ -13,11 +31,11 @@ def test_request_run_stop_cancels_run_task() -> None:
             await asyncio.sleep(10)
 
         task = asyncio.create_task(_worker())
-        mgr.register_run_task(run_id='run-1', session_id='session-1', task=task)
-        assert mgr.request_run_stop('run-1') is True
+        mgr.register_run_task(run_id="run-1", session_id="session-1", task=task)
+        assert mgr.request_run_stop("run-1") is True
         await asyncio.sleep(0)
         assert task.cancelled()
-        assert mgr.is_run_stop_requested('run-1') is True
+        assert mgr.is_run_stop_requested("run-1") is True
 
     asyncio.run(_case())
 
@@ -28,27 +46,31 @@ def test_request_subagent_stop_marks_paused_context() -> None:
 
         async def _subagent() -> str:
             await asyncio.sleep(10)
-            return 'x'
+            return "x"
 
         task = asyncio.create_task(_subagent())
         mgr.register_instance_task(
-            run_id='run-1',
-            session_id='session-1',
-            instance_id='inst-1',
-            role_id='generalist',
-            task_id='task-1',
+            run_id="run-1",
+            session_id="session-1",
+            instance_id="inst-1",
+            role_id="generalist",
+            task_id="task-1",
             task=task,
         )
 
-        paused = mgr.request_subagent_stop(run_id='run-1', instance_id='inst-1')
+        paused = mgr.request_subagent_stop(run_id="run-1", instance_id="inst-1")
         assert paused is not None
-        assert paused.session_id == 'session-1'
-        assert paused.instance_id == 'inst-1'
-        assert paused.task_id == 'task-1'
+        assert paused.session_id == "session-1"
+        assert paused.instance_id == "inst-1"
+        assert paused.task_id == "task-1"
         await asyncio.sleep(0)
         assert task.cancelled()
-        assert mgr.is_subagent_stop_requested(run_id='run-1', instance_id='inst-1') is True
-        assert mgr.is_subagent_paused(session_id='session-1', instance_id='inst-1') is True
+        assert (
+            mgr.is_subagent_stop_requested(run_id="run-1", instance_id="inst-1") is True
+        )
+        assert (
+            mgr.is_subagent_paused(session_id="session-1", instance_id="inst-1") is True
+        )
 
     asyncio.run(_case())
 
@@ -56,41 +78,222 @@ def test_request_subagent_stop_marks_paused_context() -> None:
 def test_release_paused_subagent_clears_blocking() -> None:
     mgr = RunControlManager()
     mgr.pause_subagent(
-        session_id='session-1',
-        run_id='run-1',
-        instance_id='inst-1',
-        role_id='generalist',
-        task_id='task-1',
+        session_id="session-1",
+        run_id="run-1",
+        instance_id="inst-1",
+        role_id="generalist",
+        task_id="task-1",
     )
-    released = mgr.release_paused_subagent(session_id='session-1', instance_id='inst-1')
+    released = mgr.release_paused_subagent(session_id="session-1", instance_id="inst-1")
     assert released is not None
-    assert mgr.get_paused_subagent('session-1') is None
-    assert mgr.is_subagent_stop_requested(run_id='run-1', instance_id='inst-1') is False
+    assert mgr.get_paused_subagent("session-1") is None
+    assert mgr.is_subagent_stop_requested(run_id="run-1", instance_id="inst-1") is False
 
 
 def test_context_raises_when_cancelled() -> None:
     mgr = RunControlManager()
     mgr.pause_subagent(
-        session_id='session-1',
-        run_id='run-1',
-        instance_id='inst-1',
-        role_id='generalist',
-        task_id='task-1',
+        session_id="session-1",
+        run_id="run-1",
+        instance_id="inst-1",
+        role_id="generalist",
+        task_id="task-1",
     )
-    ctx = mgr.context(run_id='run-1', instance_id='inst-1')
+    ctx = mgr.context(run_id="run-1", instance_id="inst-1")
     with pytest.raises(asyncio.CancelledError):
         ctx.raise_if_cancelled()
+
+
+def test_run_stop_flag_survives_run_task_unregister_until_resume() -> None:
+    async def _case() -> None:
+        mgr = RunControlManager()
+
+        async def _worker() -> None:
+            await asyncio.sleep(10)
+
+        async def _subagent() -> str:
+            await asyncio.sleep(10)
+            return "x"
+
+        run_task = asyncio.create_task(_worker())
+        inst_task = asyncio.create_task(_subagent())
+        mgr.register_run_task(run_id="run-1", session_id="session-1", task=run_task)
+        mgr.register_instance_task(
+            run_id="run-1",
+            session_id="session-1",
+            instance_id="inst-1",
+            role_id="generalist",
+            task_id="task-1",
+            task=inst_task,
+        )
+
+        assert mgr.request_run_stop("run-1") is True
+        mgr.unregister_run_task("run-1")
+        assert mgr.is_cancelled(run_id="run-1", instance_id="inst-1") is True
+
+        resumed_task = asyncio.create_task(_worker())
+        mgr.register_run_task(run_id="run-1", session_id="session-1", task=resumed_task)
+        assert mgr.is_run_stop_requested("run-1") is False
+
+        resumed_task.cancel()
+        inst_task.cancel()
+        await asyncio.gather(resumed_task, inst_task, return_exceptions=True)
+
+    asyncio.run(_case())
 
 
 def test_session_guard_blocks_main_input_when_paused() -> None:
     mgr = RunControlManager()
     mgr.pause_subagent(
-        session_id='session-1',
-        run_id='run-1',
-        instance_id='inst-1',
-        role_id='generalist',
-        task_id='task-1',
+        session_id="session-1",
+        run_id="run-1",
+        instance_id="inst-1",
+        role_id="generalist",
+        task_id="task-1",
     )
     with pytest.raises(RuntimeError):
-        mgr.assert_session_allows_main_input('session-1')
+        mgr.assert_session_allows_main_input("session-1")
 
+
+def test_session_guard_uses_runtime_fallback_when_process_restarted(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "run_control_runtime_fallback.db"
+    mgr = RunControlManager()
+    agent_repo = AgentInstanceRepository(db_path)
+    run_runtime_repo = RunRuntimeRepository(db_path)
+    event_log = EventLog(db_path)
+    mgr.bind_runtime(
+        run_event_hub=RunEventHub(
+            event_log=event_log,
+            run_state_repo=RunStateRepository(db_path),
+        ),
+        injection_manager=RunInjectionManager(),
+        agent_repo=agent_repo,
+        task_repo=TaskRepository(db_path),
+        message_repo=MessageRepository(db_path),
+        instance_pool=InstancePool(),
+        event_bus=event_log,
+        run_runtime_repo=run_runtime_repo,
+    )
+    agent_repo.upsert_instance(
+        run_id="run-1",
+        trace_id="run-1",
+        session_id="session-1",
+        instance_id="inst-1",
+        role_id="time",
+        status=InstanceStatus.STOPPED,
+    )
+    run_runtime_repo.ensure(
+        run_id="run-1",
+        session_id="session-1",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+    )
+    run_runtime_repo.update(
+        "run-1",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+        active_instance_id="inst-1",
+        active_task_id="task-1",
+        active_role_id="time",
+        active_subagent_instance_id="inst-1",
+        last_error="Subagent stopped by user",
+    )
+
+    paused = mgr.get_paused_subagent("session-1")
+
+    assert paused is not None
+    assert paused.instance_id == "inst-1"
+    assert paused.role_id == "time"
+    with pytest.raises(RuntimeError):
+        mgr.assert_session_allows_main_input("session-1")
+
+
+def test_resume_subagent_with_message_uses_same_instance_after_restart(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "run_control_resume_subagent.db"
+    mgr = RunControlManager()
+    agent_repo = AgentInstanceRepository(db_path)
+    task_repo = TaskRepository(db_path)
+    message_repo = MessageRepository(db_path)
+    run_runtime_repo = RunRuntimeRepository(db_path)
+    event_log = EventLog(db_path)
+    mgr.bind_runtime(
+        run_event_hub=RunEventHub(
+            event_log=event_log,
+            run_state_repo=RunStateRepository(db_path),
+        ),
+        injection_manager=RunInjectionManager(),
+        agent_repo=agent_repo,
+        task_repo=task_repo,
+        message_repo=message_repo,
+        instance_pool=InstancePool(),
+        event_bus=event_log,
+        run_runtime_repo=run_runtime_repo,
+    )
+    task = TaskEnvelope(
+        task_id="task-1",
+        session_id="session-1",
+        parent_task_id="task-root",
+        trace_id="run-1",
+        objective="query time",
+        verification=VerificationPlan(checklist=("non_empty_response",)),
+    )
+    _ = task_repo.create(task)
+    task_repo.update_status(
+        "task-1",
+        TaskStatus.STOPPED,
+        assigned_instance_id="inst-1",
+        error_message="Task stopped by user",
+    )
+    agent_repo.upsert_instance(
+        run_id="run-1",
+        trace_id="run-1",
+        session_id="session-1",
+        instance_id="inst-1",
+        role_id="time",
+        status=InstanceStatus.STOPPED,
+    )
+    message_repo.append_user_prompt_if_missing(
+        session_id="session-1",
+        instance_id="inst-1",
+        task_id="task-1",
+        trace_id="run-1",
+        content="query time",
+    )
+    run_runtime_repo.ensure(
+        run_id="run-1",
+        session_id="session-1",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+    )
+    run_runtime_repo.update(
+        "run-1",
+        status=RunRuntimeStatus.PAUSED,
+        phase=RunRuntimePhase.AWAITING_SUBAGENT_FOLLOWUP,
+        active_instance_id="inst-1",
+        active_task_id="task-1",
+        active_role_id="time",
+        active_subagent_instance_id="inst-1",
+        last_error="Subagent stopped by user",
+    )
+
+    mgr.resume_subagent_with_message(
+        run_id="run-1",
+        instance_id="inst-1",
+        content="query time again",
+    )
+
+    history = message_repo.get_history_for_task("inst-1", "task-1")
+    assert len(history) == 2
+    assert isinstance(history[-1].parts[0], UserPromptPart)
+    assert history[-1].parts[0].content == "query time again"
+    task_record = task_repo.get("task-1")
+    assert task_record.status == TaskStatus.ASSIGNED
+    assert task_record.assigned_instance_id == "inst-1"
+    runtime = run_runtime_repo.get("run-1")
+    assert runtime is not None
+    assert runtime.phase == RunRuntimePhase.SUBAGENT_RUNNING
+    assert runtime.active_subagent_instance_id == "inst-1"

@@ -66,6 +66,21 @@ class ToolApprovalManager:
         entry.feedback = feedback
         entry.event.set()
 
+    def get_approval(self, *, run_id: str, tool_call_id: str) -> dict[str, str] | None:
+        with self._lock:
+            entry = self._approvals.get(run_id, {}).get(tool_call_id)
+            if entry is None:
+                return None
+            return {
+                "tool_call_id": tool_call_id,
+                "instance_id": entry.instance_id,
+                "role_id": entry.role_id,
+                "tool_name": entry.tool_name,
+                "args_preview": entry.args_preview,
+                "risk_level": entry.risk_level,
+                "feedback": entry.feedback,
+            }
+
     def wait_for_approval(
         self,
         *,

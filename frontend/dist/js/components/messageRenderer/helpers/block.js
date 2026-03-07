@@ -13,6 +13,10 @@ import {
 
 export function renderMessageBlock(container, role, label, parts = []) {
     const safeLabel = label || 'Agent';
+    if (container) {
+        const empty = container.querySelector('.panel-empty');
+        if (empty) empty.remove();
+    }
     const wrapper = document.createElement('div');
     wrapper.className = 'message';
     wrapper.dataset.role = role;

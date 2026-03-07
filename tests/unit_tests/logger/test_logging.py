@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,7 @@ from agent_teams.logger import (
     log_event,
     log_tool_call,
 )
+from agent_teams.logger.log_persistence import PersistentLogHandler
 from agent_teams.logger import logger as logger_module
 from agent_teams.trace import bind_trace_context
 
@@ -135,6 +137,53 @@ def test_log_tool_call_writes_structured_event(
         assert payload_field.get("tool_name") == "read"
     finally:
         _snapshot.restore()
+
+
+def test_persistent_log_handler_retries_locked_batch_without_crashing(
+    tmp_path: Path,
+) -> None:
+    handler = PersistentLogHandler(
+        db_path=tmp_path / "persistent_logs.db",
+        flush_interval_seconds=0.01,
+    )
+    try:
+        handler._stop.set()
+        handler._worker.join(timeout=1.0)
+
+        attempts = 0
+        append_many = handler._repo.append_many
+
+        def flaky_append_many(rows: list[JsonObject]) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise sqlite3.OperationalError("database is locked")
+            append_many(rows)
+
+        handler._repo.append_many = flaky_append_many  # type: ignore[method-assign]
+        handler._queue.put_nowait(
+            {
+                "ts": "2026-03-07T07:22:36.402947+00:00",
+                "level": "INFO",
+                "logger": "tests.unit.logger",
+                "message": "persist me",
+            }
+        )
+
+        handler._drain_once(force=False)
+        assert len(handler._pending_rows) == 1
+
+        handler._drain_once(force=True)
+        assert handler._pending_rows == []
+        count = int(
+            handler._repo._conn.execute(
+                "SELECT COUNT(*) FROM system_logs WHERE message = ?",
+                ("persist me",),
+            ).fetchone()[0]
+        )
+        assert count == 1
+    finally:
+        handler.close()
 
 
 class _RootLoggerSnapshot:

@@ -8,6 +8,7 @@ import { fetchSessions, startNewSession, deleteSession } from '../core/api.js';
 import { state } from '../core/state.js';
 
 let selectSessionHandler = null;
+let refreshTimer = null;
 
 export function setSelectSessionHandler(handler) {
     selectSessionHandler = handler;
@@ -37,9 +38,18 @@ export async function loadSessions() {
             if (s.session_id === state.currentSessionId) div.classList.add('active');
 
             const time = new Date(s.updated_at).toLocaleString();
+            const statusLabel = sessionStatusLabel(s);
+            const statusTone = sessionStatusTone(s);
+            const approvalCount = Number(s.pending_tool_approval_count || 0);
             div.innerHTML = `
-                <span class="session-id">${s.session_id}</span>
-                <span class="session-time">${time}</span>
+                <div class="session-main-row">
+                    <span class="session-id">${s.session_id}</span>
+                    ${statusLabel ? `<span class="session-status-pill session-status-${statusTone}">${statusLabel}</span>` : ''}
+                </div>
+                <div class="session-sub-row">
+                    <span class="session-time">${time}</span>
+                    ${approvalCount > 0 ? `<span class="session-side-note">${approvalCount} approval${approvalCount === 1 ? '' : 's'}</span>` : ''}
+                </div>
                 <button class="session-delete-btn" title="Delete session">
                     <svg viewBox="0 0 24 24" fill="none" class="icon-sm">
                         <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -75,6 +85,16 @@ export async function loadSessions() {
     }
 }
 
+export function scheduleSessionsRefresh(delayMs = 120) {
+    if (refreshTimer) {
+        clearTimeout(refreshTimer);
+    }
+    refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void loadSessions();
+    }, delayMs);
+}
+
 export function setSessionMode() {
     els.sessionsList.style.display = 'block';
     els.roundsList.style.display = 'none';
@@ -102,4 +122,30 @@ export async function handleNewSessionClick(manualClick = true) {
     } catch (e) {
         sysLog(`Error creating session: ${e.message}`, 'log-error');
     }
+}
+
+function sessionStatusLabel(session) {
+    const phase = String(session?.active_run_phase || '');
+    const status = String(session?.active_run_status || '');
+    if (phase === 'awaiting_tool_approval') return 'Awaiting Approval';
+    if (phase === 'awaiting_subagent_followup') return 'Awaiting Follow-up';
+    if (status === 'running' || phase === 'running') return 'Running';
+    if (status === 'queued' || phase === 'queued') return 'Queued';
+    if (status === 'stopped' || phase === 'stopped') return 'Stopped';
+    return '';
+}
+
+function sessionStatusTone(session) {
+    const phase = String(session?.active_run_phase || '');
+    const status = String(session?.active_run_status || '');
+    if (phase === 'awaiting_tool_approval' || phase === 'awaiting_subagent_followup') {
+        return 'warning';
+    }
+    if (status === 'running' || phase === 'running' || status === 'queued' || phase === 'queued') {
+        return 'running';
+    }
+    if (status === 'stopped' || phase === 'stopped') {
+        return 'stopped';
+    }
+    return 'idle';
 }

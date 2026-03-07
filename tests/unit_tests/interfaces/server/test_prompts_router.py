@@ -92,7 +92,7 @@ def test_prompts_preview_returns_runtime_provider_and_user_sections() -> None:
     assert "- priority: 1" in payload["runtime_system_prompt"]
     assert "## Tool Rules" in payload["provider_system_prompt"]
     assert "## Skill Instructions" in payload["provider_system_prompt"]
-    assert payload["user_prompt"] == "## Objective\nDeliver summary"
+    assert payload["user_prompt"] == "Deliver summary"
     assert payload["tool_prompt"].startswith("## Tool Rules")
     assert payload["skill_prompt"].startswith("## Skill Instructions")
 

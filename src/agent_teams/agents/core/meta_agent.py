@@ -20,3 +20,14 @@ class MetaAgent(BaseModel):
         return RunResult(
             trace_id=trace_id, root_task_id=task_id, status=status, output=output
         )
+
+    async def resume_run(self, *, trace_id: str) -> RunResult:
+        next_trace_id, task_id, status, output = await self.coordinator.resume(
+            trace_id=trace_id
+        )
+        return RunResult(
+            trace_id=next_trace_id,
+            root_task_id=task_id,
+            status=status,
+            output=output,
+        )

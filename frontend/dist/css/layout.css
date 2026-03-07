@@ -77,6 +77,11 @@
     overflow: hidden;
 }
 
+.recovery-banner-host {
+    flex: 0 0 auto;
+    padding: 0 0 0.85rem;
+}
+
 .chat-scroll {
     flex: 1;
     overflow-y: auto;
@@ -88,6 +93,8 @@
 .input-container {
     padding: 1rem 10% 1.5rem 10%;
     background: linear-gradient(to top, var(--bg-base) 60%, transparent);
+    display: flex;
+    flex-direction: column;
 }
 
 .input-wrapper {
@@ -693,6 +700,7 @@
     min-height: 220px;
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-surface-glass);
+    transition: flex-basis 0.22s ease, min-height 0.22s ease, opacity 0.22s ease;
 }
 
 .rail-graph-card .workflow-panel {
@@ -712,6 +720,25 @@
     height: calc(100% - 24px);
     overflow: auto;
     padding: 0.2rem 0;
+    transition: opacity 0.22s ease;
+}
+
+.right-rail.right-rail-recovery-priority .rail-graph-card {
+    flex-basis: 148px;
+    min-height: 132px;
+}
+
+.right-rail.right-rail-followup-priority .rail-graph-card {
+    flex-basis: 188px;
+    min-height: 164px;
+}
+
+.rail-graph-card.is-compact .workflow-canvas {
+    opacity: 0.58;
+}
+
+.rail-graph-card.is-muted .workflow-header {
+    opacity: 0.88;
 }
 
 .rail-subagent-card {

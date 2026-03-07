@@ -2,8 +2,12 @@
  * app/prompt.js
  * Prompt send flow: live round bootstrap and SSE stream start.
  */
-import { createLiveRound, loadSessionRounds } from '../components/rounds.js';
+import { appendRoundUserMessage, createLiveRound } from '../components/rounds.js';
 import { clearAllStreamState } from '../components/messageRenderer.js';
+import {
+    hydrateSessionView,
+    startSessionContinuity,
+} from './recovery.js';
 import { state } from '../core/state.js';
 import { startIntentStream } from '../core/stream.js';
 import { els } from '../utils/dom.js';
@@ -40,31 +44,28 @@ export async function handleSend() {
     state.activeAgentRoleId = null;
     state.activeAgentInstanceId = null;
     state.autoSwitchedSubagentInstances = {};
+    state.activeRunId = null;
+    state.isGenerating = true;
+    if (els.sendBtn) els.sendBtn.disabled = true;
+    if (els.promptInput) els.promptInput.disabled = true;
+    if (els.stopBtn) {
+        els.stopBtn.style.display = 'inline-flex';
+        els.stopBtn.disabled = false;
+    }
     clearAllStreamState();
 
-    createLiveRound(text);
-
-    const um = document.createElement('div');
-    um.className = 'message';
-    um.dataset.role = 'user';
-    um.innerHTML = `
-        <div class="msg-header"><span class="msg-role role-user">YOU</span></div>
-        <div class="msg-content"><div class="msg-text">${text.replace(/</g, '&lt;')}</div></div>`;
-    const liveSection = els.chatMessages.querySelector('.session-round-section[data-run-id="__live__"]');
-    if (liveSection) {
-        liveSection.appendChild(um);
-    } else {
-        els.chatMessages.appendChild(um);
-    }
-    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
-
     sysLog(`Sending (mode=${executionMode})`);
+    startSessionContinuity(state.currentSessionId);
     await startIntentStream(
         text,
         state.currentSessionId,
         executionMode,
-        async (sid) => {
-            await loadSessionRounds(sid);
+        async sid => hydrateSessionView(sid, { includeRounds: true, quiet: true }),
+        {
+            onRunCreated: (run) => {
+                createLiveRound(run.run_id, text);
+                appendRoundUserMessage(run.run_id, text);
+            },
         },
     );
 }

@@ -6,7 +6,7 @@ from typing import Literal, cast
 
 import pytest
 
-from agent_teams.agents.core.meta_agent import MetaAgent
+from agent_teams.intent.meta_agent import MetaAgent
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.runs.control import RunControlManager

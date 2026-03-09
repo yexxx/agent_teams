@@ -9,7 +9,7 @@ from typing import Awaitable, Callable, cast
 
 from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-from agent_teams.agents.core.meta_agent import MetaAgent
+from agent_teams.intent.meta_agent import MetaAgent
 from agent_teams.agents.models import AgentRuntimeRecord
 from agent_teams.logger import get_logger, log_event
 from agent_teams.notifications import (

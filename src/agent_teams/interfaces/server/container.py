@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from agent_teams.agents.core.meta_agent import MetaAgent
+from agent_teams.intent.meta_agent import MetaAgent
 from agent_teams.agents.management.instance_pool import InstancePool
 from agent_teams.coordination.coordinator import CoordinatorGraph
 from agent_teams.coordination.human_gate import GateManager

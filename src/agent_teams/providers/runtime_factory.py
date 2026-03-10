@@ -13,6 +13,7 @@ from agent_teams.providers.llm import (
     LLMProvider,
     OpenAICompatibleProvider,
 )
+from agent_teams.providers.model_config import ModelEndpointConfig
 from agent_teams.providers.registry import create_default_provider_registry
 from agent_teams.roles.models import RoleDefinition
 from agent_teams.roles.registry import RoleRegistry
@@ -66,8 +67,10 @@ def create_provider_factory(
     token_usage_repo: TokenUsageRepository | None = None,
 ) -> Callable[[RoleDefinition], LLMProvider]:
     def provider_factory(role: RoleDefinition) -> LLMProvider:
-        profile_config = runtime.llm_profiles.get(role.model_profile)
-        config_to_use = profile_config or runtime.llm_profiles.get("default")
+        config_to_use = _resolve_model_profile_config(
+            llm_profiles=runtime.llm_profiles,
+            profile_name=role.model_profile,
+        )
         if config_to_use is None:
             return EchoProvider()
 
@@ -106,6 +109,16 @@ def create_provider_factory(
         return provider_registry.create(config_to_use)
 
     return provider_factory
+
+
+def _resolve_model_profile_config(
+    *,
+    llm_profiles: dict[str, ModelEndpointConfig],
+    profile_name: str,
+) -> ModelEndpointConfig | None:
+    if profile_name in llm_profiles:
+        return llm_profiles[profile_name]
+    return llm_profiles.get("default")
 
 
 def create_task_execution_service(

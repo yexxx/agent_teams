@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from agent_teams.coordination.coordination_agent import build_coordination_agent
+from typing import TYPE_CHECKING
+
 from agent_teams.coordination.human_gate import GateAction, GateManager
 from agent_teams.coordination.role_communication import (
     FeedbackLoopEvaluation,
@@ -25,6 +26,20 @@ from agent_teams.coordination.role_communication import (
     validate_exchange_binding,
     validate_role_communication,
 )
+
+if TYPE_CHECKING:
+    from agent_teams.coordination.coordination_agent import (
+        build_coordination_agent as build_coordination_agent,
+    )
+else:
+
+    def build_coordination_agent(*args: object, **kwargs: object) -> object:
+        from agent_teams.coordination.coordination_agent import (
+            build_coordination_agent as _build_coordination_agent,
+        )
+
+        return _build_coordination_agent(*args, **kwargs)
+
 
 __all__ = [
     "FeedbackLoopEvaluation",

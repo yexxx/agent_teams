@@ -4,6 +4,8 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+import httpx
+from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
@@ -259,3 +261,30 @@ def test_publish_tool_events_sanitizes_stale_task_status_error() -> None:
     assert task_status["status"] == "completed"
     assert task_status["result"] == "Current time is 2026-03-07 00:41:29."
     assert "error" not in task_status
+
+
+def test_build_model_api_error_message_surfaces_proxy_auth_failure() -> None:
+    provider = _provider_with_hub(_FakeRunEventHub())
+
+    try:
+        raise ModelAPIError(model_name="gpt-test", message="Connection error.") from (
+            httpx.ProxyError("407 Proxy Authentication Required")
+        )
+    except ModelAPIError as exc:
+        message = provider._build_model_api_error_message(exc)
+
+    assert "Proxy authentication failed (HTTP 407)." in message
+    assert "HTTP_PROXY/HTTPS_PROXY credentials" in message
+
+
+def test_build_model_api_error_message_keeps_root_cause_context() -> None:
+    provider = _provider_with_hub(_FakeRunEventHub())
+
+    try:
+        raise ModelAPIError(model_name="gpt-test", message="Connection error.") from (
+            RuntimeError("TLS handshake failed")
+        )
+    except ModelAPIError as exc:
+        message = provider._build_model_api_error_message(exc)
+
+    assert message == "Connection error. Root cause: TLS handshake failed"

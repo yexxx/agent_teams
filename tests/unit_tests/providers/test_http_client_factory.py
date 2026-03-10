@@ -16,10 +16,13 @@ def _transport_verify_mode(transport: object) -> int:
     return int(ssl_context.verify_mode)
 
 
-def test_build_llm_http_client_returns_none_without_proxy_config() -> None:
+def test_build_llm_http_client_builds_direct_client_without_proxy_config() -> None:
     client = http_client_factory.build_llm_http_client(merged_env={})
 
-    assert client is None
+    assert client is not None
+    assert client.trust_env is False
+    assert _transport_verify_mode(client._transport) == _SSL_VERIFY_REQUIRED
+    assert client._mounts == {}
 
 
 def test_build_llm_http_client_builds_proxy_and_no_proxy_mounts() -> None:

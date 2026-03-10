@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol, cast, final, override
 
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai._agent_graph import ModelRequestNode
+from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.models.openai import OpenAIChatModelSettings
 from pydantic_ai.messages import (
     ModelMessage,
@@ -314,186 +315,196 @@ class OpenAICompatibleProvider(LLMProvider):
         request_level_requests = 0
         saw_request_level_usage = False
 
-        while True:
-            control_ctx.raise_if_cancelled()
-            restarted = False
-            async with agent.iter(
-                None,
-                deps=deps,
-                message_history=history,
-            ) as agent_run:
-                async for node in agent_run:
-                    control_ctx.raise_if_cancelled()
-                    if isinstance(node, ModelRequestNode):
-                        usage_before = deepcopy(agent_run.usage())
-                        # Stream text chunks from this model response in real-time
-                        async with node.stream(agent_run.ctx) as stream:
-                            async for text_delta in stream.stream_text(delta=True):
-                                control_ctx.raise_if_cancelled()
-                                if text_delta:
-                                    log_model_stream_chunk(request.role_id, text_delta)
-                                    printed_any = True
-                                    emitted_text_chunks.append(text_delta)
-                                    self._run_event_hub.publish(
-                                        RunEvent(
-                                            session_id=request.session_id,
-                                            run_id=request.run_id,
-                                            trace_id=request.trace_id,
-                                            task_id=request.task_id,
-                                            instance_id=request.instance_id,
-                                            role_id=request.role_id,
-                                            event_type=RunEventType.TEXT_DELTA,
-                                            payload_json=dumps(
-                                                {
-                                                    "text": text_delta,
-                                                    "role_id": request.role_id,
-                                                    "instance_id": request.instance_id,
-                                                }
-                                            ),
+        try:
+            while True:
+                control_ctx.raise_if_cancelled()
+                restarted = False
+                async with agent.iter(
+                    None,
+                    deps=deps,
+                    message_history=history,
+                ) as agent_run:
+                    async for node in agent_run:
+                        control_ctx.raise_if_cancelled()
+                        if isinstance(node, ModelRequestNode):
+                            usage_before = deepcopy(agent_run.usage())
+                            # Stream text chunks from this model response in real-time
+                            async with node.stream(agent_run.ctx) as stream:
+                                async for text_delta in stream.stream_text(delta=True):
+                                    control_ctx.raise_if_cancelled()
+                                    if text_delta:
+                                        log_model_stream_chunk(
+                                            request.role_id, text_delta
                                         )
+                                        printed_any = True
+                                        emitted_text_chunks.append(text_delta)
+                                        self._run_event_hub.publish(
+                                            RunEvent(
+                                                session_id=request.session_id,
+                                                run_id=request.run_id,
+                                                trace_id=request.trace_id,
+                                                task_id=request.task_id,
+                                                instance_id=request.instance_id,
+                                                role_id=request.role_id,
+                                                event_type=RunEventType.TEXT_DELTA,
+                                                payload_json=dumps(
+                                                    {
+                                                        "text": text_delta,
+                                                        "role_id": request.role_id,
+                                                        "instance_id": request.instance_id,
+                                                    }
+                                                ),
+                                            )
+                                        )
+                            usage_after = stream.usage()
+                            request_level_input_tokens += self._usage_delta_int(
+                                after=usage_after,
+                                before=usage_before,
+                                field_name="input_tokens",
+                            )
+                            request_level_output_tokens += self._usage_delta_int(
+                                after=usage_after,
+                                before=usage_before,
+                                field_name="output_tokens",
+                            )
+                            request_level_requests += self._usage_delta_int(
+                                after=usage_after,
+                                before=usage_before,
+                                field_name="requests",
+                            )
+                            saw_request_level_usage = True
+
+                        # After each node (ModelRequestNode or others like CallToolsNode),
+                        # scan for new messages to emit tool call/result events
+                        all_new = agent_run.new_messages()
+                        new_to_process = list(all_new)[seen_count:]
+                        if new_to_process:
+                            self._publish_tool_call_events_from_messages(
+                                request=request,
+                                messages=new_to_process,
+                            )
+                            buffered_messages.extend(new_to_process)
+                            history, buffered_messages = self._commit_ready_messages(
+                                request=request,
+                                history=history,
+                                pending_messages=buffered_messages,
+                            )
+                            seen_count += len(new_to_process)
+
+                        # Drain pending user injections at this boundary (already handled in previous version, check if needed here)
+                        injections = self._injection_manager.drain_at_boundary(
+                            request.run_id, request.instance_id
+                        )
+                        if injections:
+                            extra = [
+                                ModelRequest(
+                                    parts=[UserPromptPart(content=msg.content)]
+                                )
+                                for msg in injections
+                            ]
+                            for msg in injections:
+                                self._run_event_hub.publish(
+                                    RunEvent(
+                                        session_id=request.session_id,
+                                        run_id=request.run_id,
+                                        trace_id=request.trace_id,
+                                        task_id=request.task_id,
+                                        instance_id=request.instance_id,
+                                        role_id=request.role_id,
+                                        event_type=RunEventType.INJECTION_APPLIED,
+                                        payload_json=msg.model_dump_json(),
                                     )
-                        usage_after = stream.usage()
-                        request_level_input_tokens += self._usage_delta_int(
-                            after=usage_after,
-                            before=usage_before,
-                            field_name="input_tokens",
-                        )
-                        request_level_output_tokens += self._usage_delta_int(
-                            after=usage_after,
-                            before=usage_before,
-                            field_name="output_tokens",
-                        )
-                        request_level_requests += self._usage_delta_int(
-                            after=usage_after,
-                            before=usage_before,
-                            field_name="requests",
-                        )
-                        saw_request_level_usage = True
-
-                    # After each node (ModelRequestNode or others like CallToolsNode),
-                    # scan for new messages to emit tool call/result events
-                    all_new = agent_run.new_messages()
-                    new_to_process = list(all_new)[seen_count:]
-                    if new_to_process:
-                        self._publish_tool_call_events_from_messages(
-                            request=request,
-                            messages=new_to_process,
-                        )
-                        buffered_messages.extend(new_to_process)
-                        history, buffered_messages = self._commit_ready_messages(
-                            request=request,
-                            history=history,
-                            pending_messages=buffered_messages,
-                        )
-                        seen_count += len(new_to_process)
-
-                    # Drain pending user injections at this boundary (already handled in previous version, check if needed here)
-                    injections = self._injection_manager.drain_at_boundary(
-                        request.run_id, request.instance_id
-                    )
-                    if injections:
-                        extra = [
-                            ModelRequest(parts=[UserPromptPart(content=msg.content)])
-                            for msg in injections
-                        ]
-                        for msg in injections:
-                            self._run_event_hub.publish(
-                                RunEvent(
-                                    session_id=request.session_id,
-                                    run_id=request.run_id,
-                                    trace_id=request.trace_id,
-                                    task_id=request.task_id,
-                                    instance_id=request.instance_id,
-                                    role_id=request.role_id,
-                                    event_type=RunEventType.INJECTION_APPLIED,
-                                    payload_json=msg.model_dump_json(),
+                                )
+                            self._message_repo.append(
+                                session_id=request.session_id,
+                                workspace_id=resolved_workspace_id,
+                                conversation_id=resolved_conversation_id,
+                                agent_role_id=request.role_id,
+                                instance_id=request.instance_id,
+                                task_id=request.task_id,
+                                trace_id=request.trace_id,
+                                messages=extra,
+                            )
+                            # Restart iter() with injected messages appended to committed history
+                            history = self._filter_model_messages(
+                                self._message_repo.get_history_for_conversation(
+                                    resolved_conversation_id
                                 )
                             )
-                        self._message_repo.append(
-                            session_id=request.session_id,
-                            workspace_id=resolved_workspace_id,
-                            conversation_id=resolved_conversation_id,
-                            agent_role_id=request.role_id,
-                            instance_id=request.instance_id,
-                            task_id=request.task_id,
-                            trace_id=request.trace_id,
-                            messages=extra,
-                        )
-                        # Restart iter() with injected messages appended to committed history
-                        history = self._filter_model_messages(
-                            self._message_repo.get_history_for_conversation(
-                                resolved_conversation_id
-                            )
-                        )
-                        seen_count = 0
-                        buffered_messages = []
-                        restarted = True
-                        break  # break inner for-loop, restart while
+                            seen_count = 0
+                            buffered_messages = []
+                            restarted = True
+                            break  # break inner for-loop, restart while
 
-            if not restarted:
-                # Normal completion
-                maybe_result = agent_run.result
-                if maybe_result is None:
-                    raise RuntimeError("Model run finished without a result object")
-                result = maybe_result
-                # Flush any remaining messages (e.g. final tool results)
-                all_new = result.new_messages()
-                to_save = list(all_new)[seen_count:]
-                if to_save:
-                    self._publish_tool_call_events_from_messages(
+                if not restarted:
+                    # Normal completion
+                    maybe_result = agent_run.result
+                    if maybe_result is None:
+                        raise RuntimeError("Model run finished without a result object")
+                    result = maybe_result
+                    # Flush any remaining messages (e.g. final tool results)
+                    all_new = result.new_messages()
+                    to_save = list(all_new)[seen_count:]
+                    if to_save:
+                        self._publish_tool_call_events_from_messages(
+                            request=request,
+                            messages=to_save,
+                        )
+                        buffered_messages.extend(to_save)
+                    history, buffered_messages = self._commit_all_safe_messages(
                         request=request,
-                        messages=to_save,
+                        history=history,
+                        pending_messages=buffered_messages,
                     )
-                    buffered_messages.extend(to_save)
-                history, buffered_messages = self._commit_all_safe_messages(
-                    request=request,
-                    history=history,
-                    pending_messages=buffered_messages,
-                )
-                # Record and publish token usage
-                usage = result.usage()
-                input_tokens = request_level_input_tokens
-                output_tokens = request_level_output_tokens
-                requests = request_level_requests
-                if not saw_request_level_usage:
-                    input_tokens = self._usage_field_int(usage, "input_tokens")
-                    output_tokens = self._usage_field_int(usage, "output_tokens")
-                    requests = self._usage_field_int(usage, "requests")
-                tool_calls = self._usage_field_int(usage, "tool_calls")
-                if self._token_usage_repo is not None:
-                    self._token_usage_repo.record(
-                        session_id=request.session_id,
-                        run_id=request.run_id,
-                        instance_id=request.instance_id,
-                        role_id=request.role_id,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        requests=requests,
-                        tool_calls=tool_calls,
+                    # Record and publish token usage
+                    usage = result.usage()
+                    input_tokens = request_level_input_tokens
+                    output_tokens = request_level_output_tokens
+                    requests = request_level_requests
+                    if not saw_request_level_usage:
+                        input_tokens = self._usage_field_int(usage, "input_tokens")
+                        output_tokens = self._usage_field_int(usage, "output_tokens")
+                        requests = self._usage_field_int(usage, "requests")
+                    tool_calls = self._usage_field_int(usage, "tool_calls")
+                    if self._token_usage_repo is not None:
+                        self._token_usage_repo.record(
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            instance_id=request.instance_id,
+                            role_id=request.role_id,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            requests=requests,
+                            tool_calls=tool_calls,
+                        )
+                    self._run_event_hub.publish(
+                        RunEvent(
+                            session_id=request.session_id,
+                            run_id=request.run_id,
+                            trace_id=request.trace_id,
+                            task_id=request.task_id,
+                            instance_id=request.instance_id,
+                            role_id=request.role_id,
+                            event_type=RunEventType.TOKEN_USAGE,
+                            payload_json=dumps(
+                                {
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": output_tokens,
+                                    "total_tokens": input_tokens + output_tokens,
+                                    "requests": requests,
+                                    "tool_calls": tool_calls,
+                                    "role_id": request.role_id,
+                                    "instance_id": request.instance_id,
+                                }
+                            ),
+                        )
                     )
-                self._run_event_hub.publish(
-                    RunEvent(
-                        session_id=request.session_id,
-                        run_id=request.run_id,
-                        trace_id=request.trace_id,
-                        task_id=request.task_id,
-                        instance_id=request.instance_id,
-                        role_id=request.role_id,
-                        event_type=RunEventType.TOKEN_USAGE,
-                        payload_json=dumps(
-                            {
-                                "input_tokens": input_tokens,
-                                "output_tokens": output_tokens,
-                                "total_tokens": input_tokens + output_tokens,
-                                "requests": requests,
-                                "tool_calls": tool_calls,
-                                "role_id": request.role_id,
-                                "instance_id": request.instance_id,
-                            }
-                        ),
-                    )
-                )
-                break  # done
+                    break  # done
+        except ModelAPIError as exc:
+            raise ModelAPIError(
+                model_name=exc.model_name,
+                message=self._build_model_api_error_message(exc),
+            ) from exc
 
         assert result is not None
 
@@ -566,6 +577,61 @@ class OpenAICompatibleProvider(LLMProvider):
         before_value = self._usage_field_int(before, field_name)
         delta = after_value - before_value
         return delta if delta > 0 else 0
+
+    def _build_model_api_error_message(self, error: ModelAPIError) -> str:
+        chain = self._exception_chain(error)
+        if self._is_proxy_auth_failure(chain):
+            return (
+                f"{error.message} Proxy authentication failed (HTTP 407). "
+                "Check HTTP_PROXY/HTTPS_PROXY credentials or set NO_PROXY for the model endpoint."
+            )
+
+        root_message = self._deepest_distinct_exception_message(
+            chain=chain,
+            primary_message=error.message,
+        )
+        if root_message is None:
+            return error.message
+        return f"{error.message} Root cause: {root_message}"
+
+    def _exception_chain(self, error: BaseException) -> tuple[BaseException, ...]:
+        chain: list[BaseException] = []
+        seen_ids: set[int] = set()
+        current: BaseException | None = error
+        while current is not None and id(current) not in seen_ids:
+            chain.append(current)
+            seen_ids.add(id(current))
+            if current.__cause__ is not None:
+                current = current.__cause__
+                continue
+            if current.__suppress_context__:
+                break
+            current = current.__context__
+        return tuple(chain)
+
+    def _is_proxy_auth_failure(
+        self,
+        chain: Sequence[BaseException],
+    ) -> bool:
+        for error in chain:
+            message = str(error).strip().lower()
+            if "407 proxy authentication required" in message:
+                return True
+        return False
+
+    def _deepest_distinct_exception_message(
+        self,
+        *,
+        chain: Sequence[BaseException],
+        primary_message: str,
+    ) -> str | None:
+        normalized_primary = primary_message.strip()
+        for error in reversed(chain):
+            message = str(error).strip()
+            if not message or message == normalized_primary:
+                continue
+            return message
+        return None
 
     def _extract_text(self, response: object) -> str:
         parts = getattr(response, "parts", None)

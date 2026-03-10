@@ -30,11 +30,11 @@ class ProxyEnvConfig(BaseModel):
 def build_llm_http_client(
     *,
     merged_env: Mapping[str, str] | None = None,
-) -> httpx.AsyncClient | None:
+) -> httpx.AsyncClient:
     resolved_env = load_merged_env_vars() if merged_env is None else merged_env
     proxy_config = _resolve_proxy_env_config(resolved_env)
     if proxy_config is None:
-        return None
+        proxy_config = ProxyEnvConfig()
 
     client = _cached_llm_http_client(
         http_proxy=proxy_config.http_proxy or "",

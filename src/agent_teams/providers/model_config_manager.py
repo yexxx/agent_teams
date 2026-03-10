@@ -5,6 +5,7 @@ from json import dumps, loads
 from pathlib import Path
 from typing import cast
 
+from agent_teams.providers.model_config import DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
 from agent_teams.shared_types.json_types import JsonObject
 
 
@@ -35,6 +36,10 @@ class ModelConfigManager:
                 "temperature": profile.get("temperature", 0.7),
                 "top_p": profile.get("top_p", 1.0),
                 "max_tokens": profile.get("max_tokens", 4096),
+                "connect_timeout_seconds": profile.get(
+                    "connect_timeout_seconds",
+                    DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
+                ),
             }
         return result
 

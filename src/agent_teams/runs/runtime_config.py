@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from agent_teams.env import load_merged_env_vars
 from agent_teams.paths import get_project_config_dir
 from agent_teams.providers.model_config import (
+    DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
     ModelEndpointConfig,
     ProviderType,
     SamplingConfig,
@@ -118,12 +119,17 @@ def load_llm_configs(
         top_p = cfg.get("top_p", 1.0)
         max_tokens = cfg.get("max_tokens", 1024)
         top_k = cfg.get("top_k")
+        connect_timeout_seconds = cfg.get(
+            "connect_timeout_seconds",
+            DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
+        )
 
         profiles[name] = ModelEndpointConfig(
             provider=provider,
             model=model,
             base_url=base_url,
             api_key=api_key,
+            connect_timeout_seconds=connect_timeout_seconds,
             sampling=SamplingConfig(
                 temperature=temperature,
                 top_p=top_p,

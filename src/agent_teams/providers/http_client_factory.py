@@ -10,8 +10,8 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_ai.models import DEFAULT_HTTP_TIMEOUT, get_user_agent
 
 from agent_teams.env import extract_proxy_env_vars, load_merged_env_vars
+from agent_teams.providers.model_config import DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
 
-_CONNECT_TIMEOUT_SECONDS = 5
 _SSL_VERIFY_KEYS = ("AGENT_TEAMS_LLM_SSL_VERIFY",)
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
@@ -30,6 +30,7 @@ class ProxyEnvConfig(BaseModel):
 def build_llm_http_client(
     *,
     merged_env: Mapping[str, str] | None = None,
+    connect_timeout_seconds: float = DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
 ) -> httpx.AsyncClient:
     resolved_env = load_merged_env_vars() if merged_env is None else merged_env
     proxy_config = _resolve_proxy_env_config(resolved_env)
@@ -42,6 +43,7 @@ def build_llm_http_client(
         all_proxy=proxy_config.all_proxy or "",
         no_proxy=proxy_config.no_proxy or "",
         verify_ssl=proxy_config.verify_ssl,
+        connect_timeout_seconds=connect_timeout_seconds,
     )
     if client.is_closed:
         _cached_llm_http_client.cache_clear()
@@ -51,6 +53,7 @@ def build_llm_http_client(
             all_proxy=proxy_config.all_proxy or "",
             no_proxy=proxy_config.no_proxy or "",
             verify_ssl=proxy_config.verify_ssl,
+            connect_timeout_seconds=connect_timeout_seconds,
         )
     return client
 
@@ -85,6 +88,7 @@ def _cached_llm_http_client(
     all_proxy: str,
     no_proxy: str,
     verify_ssl: bool,
+    connect_timeout_seconds: float,
 ) -> httpx.AsyncClient:
     mounts = _build_proxy_mounts(
         ProxyEnvConfig(
@@ -98,7 +102,7 @@ def _cached_llm_http_client(
     return httpx.AsyncClient(
         timeout=httpx.Timeout(
             timeout=DEFAULT_HTTP_TIMEOUT,
-            connect=_CONNECT_TIMEOUT_SECONDS,
+            connect=connect_timeout_seconds,
         ),
         headers={"User-Agent": get_user_agent()},
         trust_env=False,

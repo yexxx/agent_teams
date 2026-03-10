@@ -7,6 +7,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from agent_teams.mcp.registry import McpRegistry
 from agent_teams.providers.http_client_factory import build_llm_http_client
+from agent_teams.providers.model_config import DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
 from agent_teams.skills.registry import SkillRegistry
 from agent_teams.tools.registry import ToolRegistry
 from agent_teams.tools.runtime import ToolDeps
@@ -20,6 +21,7 @@ def build_coordination_agent(
     system_prompt: str,
     allowed_tools: tuple[str, ...],
     model_settings: OpenAIChatModelSettings | None = None,
+    connect_timeout_seconds: float = DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
     allowed_mcp_servers: tuple[str, ...] = (),
     allowed_skills: tuple[str, ...] = (),
     tool_registry: ToolRegistry,
@@ -40,7 +42,9 @@ def build_coordination_agent(
         skill_registry.validate_known(allowed_skills)
         skill_tools = skill_registry.get_toolset_tools(allowed_skills)
 
-    llm_http_client = build_llm_http_client()
+    llm_http_client = build_llm_http_client(
+        connect_timeout_seconds=connect_timeout_seconds
+    )
     model = OpenAIChatModel(
         model_name,
         provider=OpenAIProvider(

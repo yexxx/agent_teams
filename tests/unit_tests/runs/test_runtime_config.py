@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from agent_teams.providers.model_config import DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
 from agent_teams.runs import runtime_config
 
 
@@ -98,6 +99,52 @@ def test_load_llm_configs_reads_provider_field(tmp_path: Path) -> None:
     profiles = runtime_config.load_llm_configs(tmp_path, {})
 
     assert profiles["default"].provider.value == "openai_compatible"
+
+
+def test_load_llm_configs_uses_default_connect_timeout_when_not_configured(
+    tmp_path: Path,
+) -> None:
+    model_file = tmp_path / "model.json"
+    model_file.write_text(
+        json.dumps(
+            {
+                "default": {
+                    "model": "gpt-4o-mini",
+                    "base_url": "https://example.test/v1",
+                    "api_key": "plain-text-key",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profiles = runtime_config.load_llm_configs(tmp_path, {})
+
+    assert (
+        profiles["default"].connect_timeout_seconds
+        == DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
+    )
+
+
+def test_load_llm_configs_reads_connect_timeout_seconds(tmp_path: Path) -> None:
+    model_file = tmp_path / "model.json"
+    model_file.write_text(
+        json.dumps(
+            {
+                "default": {
+                    "model": "gpt-4o-mini",
+                    "base_url": "https://example.test/v1",
+                    "api_key": "plain-text-key",
+                    "connect_timeout_seconds": 45.0,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profiles = runtime_config.load_llm_configs(tmp_path, {})
+
+    assert profiles["default"].connect_timeout_seconds == 45.0
 
 
 def test_load_llm_configs_resolves_api_key_env_placeholder(tmp_path: Path) -> None:

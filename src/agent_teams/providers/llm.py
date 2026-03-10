@@ -242,6 +242,7 @@ class OpenAICompatibleProvider(LLMProvider):
             system_prompt=agent_system_prompt,
             allowed_tools=self._allowed_tools,
             model_settings=model_settings,
+            connect_timeout_seconds=self._config.connect_timeout_seconds,
             allowed_mcp_servers=self._allowed_mcp_servers,
             allowed_skills=self._allowed_skills,
             tool_registry=self._tool_registry,
@@ -585,6 +586,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 f"{error.message} Proxy authentication failed (HTTP 407). "
                 "Check HTTP_PROXY/HTTPS_PROXY credentials or set NO_PROXY for the model endpoint."
             )
+        if self._is_connect_timeout(chain):
+            return (
+                f"{error.message} Connection to the model endpoint timed out. "
+                "Check base_url, proxy/NO_PROXY settings, network reachability, "
+                "or increase connect_timeout_seconds in the model profile."
+            )
 
         root_message = self._deepest_distinct_exception_message(
             chain=chain,
@@ -616,6 +623,15 @@ class OpenAICompatibleProvider(LLMProvider):
         for error in chain:
             message = str(error).strip().lower()
             if "407 proxy authentication required" in message:
+                return True
+        return False
+
+    def _is_connect_timeout(
+        self,
+        chain: Sequence[BaseException],
+    ) -> bool:
+        for error in chain:
+            if error.__class__.__name__ == "ConnectTimeout":
                 return True
         return False
 

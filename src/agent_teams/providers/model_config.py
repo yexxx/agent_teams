@@ -6,6 +6,9 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 
+DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS = 15.0
+
+
 class ProviderType(StrEnum):
     OPENAI_COMPATIBLE = "openai_compatible"
     ECHO = "echo"
@@ -27,6 +30,11 @@ class ModelEndpointConfig(BaseModel):
     model: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
     api_key: str = Field(min_length=1)
+    connect_timeout_seconds: float = Field(
+        default=DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
+        gt=0.0,
+        le=300.0,
+    )
     sampling: SamplingConfig = Field(default_factory=SamplingConfig)
 
 

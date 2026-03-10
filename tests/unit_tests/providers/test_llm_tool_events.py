@@ -277,6 +277,20 @@ def test_build_model_api_error_message_surfaces_proxy_auth_failure() -> None:
     assert "HTTP_PROXY/HTTPS_PROXY credentials" in message
 
 
+def test_build_model_api_error_message_surfaces_connect_timeout() -> None:
+    provider = _provider_with_hub(_FakeRunEventHub())
+
+    try:
+        raise ModelAPIError(model_name="gpt-test", message="Request timed out.") from (
+            httpx.ConnectTimeout("connect timed out")
+        )
+    except ModelAPIError as exc:
+        message = provider._build_model_api_error_message(exc)
+
+    assert "Connection to the model endpoint timed out." in message
+    assert "increase connect_timeout_seconds" in message
+
+
 def test_build_model_api_error_message_keeps_root_cause_context() -> None:
     provider = _provider_with_hub(_FakeRunEventHub())
 

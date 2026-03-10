@@ -17,6 +17,7 @@ from agent_teams.providers.model_config import ProviderModelInfo, ProviderType
 
 class _FakeSystemService:
     def __init__(self) -> None:
+        self.saved_model_profile: dict[str, object] | None = None
         self.saved_notification_config: dict[str, object] | None = None
 
     def get_config_status(self) -> dict[str, object]:
@@ -29,7 +30,7 @@ class _FakeSystemService:
         return {}
 
     def save_model_profile(self, _name: str, _profile: dict[str, object]) -> None:
-        return None
+        self.saved_model_profile = _profile
 
     def delete_model_profile(self, _name: str) -> None:
         return None
@@ -102,6 +103,30 @@ def test_get_notification_config() -> None:
     payload = response.json()
     assert payload["tool_approval_requested"]["enabled"] is True
     assert payload["run_completed"]["channels"] == ["toast"]
+
+
+def test_save_model_profile_includes_connect_timeout_seconds() -> None:
+    service = _FakeSystemService()
+    client = _create_test_client(service)
+
+    response = client.put(
+        "/api/system/configs/model/profiles/default",
+        json={
+            "provider": "openai_compatible",
+            "model": "gpt-4o-mini",
+            "base_url": "https://example.test/v1",
+            "api_key": "secret",
+            "temperature": 0.2,
+            "top_p": 1.0,
+            "max_tokens": 2048,
+            "connect_timeout_seconds": 25.0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert service.saved_model_profile is not None
+    assert service.saved_model_profile["connect_timeout_seconds"] == 25.0
 
 
 def test_save_notification_config() -> None:

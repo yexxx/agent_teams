@@ -1859,6 +1859,34 @@
     color: var(--text-primary);
 }
 
+.probe-status,
+.profile-probe-status {
+    margin-top: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.probe-status-success,
+.profile-probe-status.probe-status-success {
+    border-color: var(--primary);
+    color: var(--text-primary);
+}
+
+.probe-status-failed,
+.profile-probe-status.probe-status-failed {
+    border-color: #b94a48;
+    color: var(--text-primary);
+}
+
+.probe-status-probing,
+.profile-probe-status.probe-status-probing {
+    color: var(--text-primary);
+}
+
 .profile-editor {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);

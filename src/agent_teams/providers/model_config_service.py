@@ -5,6 +5,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agent_teams.providers.model_config import ProviderModelInfo, ProviderType
+from agent_teams.providers.model_connectivity import (
+    ModelConnectivityProbeRequest,
+    ModelConnectivityProbeResult,
+    ModelConnectivityProbeService,
+)
 from agent_teams.providers.model_config_manager import ModelConfigManager
 from agent_teams.providers.registry import list_provider_models
 from agent_teams.runs.runtime_config import RuntimeConfig, load_runtime_config
@@ -28,6 +33,9 @@ class ModelConfigService:
         self._model_config_manager: ModelConfigManager = model_config_manager
         self._get_runtime: Callable[[], RuntimeConfig] = get_runtime
         self._on_runtime_reloaded: Callable[[RuntimeConfig], None] = on_runtime_reloaded
+        self._model_connectivity_probe_service = ModelConnectivityProbeService(
+            get_runtime=get_runtime
+        )
 
     @property
     def runtime(self) -> RuntimeConfig:
@@ -57,6 +65,12 @@ class ModelConfigService:
     def save_model_config(self, config: JsonObject) -> None:
         self._model_config_manager.save_model_config(config)
         self.reload_model_config()
+
+    def probe_connectivity(
+        self,
+        request: ModelConnectivityProbeRequest,
+    ) -> ModelConnectivityProbeResult:
+        return self._model_connectivity_probe_service.probe(request)
 
     def reload_model_config(self) -> None:
         runtime = load_runtime_config(

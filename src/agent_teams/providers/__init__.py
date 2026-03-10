@@ -22,6 +22,14 @@ if TYPE_CHECKING:
     )
     from agent_teams.providers.model_config_manager import ModelConfigManager
     from agent_teams.providers.model_config_service import ModelConfigService
+    from agent_teams.providers.model_connectivity import (
+        ModelConnectivityDiagnostics,
+        ModelConnectivityProbeOverride,
+        ModelConnectivityProbeRequest,
+        ModelConnectivityProbeResult,
+        ModelConnectivityProbeService,
+        ModelConnectivityTokenUsage,
+    )
     from agent_teams.providers.registry import (
         ProviderRegistry,
         create_default_provider_registry,
@@ -34,6 +42,12 @@ __all__ = [
     "ModelEndpointConfig",
     "ModelConfigManager",
     "ModelConfigService",
+    "ModelConnectivityDiagnostics",
+    "ModelConnectivityProbeOverride",
+    "ModelConnectivityProbeRequest",
+    "ModelConnectivityProbeResult",
+    "ModelConnectivityProbeService",
+    "ModelConnectivityTokenUsage",
     "OpenAICompatibleProvider",
     "ProviderModelInfo",
     "ProviderRegistry",
@@ -59,6 +73,30 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "ModelConfigService": (
         "agent_teams.providers.model_config_service",
         "ModelConfigService",
+    ),
+    "ModelConnectivityDiagnostics": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityDiagnostics",
+    ),
+    "ModelConnectivityProbeOverride": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityProbeOverride",
+    ),
+    "ModelConnectivityProbeRequest": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityProbeRequest",
+    ),
+    "ModelConnectivityProbeResult": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityProbeResult",
+    ),
+    "ModelConnectivityProbeService": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityProbeService",
+    ),
+    "ModelConnectivityTokenUsage": (
+        "agent_teams.providers.model_connectivity",
+        "ModelConnectivityTokenUsage",
     ),
     "OpenAICompatibleProvider": (
         "agent_teams.providers.llm",

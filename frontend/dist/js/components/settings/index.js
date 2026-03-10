@@ -77,8 +77,10 @@ function createModal() {
                             </div>
                             <div class="form-actions">
                                 <button class="primary-btn" id="save-profile-btn">Save</button>
+                                <button class="secondary-btn" id="test-profile-btn" type="button">Test Connection</button>
                                 <button class="secondary-btn" id="cancel-profile-btn">Cancel</button>
                             </div>
+                            <div class="profile-probe-status" id="profile-probe-status" style="display:none;"></div>
                         </div>
                         <button class="primary-btn" id="add-profile-btn" style="margin-top:10px;">+ Add Profile</button>
                     </div>

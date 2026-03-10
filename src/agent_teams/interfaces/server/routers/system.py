@@ -14,10 +14,14 @@ from agent_teams.interfaces.server.deps import (
 from agent_teams.interfaces.server.config_status_service import ConfigStatusService
 from agent_teams.mcp.config_reload_service import McpConfigReloadService
 from agent_teams.notifications.settings_service import NotificationSettingsService
-from agent_teams.providers.model_config_service import ModelConfigService
 from agent_teams.providers.model_config import (
     DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
     ProviderType,
+)
+from agent_teams.providers.model_config_service import ModelConfigService
+from agent_teams.providers.model_connectivity import (
+    ModelConnectivityProbeRequest,
+    ModelConnectivityProbeResult,
 )
 from agent_teams.skills.config_reload_service import SkillsConfigReloadService
 from agent_teams.shared_types.json_types import JsonObject
@@ -57,7 +61,7 @@ class ModelProfileRequest(BaseModel):
     provider: ProviderType = ProviderType.OPENAI_COMPATIBLE
     model: str
     base_url: str
-    api_key: str
+    api_key: str | None = None
     temperature: float = 0.7
     top_p: float = 1.0
     max_tokens: int = 4096
@@ -71,19 +75,18 @@ def save_model_profile(
     service: ModelConfigService = Depends(get_model_config_service),
 ) -> dict[str, str]:
     try:
-        service.save_model_profile(
-            name,
-            {
-                "model": req.model,
-                "provider": req.provider.value,
-                "base_url": req.base_url,
-                "api_key": req.api_key,
-                "temperature": req.temperature,
-                "top_p": req.top_p,
-                "max_tokens": req.max_tokens,
-                "connect_timeout_seconds": req.connect_timeout_seconds,
-            },
-        )
+        profile: JsonObject = {
+            "model": req.model,
+            "provider": req.provider.value,
+            "base_url": req.base_url,
+            "temperature": req.temperature,
+            "top_p": req.top_p,
+            "max_tokens": req.max_tokens,
+            "connect_timeout_seconds": req.connect_timeout_seconds,
+        }
+        if req.api_key is not None and req.api_key.strip():
+            profile["api_key"] = req.api_key
+        service.save_model_profile(name, profile)
         return {"status": "ok"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -128,6 +131,17 @@ def save_model_config(
         return {"status": "ok"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/configs/model:probe")
+def probe_model_connectivity(
+    req: ModelConnectivityProbeRequest,
+    service: ModelConfigService = Depends(get_model_config_service),
+) -> ModelConnectivityProbeResult:
+    try:
+        return service.probe_connectivity(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/configs/notifications")

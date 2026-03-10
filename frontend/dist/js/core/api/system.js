@@ -16,6 +16,18 @@ export async function fetchModelProfiles() {
     return requestJson('/api/system/configs/model/profiles', undefined, 'Failed to fetch model profiles');
 }
 
+export async function probeModelConnection(payload) {
+    return requestJson(
+        '/api/system/configs/model:probe',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        },
+        'Failed to probe model connectivity',
+    );
+}
+
 export async function saveModelProfile(name, profile) {
     return requestJson(
         `/api/system/configs/model/profiles/${name}`,

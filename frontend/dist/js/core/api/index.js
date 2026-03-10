@@ -31,6 +31,7 @@ export {
     fetchConfigStatus,
     fetchModelConfig,
     fetchModelProfiles,
+    probeModelConnection,
     reloadMcpConfig,
     reloadModelConfig,
     reloadSkillsConfig,

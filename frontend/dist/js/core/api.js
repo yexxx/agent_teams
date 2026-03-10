@@ -23,6 +23,7 @@ export {
     fetchModelConfig,
     fetchModelProfiles,
     fetchNotificationConfig,
+    probeModelConnection,
     saveModelProfile,
     deleteModelProfile,
     saveModelConfig,

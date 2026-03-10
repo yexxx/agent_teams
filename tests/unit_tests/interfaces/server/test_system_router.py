@@ -12,13 +12,14 @@ from agent_teams.interfaces.server.deps import (
     get_skills_config_reload_service,
 )
 from agent_teams.interfaces.server.routers import system
+from agent_teams.providers.model_connectivity import ModelConnectivityProbeResult
 from agent_teams.providers.model_config import ProviderModelInfo, ProviderType
 
 
 class _FakeSystemService:
     def __init__(self) -> None:
-        self.saved_model_profile: dict[str, object] | None = None
         self.saved_notification_config: dict[str, object] | None = None
+        self.saved_model_profile: tuple[str, dict[str, object]] | None = None
 
     def get_config_status(self) -> dict[str, object]:
         return {"model": {"loaded": True}}
@@ -29,8 +30,8 @@ class _FakeSystemService:
     def get_model_profiles(self) -> dict[str, object]:
         return {}
 
-    def save_model_profile(self, _name: str, _profile: dict[str, object]) -> None:
-        self.saved_model_profile = _profile
+    def save_model_profile(self, name: str, profile: dict[str, object]) -> None:
+        self.saved_model_profile = (name, profile)
 
     def delete_model_profile(self, _name: str) -> None:
         return None
@@ -84,6 +85,31 @@ class _FakeSystemService:
             return models
         return tuple(model for model in models if model.provider == provider)
 
+    def probe_connectivity(
+        self,
+        _request: object,
+    ) -> ModelConnectivityProbeResult:
+        return ModelConnectivityProbeResult.model_validate(
+            {
+                "ok": True,
+                "provider": ProviderType.OPENAI_COMPATIBLE.value,
+                "model": "gpt-4o-mini",
+                "latency_ms": 123,
+                "checked_at": "2026-03-10T00:00:00Z",
+                "diagnostics": {
+                    "endpoint_reachable": True,
+                    "auth_valid": True,
+                    "rate_limited": False,
+                },
+                "token_usage": {
+                    "prompt_tokens": 8,
+                    "completion_tokens": 1,
+                    "total_tokens": 9,
+                },
+                "retryable": False,
+            }
+        )
+
 
 def _create_test_client(fake_service: object) -> TestClient:
     app = FastAPI()
@@ -126,7 +152,8 @@ def test_save_model_profile_includes_connect_timeout_seconds() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert service.saved_model_profile is not None
-    assert service.saved_model_profile["connect_timeout_seconds"] == 25.0
+    _, saved_profile = service.saved_model_profile
+    assert saved_profile["connect_timeout_seconds"] == 25.0
 
 
 def test_save_notification_config() -> None:
@@ -175,3 +202,43 @@ def test_get_provider_models_with_filter() -> None:
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["provider"] == ProviderType.ECHO.value
+
+
+def test_probe_model_connectivity() -> None:
+    client = _create_test_client(_FakeSystemService())
+
+    response = client.post(
+        "/api/system/configs/model:probe",
+        json={"profile_name": "default"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["latency_ms"] == 123
+    assert payload["token_usage"]["total_tokens"] == 9
+
+
+def test_save_model_profile_allows_missing_api_key_for_edit() -> None:
+    service = _FakeSystemService()
+    client = _create_test_client(service)
+
+    response = client.put(
+        "/api/system/configs/model/profiles/default",
+        json={
+            "provider": ProviderType.OPENAI_COMPATIBLE.value,
+            "model": "kimi-k2.5",
+            "base_url": "https://api.moonshot.cn/v1",
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert service.saved_model_profile is not None
+    saved_name, saved_profile = service.saved_model_profile
+    assert saved_name == "default"
+    assert "api_key" not in saved_profile
+    assert saved_profile["top_p"] == 0.95

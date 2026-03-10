@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from agent_teams.providers.model_config import DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS
 from agent_teams.providers.model_config_manager import ModelConfigManager
+from agent_teams.shared_types.json_types import JsonObject
 
 
 def test_get_model_config_returns_empty_when_file_missing(tmp_path: Path) -> None:
@@ -95,3 +97,45 @@ def test_delete_model_profile_removes_entry(tmp_path: Path) -> None:
 
     assert "default" not in config
     assert "secondary" in config
+
+
+def test_save_model_profile_preserves_existing_api_key_when_blank(
+    tmp_path: Path,
+) -> None:
+    manager = ModelConfigManager(config_dir=tmp_path)
+    model_file = tmp_path / "model.json"
+    model_file.write_text(
+        json.dumps(
+            {
+                "default": {
+                    "provider": "openai_compatible",
+                    "model": "gpt-4o-mini",
+                    "base_url": "https://example.test/v1",
+                    "api_key": "secret-key",
+                    "temperature": 0.2,
+                    "top_p": 1.0,
+                    "max_tokens": 1024,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager.save_model_profile(
+        "default",
+        {
+            "provider": "openai_compatible",
+            "model": "kimi-k2.5",
+            "base_url": "https://api.moonshot.cn/v1",
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        },
+    )
+
+    config = manager.get_model_config()
+    saved_profile = cast(JsonObject, config["default"])
+
+    assert saved_profile["model"] == "kimi-k2.5"
+    assert saved_profile["top_p"] == 0.95
+    assert saved_profile["api_key"] == "secret-key"

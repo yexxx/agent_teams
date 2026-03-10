@@ -48,7 +48,11 @@ class ModelConfigManager:
         config: JsonObject = {}
         if model_file.exists():
             config = _load_json_object(model_file)
-        config[name] = profile
+        existing_profile = config.get(name)
+        config[name] = _merge_profile_api_key(
+            existing_profile=existing_profile,
+            next_profile=profile,
+        )
         _ = model_file.write_text(dumps(config, indent=2), encoding="utf-8")
 
     def delete_model_profile(self, name: str) -> None:
@@ -70,3 +74,26 @@ def _load_json_object(file_path: Path) -> JsonObject:
     if isinstance(raw, dict):
         return cast(JsonObject, raw)
     return {}
+
+
+def _merge_profile_api_key(
+    *,
+    existing_profile: object,
+    next_profile: JsonObject,
+) -> JsonObject:
+    merged_profile = dict(next_profile)
+    next_api_key = merged_profile.get("api_key")
+    if isinstance(next_api_key, str) and next_api_key.strip():
+        return merged_profile
+
+    if not isinstance(existing_profile, dict):
+        merged_profile.pop("api_key", None)
+        return merged_profile
+
+    existing_api_key = existing_profile.get("api_key")
+    if isinstance(existing_api_key, str) and existing_api_key.strip():
+        merged_profile["api_key"] = existing_api_key
+        return merged_profile
+
+    merged_profile.pop("api_key", None)
+    return merged_profile

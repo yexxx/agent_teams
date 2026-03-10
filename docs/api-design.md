@@ -123,6 +123,51 @@ Request:
 {"config": {"default": {"model": "..."}}}
 ```
 
+### `POST /system/configs/model:probe`
+Tests model connectivity for either a saved profile or an unsaved draft override.
+
+Request:
+```json
+{
+  "profile_name": "default",
+  "override": {
+    "model": "gpt-4o-mini",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "***"
+  },
+  "timeout_ms": 5000
+}
+```
+
+Notes:
+- `profile_name` is optional when probing an unsaved draft.
+- `override` is optional when probing an already-saved profile.
+- When both are provided, the saved profile is loaded first and then overridden field-by-field.
+
+Response:
+```json
+{
+  "ok": true,
+  "provider": "openai_compatible",
+  "model": "gpt-4o-mini",
+  "latency_ms": 842,
+  "checked_at": "2026-03-10T00:00:00Z",
+  "diagnostics": {
+    "endpoint_reachable": true,
+    "auth_valid": true,
+    "rate_limited": false
+  },
+  "token_usage": {
+    "prompt_tokens": 8,
+    "completion_tokens": 1,
+    "total_tokens": 9
+  },
+  "error_code": null,
+  "error_message": null,
+  "retryable": false
+}
+```
+
 ### `POST /system/configs/model:reload`
 Reloads model config into runtime.
 

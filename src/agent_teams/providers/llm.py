@@ -234,6 +234,9 @@ class OpenAICompatibleProvider(LLMProvider):
             # Some OpenAI-compatible providers return cumulative usage in each stream chunk.
             # Enabling this flag makes pydantic-ai keep the last chunk usage instead of summing chunks.
             "openai_continuous_usage_stats": True,
+            "temperature": self._config.sampling.temperature,
+            "top_p": self._config.sampling.top_p,
+            "max_tokens": self._config.sampling.max_tokens,
         }
         agent = build_coordination_agent(
             model_name=self._config.model,

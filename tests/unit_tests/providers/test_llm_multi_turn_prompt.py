@@ -708,9 +708,9 @@ async def test_generate_enables_continuous_stream_usage_stats(
     settings_obj = captured_kwargs.get("model_settings")
     assert isinstance(settings_obj, dict)
     assert settings_obj.get("openai_continuous_usage_stats") is True
-    assert "temperature" not in settings_obj
-    assert "top_p" not in settings_obj
-    assert "max_tokens" not in settings_obj
+    assert settings_obj.get("temperature") == provider._config.sampling.temperature
+    assert settings_obj.get("top_p") == provider._config.sampling.top_p
+    assert settings_obj.get("max_tokens") == provider._config.sampling.max_tokens
 
 
 @pytest.mark.asyncio

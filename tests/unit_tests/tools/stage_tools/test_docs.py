@@ -47,12 +47,10 @@ def test_write_stage_doc_once_rejects_duplicate(
         return written["exists"]
 
     def _mkdir(_: Path, parents: bool, exist_ok: bool) -> None:
-        unused_params = (parents, exist_ok)
-        assert unused_params is not None
+        del parents, exist_ok
 
     def _write_text(_: Path, content: str, encoding: str) -> int:
-        unused_encoding = encoding
-        assert unused_encoding is not None
+        del encoding
         written["exists"] = True
         return len(content)
 

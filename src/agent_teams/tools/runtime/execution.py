@@ -11,7 +11,7 @@ from json import dumps
 from typing import cast
 from uuid import uuid4
 
-from agent_teams.logger import get_logger, log_event, log_tool_call, log_tool_error
+from agent_teams.logger import get_logger, log_event, log_tool_error
 from agent_teams.notifications import NotificationContext, NotificationType
 from agent_teams.runs.enums import RunEventType
 from agent_teams.runs.models import RunEvent
@@ -48,19 +48,18 @@ async def execute_tool(
         tool_call_id=tool_call_id,
     ):
         started = time.perf_counter()
-        if LOGGER.isEnabledFor(logging.DEBUG):
-            log_event(
-                LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message=(
-                    f"[tool:start] tool={tool_name} run={ctx.deps.run_id} "
-                    f"task={ctx.deps.task_id} instance={ctx.deps.instance_id} "
-                    f"args={_safe_json(args_summary)}"
-                ),
-            )
-        else:
-            log_tool_call(ctx.deps.role_id, tool_name, args_summary)
+        log_event(
+            LOGGER,
+            logging.INFO,
+            event="tool.call.started",
+            message="Tool call started",
+            payload={
+                "tool_name": tool_name,
+                "args": args_summary,
+                "instance_id": ctx.deps.instance_id,
+                "role_id": ctx.deps.role_id,
+            },
+        )
 
         meta: JsonObject = {}
         _raise_if_stopped(ctx)
@@ -115,13 +114,14 @@ async def execute_tool(
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             meta["duration_ms"] = elapsed_ms
 
-            if LOGGER.isEnabledFor(logging.DEBUG):
-                log_event(
-                    LOGGER,
-                    logging.DEBUG,
-                    event="runtime.debug",
-                    message=f"[tool:ok] tool={tool_name} elapsed_ms={elapsed_ms}",
-                )
+            log_event(
+                LOGGER,
+                logging.INFO,
+                event="tool.call.completed",
+                message="Tool call completed",
+                duration_ms=elapsed_ms,
+                payload={"tool_name": tool_name},
+            )
 
             envelope = _envelope(
                 ok=True,
@@ -137,26 +137,27 @@ async def execute_tool(
             meta["duration_ms"] = elapsed_ms
             error = _error_payload(exc)
 
-            if LOGGER.isEnabledFor(logging.DEBUG):
-                log_event(
-                    LOGGER,
-                    logging.DEBUG,
-                    event="runtime.debug",
-                    message=(
-                        f"[tool:error] tool={tool_name} elapsed_ms={elapsed_ms} "
-                        f"err_type={error.type} msg={error.message}"
-                    ),
-                )
-            else:
-                compact = json.dumps(
-                    {
-                        "tool": tool_name,
-                        "type": error.type,
-                        "message": error.message,
-                    },
-                    ensure_ascii=False,
-                )
-                log_tool_error(ctx.deps.role_id, compact)
+            compact = json.dumps(
+                {
+                    "tool": tool_name,
+                    "type": error.type,
+                    "message": error.message,
+                },
+                ensure_ascii=False,
+            )
+            log_tool_error(ctx.deps.role_id, compact)
+            log_event(
+                LOGGER,
+                logging.ERROR,
+                event="tool.call.failed",
+                message="Tool call failed",
+                duration_ms=elapsed_ms,
+                payload={
+                    "tool_name": tool_name,
+                    "error_type": error.type,
+                    "retryable": error.retryable,
+                },
+            )
             envelope = _envelope(
                 ok=False,
                 tool_name=tool_name,
@@ -344,6 +345,16 @@ async def _wait_for_ticket_resolution(
         last_error=None,
     )
     if publish_request:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            event="tool.approval.requested",
+            message="Tool approval requested",
+            payload={
+                "tool_name": tool_name,
+                "tool_call_id": ticket_id,
+            },
+        )
         _publish_tool_approval_event(
             ctx=ctx,
             event_type=RunEventType.TOOL_APPROVAL_REQUESTED,
@@ -389,6 +400,17 @@ async def _wait_for_ticket_resolution(
             last_error="Tool approval timed out",
         )
         meta["approval_status"] = "timeout"
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            event="tool.approval.resolved",
+            message="Tool approval timed out",
+            payload={
+                "tool_name": tool_name,
+                "tool_call_id": ticket_id,
+                "action": "timeout",
+            },
+        )
         _publish_tool_approval_event(
             ctx=ctx,
             event_type=RunEventType.TOOL_APPROVAL_RESOLVED,
@@ -424,6 +446,17 @@ async def _wait_for_ticket_resolution(
     meta["approval_status"] = action
     if feedback:
         meta["approval_feedback"] = feedback
+    log_event(
+        LOGGER,
+        logging.INFO if action == "approve" else logging.WARNING,
+        event="tool.approval.resolved",
+        message="Tool approval resolved",
+        payload={
+            "tool_name": tool_name,
+            "tool_call_id": ticket_id,
+            "action": action,
+        },
+    )
     _publish_tool_approval_event(
         ctx=ctx,
         event_type=RunEventType.TOOL_APPROVAL_RESOLVED,

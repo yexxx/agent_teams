@@ -209,12 +209,16 @@ class OpenAICompatibleProvider(LLMProvider):
         )
         log_event(
             LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message=(
-                f"[llm:start] role={request.role_id} run={request.run_id} "
-                f"task={request.task_id} instance={request.instance_id}"
-            ),
+            logging.INFO,
+            event="llm.request.started",
+            message="LLM request started",
+            payload={
+                "model": self._config.model,
+                "base_url": self._config.base_url,
+                "role_id": request.role_id,
+                "instance_id": request.instance_id,
+                "task_id": request.task_id,
+            },
         )
         self._run_event_hub.publish(
             RunEvent(
@@ -503,8 +507,35 @@ class OpenAICompatibleProvider(LLMProvider):
                             ),
                         )
                     )
+                    log_event(
+                        LOGGER,
+                        logging.INFO,
+                        event="llm.token_usage.recorded",
+                        message="LLM token usage recorded",
+                        payload={
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "requests": requests,
+                            "tool_calls": tool_calls,
+                            "role_id": request.role_id,
+                            "instance_id": request.instance_id,
+                        },
+                    )
                     break  # done
         except ModelAPIError as exc:
+            log_event(
+                LOGGER,
+                logging.ERROR,
+                event="llm.request.failed",
+                message="LLM provider request failed",
+                payload={
+                    "model": self._config.model,
+                    "base_url": self._config.base_url,
+                    "role_id": request.role_id,
+                    "instance_id": request.instance_id,
+                },
+                exc_info=exc,
+            )
             raise ModelAPIError(
                 model_name=exc.model_name,
                 message=self._build_model_api_error_message(exc),
@@ -555,12 +586,16 @@ class OpenAICompatibleProvider(LLMProvider):
         )
         log_event(
             LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message=(
-                f"[llm:done] role={request.role_id} run={request.run_id} "
-                f"task={request.task_id} chars={len(text)}"
-            ),
+            logging.INFO,
+            event="llm.request.completed",
+            message="LLM request completed",
+            payload={
+                "model": self._config.model,
+                "role_id": request.role_id,
+                "instance_id": request.instance_id,
+                "task_id": request.task_id,
+                "chars": len(text),
+            },
         )
         return text
 

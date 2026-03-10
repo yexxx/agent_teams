@@ -11,7 +11,11 @@ import { resumeRecoverableRun } from './recovery.js';
 import { state } from '../core/state.js';
 import { requestStopCurrentRun } from '../core/stream.js';
 import { els } from '../utils/dom.js';
-import { sysLog } from '../utils/logger.js';
+import {
+    installGlobalErrorLogging,
+    logInfo,
+    sysLog,
+} from '../utils/logger.js';
 
 export function setupEventBindings(handleSend) {
     const onFirstGesture = () => {
@@ -71,6 +75,8 @@ function setupSettingsButton() {
 }
 
 export async function initApp(selectSession, handleSend) {
+    installGlobalErrorLogging();
+    logInfo('frontend.bootstrap.started', 'Frontend bootstrap started');
     sysLog('System Initialized');
     setupNavbarBindings();
     setupEventBindings(handleSend);

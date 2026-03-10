@@ -147,6 +147,7 @@ def _run_model_profiles_script(tmp_path: Path, runner_source: str) -> dict[str, 
     )
 
     mock_api_path = tmp_path / "mockApi.mjs"
+    mock_logger_path = tmp_path / "mockLogger.mjs"
     module_under_test_path = tmp_path / "modelProfiles.mjs"
     runner_path = tmp_path / "runner.mjs"
 
@@ -188,16 +189,32 @@ export async function reloadModelConfig() {
     globalThis.__reloadCalled = true;
 }
 
-export async function deleteModelProfile() {
-    throw new Error("deleteModelProfile should not be called in this test");
+    export async function deleteModelProfile() {
+        throw new Error("deleteModelProfile should not be called in this test");
+    }
+""".strip(),
+        encoding="utf-8",
+    )
+    mock_logger_path.write_text(
+        """
+export function errorToPayload(error, extra = {}) {
+    return {
+        error_message: String(error?.message || error || ""),
+        ...extra,
+    };
+}
+
+export function logError() {
+    return undefined;
 }
 """.strip(),
         encoding="utf-8",
     )
 
-    source_text = source_path.read_text(encoding="utf-8").replace(
-        "../../core/api.js",
-        "./mockApi.mjs",
+    source_text = (
+        source_path.read_text(encoding="utf-8")
+        .replace("../../core/api.js", "./mockApi.mjs")
+        .replace("../../utils/logger.js", "./mockLogger.mjs")
     )
     module_under_test_path.write_text(source_text, encoding="utf-8")
 

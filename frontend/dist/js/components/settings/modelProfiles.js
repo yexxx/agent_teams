@@ -9,6 +9,7 @@ import {
     reloadModelConfig,
     saveModelProfile,
 } from '../../core/api.js';
+import { errorToPayload, logError } from '../../utils/logger.js';
 
 let profiles = {};
 let editingProfile = null;
@@ -43,7 +44,11 @@ export async function loadModelProfilesPanel() {
         renderProfiles();
         renderDraftProbeState();
     } catch (e) {
-        console.error('Failed to load model profiles:', e);
+        logError(
+            'frontend.model_profiles.load_failed',
+            'Failed to load model profiles',
+            errorToPayload(e),
+        );
     }
 }
 

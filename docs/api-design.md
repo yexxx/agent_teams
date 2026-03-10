@@ -582,7 +582,7 @@ Error behavior:
 ## 11. Frontend Log API
 
 ### `POST /logs/frontend`
-Ingests frontend structured logs in batch.
+Ingests frontend structured logs in batch and writes them to `.agent_teams/log/frontend.log`.
 
 Request:
 ```json
@@ -599,6 +599,10 @@ Request:
       "task_id": null,
       "instance_id": null,
       "role_id": null,
+      "page": "agent-teams",
+      "route": "/chat",
+      "browser_session_id": "browser-xxx",
+      "user_agent": "Mozilla/5.0",
       "payload": {"ready_state": 2},
       "ts": "2026-03-04T12:00:00Z"
     }

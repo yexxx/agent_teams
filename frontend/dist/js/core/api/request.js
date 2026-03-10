@@ -2,20 +2,47 @@
  * core/api/request.js
  * Shared HTTP request helper for JSON endpoints.
  */
+import { errorToPayload, logError } from '../../utils/logger.js';
 
 export async function requestJson(url, options, errorMessage) {
-    const res = await fetch(url, options);
-    if (!res.ok) {
-        let detail = errorMessage;
-        try {
-            const payload = await res.json();
-            if (typeof payload?.detail === 'string' && payload.detail) {
-                detail = payload.detail;
+    try {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+            let detail = errorMessage;
+            try {
+                const payload = await res.json();
+                if (typeof payload?.detail === 'string' && payload.detail) {
+                    detail = payload.detail;
+                }
+            } catch (_) {
+                // keep fallback message
             }
-        } catch (_) {
-            // keep fallback message
+            logError(
+                'frontend.api.failed',
+                detail,
+                {
+                    url,
+                    method: options?.method || 'GET',
+                    status: res.status,
+                },
+            );
+            const error = new Error(detail);
+            error.__agentTeamsLogged = true;
+            throw error;
         }
-        throw new Error(detail);
+        return res.json();
+    } catch (error) {
+        if (error?.__agentTeamsLogged === true) {
+            throw error;
+        }
+        logError(
+            'frontend.api.exception',
+            errorMessage,
+            errorToPayload(error, {
+                url,
+                method: options?.method || 'GET',
+            }),
+        );
+        throw error;
     }
-    return res.json();
 }

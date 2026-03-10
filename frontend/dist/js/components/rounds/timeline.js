@@ -16,6 +16,7 @@ import { applyRoundPage, fetchInitialRoundsPage, fetchOlderRoundsPage } from './
 import { roundsState } from './state.js';
 import { roundSectionId, esc, roundStateLabel, roundStateTone } from './utils.js';
 import { updateWorkflowByRound } from './workflow.js';
+import { errorToPayload, logError } from '../../utils/logger.js';
 
 export let currentRounds = [];
 export let currentRound = null;
@@ -27,7 +28,11 @@ export async function loadSessionRounds(sessionId) {
         syncExportedState();
         renderSessionTimeline(roundsState.currentRounds, { preserveScroll: false });
     } catch (e) {
-        console.error('Failed loading rounds', e);
+        logError(
+            'frontend.rounds.load_failed',
+            'Failed loading rounds',
+            errorToPayload(e, { session_id: sessionId }),
+        );
     }
 }
 
@@ -351,7 +356,11 @@ async function loadOlderRounds() {
         const newHeight = container.scrollHeight;
         container.scrollTop = newHeight - oldHeight + oldTop;
     } catch (e) {
-        console.error('Failed loading older rounds', e);
+        logError(
+            'frontend.rounds.load_older_failed',
+            'Failed loading older rounds',
+            errorToPayload(e, { session_id: sessionId }),
+        );
         roundsState.paging.loading = false;
     }
 }

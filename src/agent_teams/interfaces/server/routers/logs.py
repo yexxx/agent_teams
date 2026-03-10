@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
@@ -12,7 +12,7 @@ from agent_teams.logger import get_logger, log_event
 from agent_teams.trace import bind_trace_context, generate_trace_id
 
 router = APIRouter(prefix="/logs", tags=["Logs"])
-logger = get_logger(__name__)
+logger = get_logger(__name__, source="frontend")
 
 
 class FrontendLogEvent(BaseModel):
@@ -28,6 +28,10 @@ class FrontendLogEvent(BaseModel):
     task_id: str | None = None
     instance_id: str | None = None
     role_id: str | None = None
+    page: str | None = None
+    route: str | None = None
+    browser_session_id: str | None = None
+    user_agent: str | None = None
     payload: JsonObject = Field(default_factory=dict)
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -56,7 +60,14 @@ def ingest_frontend_logs(req: FrontendLogBatchRequest) -> dict[str, int]:
                 _to_level(item.level),
                 event=f"frontend.{item.event}",
                 message=item.message,
-                payload={"frontend_ts": item.ts.isoformat(), **item.payload},
+                payload={
+                    "frontend_ts": item.ts.isoformat(),
+                    "page": item.page,
+                    "route": item.route,
+                    "browser_session_id": item.browser_session_id,
+                    "user_agent": item.user_agent,
+                    **item.payload,
+                },
             )
             accepted += 1
     return {"accepted": accepted}
@@ -70,5 +81,3 @@ def _to_level(level: str) -> int:
         "error": logging.ERROR,
     }
     return table[level]
-
-

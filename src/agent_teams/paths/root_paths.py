@@ -57,6 +57,15 @@ def get_project_config_dir(project_root: Path | None = None) -> Path:
     return resolved_project_root / _CONFIG_DIR_NAME
 
 
+def get_project_log_dir(project_root: Path | None = None) -> Path:
+    resolved_project_root = (
+        _resolve_project_root_from_context()
+        if project_root is None
+        else project_root.expanduser().resolve()
+    )
+    return resolved_project_root / _CONFIG_DIR_NAME / "log"
+
+
 def _resolve_project_root_from_context() -> Path:
     cwd = Path.cwd().resolve()
     if (cwd / _CONFIG_DIR_NAME).exists():

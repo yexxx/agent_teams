@@ -4,6 +4,7 @@
  */
 import { fetchSessionWorkflows } from '../../core/api.js';
 import { state } from '../../core/state.js';
+import { errorToPayload, logError } from '../../utils/logger.js';
 import { renderNativeDAG } from './render.js';
 import { currentWorkflows, setCurrentWorkflows } from './state.js';
 
@@ -15,7 +16,11 @@ export async function loadSessionWorkflows(sessionId) {
         setCurrentWorkflows(workflows);
         renderNativeDAG(currentWorkflows.length > 0 ? currentWorkflows[currentWorkflows.length - 1] : null);
     } catch (e) {
-        console.error('Failed loading workflows', e);
+        logError(
+            'frontend.workflow.load_failed',
+            'Failed loading workflows',
+            errorToPayload(e, { session_id: sessionId }),
+        );
     }
 }
 

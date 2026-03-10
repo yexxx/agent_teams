@@ -271,6 +271,13 @@ async def resume_run(
 ) -> dict[str, str]:
     try:
         session_id = service.resume_run(run_id)
+        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
+            log_event(
+                logger,
+                logging.INFO,
+                event="run.resume.requested",
+                message="Run resume requested",
+            )
         return {"status": "ok", "run_id": run_id, "session_id": session_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

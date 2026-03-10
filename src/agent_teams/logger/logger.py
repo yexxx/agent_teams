@@ -1,31 +1,39 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import ast
+import copy
 import json
 import logging
-import logging.config
+import sys
 import traceback
-from configparser import ConfigParser
 from datetime import UTC, datetime
+from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
+from queue import SimpleQueue
+from threading import Lock
 from types import TracebackType
-from typing import cast, override
+from typing import Literal, cast, override
 
-from agent_teams.shared_types.json_types import JsonObject, JsonValue
 from agent_teams.env import load_merged_env_vars
-from agent_teams.logger.log_persistence import PersistentLogHandler
-from agent_teams.paths import get_project_config_dir
+from agent_teams.paths import get_project_config_dir, get_project_log_dir
+from agent_teams.shared_types.json_types import JsonObject, JsonValue
 from agent_teams.trace import get_trace_context
 
 SERVICE_NAME = "agent_teams"
-LOGGER_CONFIG_FILENAME = "logger.ini"
-DEFAULT_LOG_FILENAME = "agent_teams.log"
+BACKEND_LOGGER_NAMESPACE = "agent_teams.backend"
+FRONTEND_LOGGER_NAMESPACE = "agent_teams.frontend"
+DEFAULT_BACKEND_LOG_FILENAME = "backend.log"
+DEFAULT_FRONTEND_LOG_FILENAME = "frontend.log"
 DEFAULT_LOG_LEVEL = "INFO"
-DEFAULT_LOG_FORMAT = "json"
+DEFAULT_LOG_CONSOLE = "1"
+DEFAULT_BACKUP_COUNT = 14
 
 _RUNTIME_ENV_VALUES: dict[str, str] | None = None
+_LOGGING_LOCK = Lock()
+_LOGGING_RUNTIME: "_LoggingRuntime | None" = None
+_DEFAULT_RECORD_FACTORY = logging.getLogRecordFactory()
 
+type LogSource = Literal["backend", "frontend"]
 type LogExcInfo = (
     bool
     | BaseException
@@ -34,146 +42,256 @@ type LogExcInfo = (
     | None
 )
 
-DEFAULT_LOGGER_INI = """[loggers]
-keys=root
 
-[handlers]
-keys=consoleHandler,rotatingFileHandler
-
-[formatters]
-keys=jsonFormatter,consoleFormatter
-
-[logger_root]
-level=INFO
-handlers=consoleHandler,rotatingFileHandler
-
-[handler_consoleHandler]
-class=StreamHandler
-level=INFO
-formatter=jsonFormatter
-args=(sys.stdout,)
-
-[handler_rotatingFileHandler]
-class=handlers.TimedRotatingFileHandler
-level=INFO
-formatter=jsonFormatter
-args=('%(log_file)s', 'midnight', 1, 14, 'utf-8', False, True)
-
-[formatter_jsonFormatter]
-class=agent_teams.logger.JsonFormatter
-
-[formatter_consoleFormatter]
-format=[%(asctime)s] %(levelname)s %(name)s: %(message)s
-datefmt=%Y-%m-%d %H:%M:%S
-"""
+def _trace_log_record_factory(*args: object, **kwargs: object) -> logging.LogRecord:
+    record = _DEFAULT_RECORD_FACTORY(*args, **kwargs)
+    context = get_trace_context()
+    context_fields = {
+        "trace_id": context.trace_id,
+        "request_id": context.request_id,
+        "session_id": context.session_id,
+        "run_id": context.run_id,
+        "task_id": context.task_id,
+        "trigger_id": context.trigger_id,
+        "instance_id": context.instance_id,
+        "role_id": context.role_id,
+        "tool_call_id": context.tool_call_id,
+        "span_id": context.span_id,
+        "parent_span_id": context.parent_span_id,
+    }
+    for field_name, field_value in context_fields.items():
+        if field_value is not None and not hasattr(record, field_name):
+            setattr(record, field_name, field_value)
+    return record
 
 
-class JsonFormatter(logging.Formatter):
+logging.setLogRecordFactory(_trace_log_record_factory)
+
+
+class _LoggingRuntime:
+    def __init__(
+        self,
+        *,
+        backend_listener: QueueListener,
+        frontend_listener: QueueListener,
+        backend_queue_handler: QueueHandler,
+        frontend_queue_handler: QueueHandler,
+        managed_handlers: tuple[logging.Handler, ...],
+    ) -> None:
+        self.backend_listener = backend_listener
+        self.frontend_listener = frontend_listener
+        self.backend_queue_handler = backend_queue_handler
+        self.frontend_queue_handler = frontend_queue_handler
+        self.managed_handlers = managed_handlers
+
+
+class StructuredQueueHandler(QueueHandler):
+    @override
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        prepared = cast(logging.LogRecord, copy.copy(record))
+        prepared.message = prepared.getMessage()
+        prepared.msg = prepared.message
+        prepared.args = None
+        if prepared.exc_info:
+            prepared.error_detail = _build_error_payload(prepared.exc_info)
+        prepared.exc_info = None
+        prepared.exc_text = None
+        prepared.stack_info = None
+        return prepared
+
+
+class HumanReadableFormatter(logging.Formatter):
     @override
     def format(self, record: logging.LogRecord) -> str:
-        payload: JsonObject = {
-            "ts": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "service": SERVICE_NAME,
-            "env": _get_runtime_env_value("AGENT_TEAMS_ENV", "dev"),
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
+        timestamp = datetime.now(UTC).isoformat()
+        source = _resolve_log_source(record)
+        logger_name = _display_logger_name(record.name, source)
+        event = str(getattr(record, "event", "-") or "-")
+        message = record.getMessage()
 
-        context = get_trace_context()
-        if context.trace_id:
-            payload["trace_id"] = context.trace_id
-        if context.request_id:
-            payload["request_id"] = context.request_id
-        if context.session_id:
-            payload["session_id"] = context.session_id
-        if context.run_id:
-            payload["run_id"] = context.run_id
-        if context.task_id:
-            payload["task_id"] = context.task_id
-        if context.trigger_id:
-            payload["trigger_id"] = context.trigger_id
-        if context.instance_id:
-            payload["instance_id"] = context.instance_id
-        if context.role_id:
-            payload["role_id"] = context.role_id
-        if context.tool_call_id:
-            payload["tool_call_id"] = context.tool_call_id
-        if context.span_id:
-            payload["span_id"] = context.span_id
-        if context.parent_span_id:
-            payload["parent_span_id"] = context.parent_span_id
+        parts = [
+            timestamp,
+            record.levelname,
+            source,
+            logger_name,
+            f"event={event}",
+        ]
 
-        event = getattr(record, "event", None)
-        if event:
-            payload["event"] = event
+        for key in (
+            "trace_id",
+            "request_id",
+            "session_id",
+            "run_id",
+            "task_id",
+            "trigger_id",
+            "instance_id",
+            "role_id",
+            "tool_call_id",
+            "span_id",
+            "parent_span_id",
+        ):
+            value = getattr(record, key, None)
+            if value:
+                parts.append(f"{key}={value}")
 
         duration_ms = getattr(record, "duration_ms", None)
         if duration_ms is not None:
-            payload["duration_ms"] = duration_ms
+            parts.append(f"duration_ms={duration_ms}")
 
-        log_payload = cast(JsonValue | None, getattr(record, "payload", None))
-        if log_payload is not None:
-            payload["payload"] = sanitize_payload(log_payload)
+        parts.append(f"message={message}")
 
-        if record.exc_info:
-            exc_type, exc_value, exc_tb = record.exc_info
-            payload["error"] = {
-                "type": exc_type.__name__ if exc_type else "Exception",
-                "message": str(exc_value),
-                "stack": "".join(
-                    traceback.format_exception(exc_type, exc_value, exc_tb)
-                ),
-            }
+        payload = getattr(record, "payload", None)
+        if payload:
+            parts.append(f"payload={_render_payload(payload)}")
 
-        return json.dumps(payload, ensure_ascii=False, default=str)
+        error_detail = getattr(record, "error_detail", None)
+        if error_detail is not None:
+            parts.append(f"error={_render_payload(error_detail)}")
+
+        return " | ".join(parts)
 
 
-def configure_logging(
-    *, config_dir: Path | None = None, persist_db_path: Path | None = None
-) -> None:
-    _refresh_runtime_env_values()
+def configure_logging(*, config_dir: Path | None = None) -> None:
+    global _LOGGING_RUNTIME
+    with _LOGGING_LOCK:
+        shutdown_logging()
+        _refresh_runtime_env_values()
 
-    resolved_config_dir = (
-        get_project_config_dir()
-        if config_dir is None
-        else config_dir.expanduser().resolve()
-    )
-    resolved_config_dir.mkdir(parents=True, exist_ok=True)
+        resolved_config_dir = (
+            get_project_config_dir()
+            if config_dir is None
+            else config_dir.expanduser().resolve()
+        )
+        resolved_config_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = (
+            get_project_log_dir() if config_dir is None else resolved_config_dir / "log"
+        )
+        log_dir.mkdir(parents=True, exist_ok=True)
 
-    config_path = resolved_config_dir / LOGGER_CONFIG_FILENAME
-    _ensure_logger_ini_exists(config_path)
-    _ensure_file_handler_directories(
-        config_path=config_path, config_dir=resolved_config_dir
-    )
+        backend_level = _resolve_log_level(
+            env_key="AGENT_TEAMS_LOG_BACKEND_LEVEL",
+            fallback_key="AGENT_TEAMS_LOG_LEVEL",
+        )
+        frontend_level = _resolve_log_level(
+            env_key="AGENT_TEAMS_LOG_FRONTEND_LEVEL",
+            fallback_key="AGENT_TEAMS_LOG_LEVEL",
+        )
 
-    logging.config.fileConfig(
-        config_path,
-        defaults=_file_config_defaults(resolved_config_dir),
-        disable_existing_loggers=False,
-    )
+        backend_formatter = HumanReadableFormatter()
+        frontend_formatter = HumanReadableFormatter()
+
+        backend_file_handler = _build_file_handler(
+            path=log_dir / DEFAULT_BACKEND_LOG_FILENAME,
+            level=backend_level,
+            formatter=backend_formatter,
+        )
+        frontend_file_handler = _build_file_handler(
+            path=log_dir / DEFAULT_FRONTEND_LOG_FILENAME,
+            level=frontend_level,
+            formatter=frontend_formatter,
+        )
+
+        console_handler: logging.Handler | None = None
+        if _console_enabled():
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(backend_level)
+            console_handler.setFormatter(backend_formatter)
+
+        backend_queue: SimpleQueue[logging.LogRecord] = SimpleQueue()
+        frontend_queue: SimpleQueue[logging.LogRecord] = SimpleQueue()
+        backend_queue_handler = StructuredQueueHandler(backend_queue)
+        frontend_queue_handler = StructuredQueueHandler(frontend_queue)
+        backend_queue_handler.setLevel(logging.DEBUG)
+        frontend_queue_handler.setLevel(logging.DEBUG)
+
+        backend_targets: list[logging.Handler] = [backend_file_handler]
+        if console_handler is not None:
+            backend_targets.append(console_handler)
+
+        backend_listener = QueueListener(
+            backend_queue,
+            *backend_targets,
+            respect_handler_level=True,
+        )
+        frontend_listener = QueueListener(
+            frontend_queue,
+            frontend_file_handler,
+            respect_handler_level=True,
+        )
+        backend_listener.start()
+        frontend_listener.start()
+
+        root = logging.getLogger()
+        _reset_logger_handlers(root)
+        root.setLevel(logging.DEBUG)
+        root.addHandler(backend_queue_handler)
+
+        backend_root = logging.getLogger(BACKEND_LOGGER_NAMESPACE)
+        _reset_logger_handlers(backend_root)
+        backend_root.setLevel(logging.DEBUG)
+        backend_root.propagate = True
+
+        frontend_root = logging.getLogger(FRONTEND_LOGGER_NAMESPACE)
+        _reset_logger_handlers(frontend_root)
+        frontend_root.setLevel(logging.DEBUG)
+        frontend_root.propagate = False
+        frontend_root.addHandler(frontend_queue_handler)
+
+        _configure_uvicorn_loggers()
+
+        managed_handlers: list[logging.Handler] = [
+            backend_queue_handler,
+            frontend_queue_handler,
+            backend_file_handler,
+            frontend_file_handler,
+        ]
+        if console_handler is not None:
+            managed_handlers.append(console_handler)
+
+        _LOGGING_RUNTIME = _LoggingRuntime(
+            backend_listener=backend_listener,
+            frontend_listener=frontend_listener,
+            backend_queue_handler=backend_queue_handler,
+            frontend_queue_handler=frontend_queue_handler,
+            managed_handlers=tuple(managed_handlers),
+        )
+
+
+def shutdown_logging() -> None:
+    global _LOGGING_RUNTIME
+    runtime = _LOGGING_RUNTIME
+    if runtime is None:
+        return
 
     root = logging.getLogger()
-    level = _resolve_log_level()
-    root.setLevel(level)
-    for handler in root.handlers:
-        handler.setLevel(level)
-    _apply_console_formatter(root)
+    frontend_root = logging.getLogger(FRONTEND_LOGGER_NAMESPACE)
+    backend_root = logging.getLogger(BACKEND_LOGGER_NAMESPACE)
 
-    if _persistence_enabled():
-        db_path = _resolve_persist_db_path(
-            persist_db_path=persist_db_path,
-            config_dir=resolved_config_dir,
-        )
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        persistent_handler = PersistentLogHandler(db_path=db_path)
-        persistent_handler.setLevel(level)
-        persistent_handler.setFormatter(JsonFormatter())
-        root.addHandler(persistent_handler)
+    _remove_handler(root, runtime.backend_queue_handler)
+    _remove_handler(frontend_root, runtime.frontend_queue_handler)
+    _remove_handler(backend_root, runtime.backend_queue_handler)
+
+    runtime.backend_listener.stop()
+    runtime.frontend_listener.stop()
+
+    for handler in runtime.managed_handlers:
+        handler.close()
+
+    _LOGGING_RUNTIME = None
 
 
-def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)
+def get_logger(name: str, *, source: LogSource = "backend") -> logging.Logger:
+    namespace = (
+        BACKEND_LOGGER_NAMESPACE if source == "backend" else FRONTEND_LOGGER_NAMESPACE
+    )
+    normalized_name = name.strip().replace(" ", "_")
+    if normalized_name.startswith(f"{namespace}."):
+        logger_name = normalized_name
+    elif normalized_name.startswith("agent_teams."):
+        logger_name = f"{namespace}.{normalized_name[len('agent_teams.') :]}"
+    else:
+        logger_name = f"{namespace}.{normalized_name}"
+    return logging.getLogger(logger_name)
 
 
 def close_model_stream() -> None:
@@ -273,98 +391,112 @@ def _get_runtime_env_value(key: str, default: str) -> str:
     return values.get(key, default)
 
 
-def _persistence_enabled() -> bool:
-    raw = _get_runtime_env_value("AGENT_TEAMS_LOG_PERSIST", "1").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+def _console_enabled() -> bool:
+    raw = _get_runtime_env_value("AGENT_TEAMS_LOG_CONSOLE", DEFAULT_LOG_CONSOLE)
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _resolve_log_level() -> int:
-    level_name = _get_runtime_env_value("AGENT_TEAMS_LOG_LEVEL", DEFAULT_LOG_LEVEL)
+def _resolve_log_level(*, env_key: str, fallback_key: str) -> int:
+    level_name = _get_runtime_env_value(
+        env_key,
+        _get_runtime_env_value(fallback_key, DEFAULT_LOG_LEVEL),
+    )
     resolved = getattr(logging, level_name.strip().upper(), logging.INFO)
     if isinstance(resolved, int):
         return resolved
     return logging.INFO
 
 
-def _apply_console_formatter(root: logging.Logger) -> None:
-    format_name = _get_runtime_env_value("AGENT_TEAMS_LOG_FORMAT", DEFAULT_LOG_FORMAT)
-    formatter: logging.Formatter
-    if format_name.strip().lower() == "console":
-        formatter = logging.Formatter(
-            "[%(asctime)s] %(levelname)s %(name)s: %(message)s"
-        )
+def _build_file_handler(
+    *,
+    path: Path,
+    level: int,
+    formatter: logging.Formatter,
+) -> TimedRotatingFileHandler:
+    handler = TimedRotatingFileHandler(
+        filename=str(path),
+        when="midnight",
+        interval=1,
+        backupCount=DEFAULT_BACKUP_COUNT,
+        encoding="utf-8",
+        utc=True,
+    )
+    handler.setLevel(level)
+    handler.setFormatter(formatter)
+    return handler
+
+
+def _build_error_payload(exc_info: LogExcInfo) -> JsonObject:
+    exc_type: type[BaseException] | None
+    exc_value: BaseException | None
+    exc_tb: TracebackType | None
+
+    if isinstance(exc_info, BaseException):
+        exc_type = type(exc_info)
+        exc_value = exc_info
+        exc_tb = exc_info.__traceback__
+    elif isinstance(exc_info, tuple):
+        exc_type = cast(type[BaseException] | None, exc_info[0])
+        exc_value = cast(BaseException | None, exc_info[1])
+        exc_tb = cast(TracebackType | None, exc_info[2])
     else:
-        formatter = JsonFormatter()
+        exc_type = None
+        exc_value = None
+        exc_tb = None
 
-    for handler in root.handlers:
-        if isinstance(handler, logging.StreamHandler) and not isinstance(
-            handler, logging.FileHandler
-        ):
-            handler.setFormatter(formatter)
-
-
-def _resolve_persist_db_path(*, persist_db_path: Path | None, config_dir: Path) -> Path:
-    if persist_db_path is not None:
-        return persist_db_path.resolve()
-    raw_path = _get_runtime_env_value("AGENT_TEAMS_LOG_DB_PATH", "agent_teams.db")
-    return _resolve_path(raw_path=raw_path, config_dir=config_dir)
+    return {
+        "type": exc_type.__name__ if exc_type is not None else "Exception",
+        "message": str(exc_value) if exc_value is not None else "",
+        "stack": "".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+    }
 
 
-def _ensure_logger_ini_exists(config_path: Path) -> None:
-    if config_path.exists():
-        return
-    _ = config_path.write_text(DEFAULT_LOGGER_INI, encoding="utf-8")
+def _resolve_log_source(record: logging.LogRecord) -> LogSource:
+    explicit = getattr(record, "source", None)
+    if explicit == "frontend":
+        return "frontend"
+    if record.name.startswith(FRONTEND_LOGGER_NAMESPACE):
+        return "frontend"
+    return "backend"
 
 
-def _file_config_defaults(config_dir: Path) -> dict[str, str]:
-    log_path = (config_dir / "logs" / DEFAULT_LOG_FILENAME).resolve()
-    return {"log_file": log_path.as_posix()}
+def _display_logger_name(name: str, source: LogSource) -> str:
+    prefix = (
+        f"{BACKEND_LOGGER_NAMESPACE}."
+        if source == "backend"
+        else f"{FRONTEND_LOGGER_NAMESPACE}."
+    )
+    if name.startswith(prefix):
+        return name[len(prefix) :]
+    return name
 
 
-def _ensure_file_handler_directories(*, config_path: Path, config_dir: Path) -> None:
-    parser = ConfigParser(defaults=_file_config_defaults(config_dir))
-    _ = parser.read(config_path, encoding="utf-8")
-
-    sections = cast(list[str], parser.sections())
-    for section in sections:
-        if not section.startswith("handler_"):
-            continue
-        handler_class = parser.get(section, "class", fallback="")
-        if "FileHandler" not in handler_class:
-            continue
-
-        handler_args = parser.get(section, "args", fallback="")
-        file_path = _extract_file_path_from_args(handler_args)
-        if file_path is None:
-            continue
-        resolved_file_path = _resolve_path(raw_path=file_path, config_dir=config_dir)
-        resolved_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-def _extract_file_path_from_args(raw_args: str) -> str | None:
+def _render_payload(payload: object) -> str:
     try:
-        parsed_args = cast(object, ast.literal_eval(raw_args))
-    except (SyntaxError, ValueError):
-        return None
-
-    if isinstance(parsed_args, tuple) and parsed_args:
-        tuple_args = cast(tuple[object, ...], parsed_args)
-        first = tuple_args[0]
-        if isinstance(first, str):
-            return first
-    if isinstance(parsed_args, list) and parsed_args:
-        list_args = cast(list[object], parsed_args)
-        first = list_args[0]
-        if isinstance(first, str):
-            return first
-    return None
+        text = json.dumps(payload, ensure_ascii=False, default=str)
+    except TypeError:
+        text = str(payload)
+    return _truncate(text, limit=500)
 
 
-def _resolve_path(*, raw_path: str, config_dir: Path) -> Path:
-    candidate = Path(raw_path).expanduser()
-    if not candidate.is_absolute():
-        candidate = config_dir / candidate
-    return candidate.resolve()
+def _reset_logger_handlers(logger: logging.Logger) -> None:
+    handlers = tuple(logger.handlers)
+    logger.handlers.clear()
+    for handler in handlers:
+        handler.close()
+
+
+def _remove_handler(logger: logging.Logger, handler: logging.Handler) -> None:
+    if handler in logger.handlers:
+        logger.removeHandler(handler)
+
+
+def _configure_uvicorn_loggers() -> None:
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logger = logging.getLogger(logger_name)
+        logger.handlers.clear()
+        logger.propagate = True
+        logger.setLevel(logging.DEBUG)
 
 
 def _mask_sensitive(value: str) -> str:

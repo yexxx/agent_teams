@@ -5,6 +5,7 @@
 - Engine: SQLite
 - Database file: `.agent_teams/agent_teams.db`
 - Foreign keys: enabled on each connection (`PRAGMA foreign_keys = ON`)
+- Runtime logs are file-based and stored under `.agent_teams/log/backend.log` and `.agent_teams/log/frontend.log`
 
 ---
 
@@ -178,40 +179,7 @@ Purpose: append-only LLM message history.
 
 ---
 
-### 2.7 `system_logs`
-
-```sql
-CREATE TABLE IF NOT EXISTS system_logs (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts            TEXT NOT NULL,
-    level         TEXT NOT NULL,
-    event         TEXT,
-    trace_id      TEXT,
-    request_id    TEXT,
-    session_id    TEXT,
-    run_id        TEXT,
-    task_id       TEXT,
-    instance_id   TEXT,
-    logger        TEXT,
-    message       TEXT NOT NULL,
-    payload_json  TEXT,
-    error_json    TEXT,
-    raw_json      TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_system_logs_ts ON system_logs(ts);
-CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
-CREATE INDEX IF NOT EXISTS idx_system_logs_event ON system_logs(event);
-CREATE INDEX IF NOT EXISTS idx_system_logs_trace ON system_logs(trace_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_run ON system_logs(run_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_request ON system_logs(request_id);
-```
-
-Purpose: append-only structured runtime logs.
-
----
-
-### 2.8 `token_usage`
+### 2.7 `token_usage`
 
 ```sql
 CREATE TABLE IF NOT EXISTS token_usage (
@@ -235,7 +203,7 @@ Purpose: one row per `agent.iter()` completion cycle (coordinator or subagent). 
 
 ---
 
-### 2.9 `triggers`
+### 2.8 `triggers`
 
 ```sql
 CREATE TABLE IF NOT EXISTS triggers (
@@ -273,7 +241,7 @@ Purpose: trigger definitions and webhook routing configuration.
 
 ---
 
-### 2.10 `trigger_events`
+### 2.9 `trigger_events`
 
 ```sql
 CREATE TABLE IF NOT EXISTS trigger_events (

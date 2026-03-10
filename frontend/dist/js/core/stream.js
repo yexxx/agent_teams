@@ -5,7 +5,13 @@
 import { sendUserPrompt, stopRun } from './api.js';
 import { state } from './state.js';
 import { els } from '../utils/dom.js';
-import { sysLog } from '../utils/logger.js';
+import {
+    errorToPayload,
+    logError,
+    logInfo,
+    logWarn,
+    sysLog,
+} from '../utils/logger.js';
 import { routeEvent } from './eventRouter.js';
 import { clearRunStreamState } from '../components/messageRenderer.js';
 
@@ -36,12 +42,22 @@ export async function startIntentStream(promptText, sessionId, executionMode, on
         const run = await sendUserPrompt(sessionId, promptText, { executionMode });
         runId = run.run_id;
         state.activeRunId = runId;
+        logInfo('frontend.run.created', 'Frontend run created', {
+            run_id: runId,
+            session_id: sessionId,
+            execution_mode: executionMode,
+        });
         if (typeof options.onRunCreated === 'function') {
             options.onRunCreated(run);
         }
     } catch (err) {
         creatingRun = false;
         pendingStopRequest = false;
+        logError(
+            'frontend.run.create_failed',
+            err.message || 'Failed to create run',
+            errorToPayload(err, { session_id: sessionId }),
+        );
         sysLog(err.message || 'Failed to create run', 'log-error');
         endStream();
         return;
@@ -122,6 +138,11 @@ export function resumeRunStream(runId, sessionId = state.currentSessionId, onCom
     clearRunStreamState(safeRunId);
 
     const url = `/api/runs/${safeRunId}/events`;
+    logInfo('frontend.sse.opened', 'Run event stream opened', {
+        run_id: safeRunId,
+        reason,
+        url,
+    });
     sysLog(`SSE ${reason} run=${safeRunId}`);
     const es = new EventSource(url);
     state.activeEventSource = es;
@@ -144,6 +165,10 @@ export function resumeRunStream(runId, sessionId = state.currentSessionId, onCom
         try {
             const data = JSON.parse(event.data);
             if (data.error) {
+                logError('frontend.sse.payload_error', 'Run stream returned error', {
+                    run_id: safeRunId,
+                    error: data.error,
+                });
                 sysLog(`Run stream error: ${data.error}`, 'log-error');
                 finish();
                 return;
@@ -154,15 +179,26 @@ export function resumeRunStream(runId, sessionId = state.currentSessionId, onCom
             routeEvent(evType, payload, data);
 
             if (evType === 'run_completed' || evType === 'run_failed' || evType === 'run_stopped') {
+                logInfo('frontend.sse.terminal_event', 'Run stream reached terminal event', {
+                    run_id: safeRunId,
+                    event_type: evType,
+                });
                 finish();
             }
         } catch (e) {
-            console.error('SSE parse error', e, event.data);
+            logError(
+                'frontend.sse.parse_error',
+                'SSE parse error',
+                errorToPayload(e, { run_id: safeRunId, raw: event.data }),
+            );
         }
     };
 
     es.onerror = () => {
         if (done) return;
+        logWarn('frontend.sse.closed', 'Run event stream closed', {
+            run_id: safeRunId,
+        });
         sysLog('SSE closed.', 'log-error');
         finish();
     };
@@ -176,7 +212,11 @@ async function refreshRoundsAfterCompletion(sessionId) {
             await recoveryModule.hydrateSessionView(sessionId, { includeRounds: true, quiet: true });
         }
     } catch (e) {
-        console.error('Failed to refresh rounds after stream completion', e);
+        logError(
+            'frontend.rounds.refresh_failed',
+            'Failed to refresh rounds after stream completion',
+            errorToPayload(e, { session_id: sessionId }),
+        );
     }
 }
 
@@ -228,7 +268,11 @@ async function syncRecoveryAfterStopRequest(runId, sessionId) {
             endStream();
         }
     } catch (e) {
-        console.error('Failed to sync recovery after stop request', e);
+        logError(
+            'frontend.recovery.sync_failed',
+            'Failed to sync recovery after stop request',
+            errorToPayload(e, { run_id: safeRunId, session_id: safeSessionId }),
+        );
     }
 }
 
@@ -276,6 +320,10 @@ async function applyLocalStoppedSnapshot(runId, sessionId) {
             });
         }
     } catch (e) {
-        console.error('Failed to apply local stopped snapshot', e);
+        logError(
+            'frontend.recovery.apply_local_failed',
+            'Failed to apply local stopped snapshot',
+            errorToPayload(e, { run_id: safeRunId, session_id: safeSessionId }),
+        );
     }
 }

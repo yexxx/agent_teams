@@ -78,16 +78,14 @@ class CoordinatorGraph(BaseModel):
             )
         log_event(
             LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message="[coord:start] run="
-            + trace_id
-            + " mode="
-            + intent.execution_mode.value
-            + " session="
-            + session_id
-            + " intent="
-            + intent.intent[:120],
+            logging.INFO,
+            event="coord.run.started",
+            message="Coordinator run started",
+            payload={
+                "execution_mode": intent.execution_mode.value,
+                "session_id": session_id,
+                "intent_preview": intent.intent[:120],
+            },
         )
 
         root_task = TaskEnvelope(
@@ -137,12 +135,16 @@ class CoordinatorGraph(BaseModel):
         )
         log_event(
             LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message=(
-                f"[coord:finish] run={trace_id} mode={mode.value} "
-                f"status={status} root_task={root_task.task_id}"
-            ),
+            logging.INFO if status == "completed" else logging.WARNING,
+            event="coord.run.completed"
+            if status == "completed"
+            else "coord.run.failed",
+            message="Coordinator run finished",
+            payload={
+                "execution_mode": mode.value,
+                "status": status,
+                "root_task_id": root_task.task_id,
+            },
         )
         return trace_id, root_task.task_id, status, result
 
@@ -236,9 +238,9 @@ class CoordinatorGraph(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message=f"[coord:ai:first-pass-done] run={trace_id}",
+                logging.INFO,
+                event="coord.cycle.first_pass.completed",
+                message="Coordinator first pass completed",
             )
 
         cycle = 0
@@ -246,9 +248,10 @@ class CoordinatorGraph(BaseModel):
             cycle += 1
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message=f"[coord:ai:cycle] run={trace_id} cycle={cycle}",
+                logging.INFO,
+                event="coord.cycle.started",
+                message="Coordinator cycle started",
+                payload={"cycle": cycle},
             )
             ran_any = await self._run_pending_delegated_tasks(
                 trace_id=trace_id,
@@ -257,12 +260,13 @@ class CoordinatorGraph(BaseModel):
             if not ran_any:
                 log_event(
                     LOGGER,
-                    logging.DEBUG,
-                    event="runtime.debug",
-                    message=(
-                        f"[coord:ai:cycle-stop] run={trace_id} cycle={cycle} "
-                        "reason=no-pending-subtasks"
-                    ),
+                    logging.INFO,
+                    event="coord.cycle.stopped",
+                    message="Coordinator cycle stopped",
+                    payload={
+                        "cycle": cycle,
+                        "reason": "no_pending_subtasks",
+                    },
                 )
                 break
             coordinator_result = await self._task_executor(
@@ -272,9 +276,10 @@ class CoordinatorGraph(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message=f"[coord:ai:cycle-pass-done] run={trace_id} cycle={cycle}",
+                logging.INFO,
+                event="coord.cycle.completed",
+                message="Coordinator cycle completed",
+                payload={"cycle": cycle},
             )
 
         return coordinator_result
@@ -306,6 +311,16 @@ class CoordinatorGraph(BaseModel):
                 msg = f"Assigned instance not found: {record.assigned_instance_id}"
                 self.task_repo.update_status(
                     task.task_id, TaskStatus.FAILED, error_message=msg
+                )
+                log_event(
+                    LOGGER,
+                    logging.ERROR,
+                    event="coord.task.failed",
+                    message="Assigned instance missing for delegated task",
+                    payload={
+                        "task_id": task.task_id,
+                        "assigned_instance_id": record.assigned_instance_id,
+                    },
                 )
                 self.event_bus.emit(
                     EventEnvelope(

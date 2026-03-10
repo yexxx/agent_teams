@@ -7,6 +7,7 @@ import {
     reloadMcpConfig,
     reloadSkillsConfig,
 } from '../../core/api.js';
+import { errorToPayload, logError } from '../../utils/logger.js';
 
 export function bindSystemStatusHandlers() {
     const reloadMcpBtn = document.getElementById('reload-mcp-btn');
@@ -31,7 +32,11 @@ export async function loadMcpStatusPanel() {
             mcpStatus.innerHTML = '<ul>' + servers.map(s => `<li>${s}</li>`).join('') + '</ul>';
         }
     } catch (e) {
-        console.error('Failed to load MCP status:', e);
+        logError(
+            'frontend.system_status.mcp_load_failed',
+            'Failed to load MCP status',
+            errorToPayload(e),
+        );
     }
 }
 
@@ -46,7 +51,11 @@ export async function loadSkillsStatusPanel() {
             skillsStatus.innerHTML = '<ul>' + skills.map(s => `<li>${s}</li>`).join('') + '</ul>';
         }
     } catch (e) {
-        console.error('Failed to load skills status:', e);
+        logError(
+            'frontend.system_status.skills_load_failed',
+            'Failed to load skills status',
+            errorToPayload(e),
+        );
     }
 }
 

@@ -223,6 +223,18 @@ class RunManager:
                         session_id=session_id,
                         intent=pending,
                     )
+                with bind_trace_context(
+                    trace_id=active_run_id,
+                    run_id=active_run_id,
+                    session_id=session_id,
+                ):
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        event="run.followup.attached",
+                        message="Follow-up merged into pending run",
+                        payload={"mode": "pending_merge"},
+                    )
                 return active_run_id, session_id
             if (
                 active_run_id in self._running_run_ids
@@ -231,12 +243,36 @@ class RunManager:
                 self._append_followup_to_coordinator(
                     active_run_id, intent.intent, enqueue=True
                 )
+                with bind_trace_context(
+                    trace_id=active_run_id,
+                    run_id=active_run_id,
+                    session_id=session_id,
+                ):
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        event="run.followup.attached",
+                        message="Follow-up enqueued to active coordinator",
+                        payload={"mode": "active_enqueue"},
+                    )
                 return active_run_id, session_id
             if runtime is not None and runtime.is_recoverable:
                 self._append_followup_to_coordinator(
                     active_run_id, intent.intent, enqueue=False
                 )
                 self._resume_requested_runs.add(active_run_id)
+                with bind_trace_context(
+                    trace_id=active_run_id,
+                    run_id=active_run_id,
+                    session_id=session_id,
+                ):
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        event="run.followup.attached",
+                        message="Follow-up queued for recoverable run",
+                        payload={"mode": "recoverable_resume"},
+                    )
                 return active_run_id, session_id
 
         run_id = new_trace_id().value
@@ -359,6 +395,13 @@ class RunManager:
             session_id=session_id,
             task=task,
         )
+        with bind_trace_context(trace_id=run_id, run_id=run_id, session_id=session_id):
+            log_event(
+                logger,
+                logging.INFO,
+                event="run.resumed",
+                message="Recoverable run resumed",
+            )
 
     async def _resume_existing_run(self, run_id: str) -> RunResult:
         try:
@@ -619,6 +662,16 @@ class RunManager:
                 title="Run Stopped",
                 body=f"Run {run_id} was stopped before start.",
             )
+            with bind_trace_context(
+                trace_id=run_id, run_id=run_id, session_id=session_id
+            ):
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    event="run.stopped",
+                    message="Pending run stopped before worker start",
+                    payload={"reason": "stopped_before_start"},
+                )
             return
 
         requested = self._run_control_manager.request_run_stop(run_id)
@@ -633,12 +686,29 @@ class RunManager:
                     phase=runtime.phase,
                     last_error="stop_requested",
                 )
+        with bind_trace_context(trace_id=run_id, run_id=run_id):
+            log_event(
+                logger,
+                logging.WARNING,
+                event="run.stop.requested",
+                message="Run stop requested",
+                payload={"was_running": requested},
+            )
 
     def resume_run(self, run_id: str) -> str:
         if run_id in self._running_run_ids:
             runtime = self._runtime_for_run(run_id)
             if runtime is None:
                 raise KeyError(f"Run {run_id} not found")
+            with bind_trace_context(
+                trace_id=run_id, run_id=run_id, session_id=runtime.session_id
+            ):
+                log_event(
+                    logger,
+                    logging.INFO,
+                    event="run.resume.skipped",
+                    message="Resume requested for already running run",
+                )
             return runtime.session_id
         if run_id in self._pending_runs:
             pending = self._pending_runs[run_id]
@@ -646,6 +716,15 @@ class RunManager:
                 raise RuntimeError(f"Run {run_id} is missing session id")
             self._resume_requested_runs.add(run_id)
             self._remember_active_run(pending.session_id, run_id)
+            with bind_trace_context(
+                trace_id=run_id, run_id=run_id, session_id=pending.session_id
+            ):
+                log_event(
+                    logger,
+                    logging.INFO,
+                    event="run.resume.requested",
+                    message="Resume requested for pending run",
+                )
             return pending.session_id
 
         runtime = self._runtime_for_run(run_id)
@@ -655,6 +734,15 @@ class RunManager:
             raise RuntimeError(f"Run {run_id} is not recoverable")
         self._resume_requested_runs.add(run_id)
         self._remember_active_run(runtime.session_id, run_id)
+        with bind_trace_context(
+            trace_id=run_id, run_id=run_id, session_id=runtime.session_id
+        ):
+            log_event(
+                logger,
+                logging.INFO,
+                event="run.resume.requested",
+                message="Resume requested for recoverable run",
+            )
         return runtime.session_id
 
     def stop_subagent(self, run_id: str, instance_id: str) -> dict[str, str]:
@@ -835,6 +923,23 @@ class RunManager:
                     run_id=run_id,
                     record=record,
                     payload=created.model_dump_json(),
+                )
+            with bind_trace_context(
+                trace_id=run_id,
+                run_id=run_id,
+                session_id=session_id,
+                instance_id=instance_id,
+                role_id=record.role_id,
+            ):
+                log_event(
+                    logger,
+                    logging.INFO,
+                    event="run.followup.attached",
+                    message="Follow-up appended to coordinator conversation",
+                    payload={
+                        "enqueue": enqueue,
+                        "length": len(content),
+                    },
                 )
             return
         except KeyError:

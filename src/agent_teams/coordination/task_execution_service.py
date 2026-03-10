@@ -104,16 +104,14 @@ class TaskExecutionService(BaseModel):
     ) -> str:
         log_event(
             LOGGER,
-            logging.DEBUG,
-            event="runtime.debug",
-            message="[subagent:start] run="
-            + task.trace_id
-            + " task="
-            + task.task_id
-            + " instance="
-            + instance_id
-            + " role="
-            + role_id,
+            logging.INFO,
+            event="task.execution.started",
+            message="Task execution started",
+            payload={
+                "task_id": task.task_id,
+                "instance_id": instance_id,
+                "role_id": role_id,
+            },
         )
         _ = self.instance_pool.mark_running(instance_id)
         _ = self.agent_repo.mark_status(instance_id, InstanceStatus.RUNNING)
@@ -220,16 +218,14 @@ class TaskExecutionService(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message="[subagent:done] run="
-                + task.trace_id
-                + " task="
-                + task.task_id
-                + " instance="
-                + instance_id
-                + " role="
-                + role_id,
+                logging.INFO,
+                event="task.execution.completed",
+                message="Task execution completed",
+                payload={
+                    "task_id": task.task_id,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                },
             )
             return result
         except asyncio.CancelledError:
@@ -291,18 +287,17 @@ class TaskExecutionService(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message="[subagent:"
-                + ("stopped" if stopped else "cancelled")
-                + "] run="
-                + task.trace_id
-                + " task="
-                + task.task_id
-                + " instance="
-                + instance_id
-                + " role="
-                + role_id,
+                logging.WARNING if stopped else logging.ERROR,
+                event="task.execution.stopped"
+                if stopped
+                else "task.execution.cancelled",
+                message="Task execution interrupted",
+                payload={
+                    "task_id": task.task_id,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                    "paused_subagent": paused_subagent,
+                },
             )
             raise
         except TimeoutError:
@@ -333,16 +328,14 @@ class TaskExecutionService(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message="[subagent:timeout] run="
-                + task.trace_id
-                + " task="
-                + task.task_id
-                + " instance="
-                + instance_id
-                + " role="
-                + role_id,
+                logging.ERROR,
+                event="task.execution.timeout",
+                message="Task execution timed out",
+                payload={
+                    "task_id": task.task_id,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                },
             )
             raise
         except Exception as exc:
@@ -373,12 +366,15 @@ class TaskExecutionService(BaseModel):
             )
             log_event(
                 LOGGER,
-                logging.DEBUG,
-                event="runtime.debug",
-                message=(
-                    f"[subagent:error] run={task.trace_id} task={task.task_id} "
-                    f"instance={instance_id} role={role_id} err={exc}"
-                ),
+                logging.ERROR,
+                event="task.execution.failed",
+                message="Task execution failed",
+                payload={
+                    "task_id": task.task_id,
+                    "instance_id": instance_id,
+                    "role_id": role_id,
+                },
+                exc_info=exc,
             )
             raise
 

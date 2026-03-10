@@ -4,7 +4,7 @@
  */
 import { state } from '../state.js';
 import { els } from '../../utils/dom.js';
-import { sysLog } from '../../utils/logger.js';
+import { errorToPayload, logError, sysLog } from '../../utils/logger.js';
 import { renderNativeDAG } from '../../components/workflow.js';
 import { dispatchHumanTask } from '../api.js';
 
@@ -52,7 +52,11 @@ export function tryRenderLiveDAG(result) {
         renderNativeDAG(workflow);
         sysLog(`Live DAG rendered (${Object.keys(taskMap).length} tasks)`);
     } catch (e) {
-        console.error('Failed to render live DAG', e);
+        logError(
+            'frontend.workflow.render_live_failed',
+            'Failed to render live DAG',
+            errorToPayload(e),
+        );
     }
 }
 

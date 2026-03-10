@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from .log_persistence import PersistentLogHandler
 from .logger import (
-    JsonFormatter,
+    HumanReadableFormatter,
     close_model_stream,
     configure_logging,
     get_logger,
@@ -12,11 +11,11 @@ from .logger import (
     log_tool_call,
     log_tool_error,
     sanitize_payload,
+    shutdown_logging,
 )
 
 __all__ = [
-    "JsonFormatter",
-    "PersistentLogHandler",
+    "HumanReadableFormatter",
     "close_model_stream",
     "configure_logging",
     "get_logger",
@@ -26,4 +25,5 @@ __all__ = [
     "log_tool_call",
     "log_tool_error",
     "sanitize_payload",
+    "shutdown_logging",
 ]

@@ -174,8 +174,8 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
         container.innerHTML = `
             <div class="system-intro">
                 <div class="intro-icon">🛸</div>
-                <h1>Welcome to Agent Teams</h1>
-                <p>Select a session or create a new one to begin.</p>
+                <div class="system-intro-title">No session selected</div>
+                <p>Start a session from the left sidebar or open an existing one.</p>
             </div>`;
         return;
     }
@@ -240,9 +240,9 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
                 pill.className = 'round-token-summary';
                 pill.title = `Input: ${usage.total_input_tokens} | Output: ${usage.total_output_tokens} | Requests: ${usage.total_requests}`;
                 pill.innerHTML = `
-                    <span class="token-in">↑${fmt(usage.total_input_tokens)}</span>
-                    <span class="token-out">↓${fmt(usage.total_output_tokens)}</span>
-                    ${usage.total_tool_calls > 0 ? `<span class="token-tools">🔧${usage.total_tool_calls}</span>` : ''}
+                    <span class="token-in">In ${fmt(usage.total_input_tokens)}</span>
+                    <span class="token-out">Out ${fmt(usage.total_output_tokens)}</span>
+                    ${usage.total_tool_calls > 0 ? `<span class="token-tools">Tools ${usage.total_tool_calls}</span>` : ''}
                 `;
                 headerEl.appendChild(pill);
             });

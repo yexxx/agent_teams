@@ -196,7 +196,7 @@ function renderRoleSelector({ preserveSelection = true } = {}) {
     select.innerHTML = roles
         .map(agent => {
             const status = humanizeStatus(agent.status || 'idle');
-            return `<option value="${escapeAttribute(agent.role_id)}">${escapeHtml(agent.role_id)} · ${status}</option>`;
+            return `<option value="${escapeAttribute(agent.role_id)}">${escapeHtml(agent.role_id)} · ${escapeHtml(status)}</option>`;
         })
         .join('');
     state.selectedRoleId = selectedRoleId;
@@ -234,11 +234,18 @@ function renderSelectedRoleMeta() {
             </div>
             <div class="subagent-meta-tasks">
                 ${latestTasks.length > 0
-                    ? latestTasks.map(task => `
-                        <span class="subagent-task-chip is-${escapeAttribute(String(task.status || 'created'))}">
-                            ${escapeHtml(task.title || task.task_id || 'Task')}
-                        </span>
-                    `).join('')
+                    ? `
+                        <div class="subagent-task-list">
+                            ${latestTasks.map(task => `
+                                <div class="subagent-task-row">
+                                    <span class="subagent-task-title">${escapeHtml(task.title || task.task_id || 'Task')}</span>
+                                    <span class="subagent-task-state is-${escapeAttribute(String(task.status || 'created'))}">
+                                        ${escapeHtml(humanizeStatus(task.status || 'created'))}
+                                    </span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `
                     : '<span class="subagent-task-empty">No delegated tasks yet.</span>'
                 }
             </div>

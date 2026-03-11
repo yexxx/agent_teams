@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Teams</title>
     <link rel="icon" href="data:,">
-    <!-- Google Fonts -->
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <!-- Highlight.js for Code Blocks -->
     <link rel="stylesheet"
@@ -23,13 +22,16 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <header class="sidebar-header">
-                <h2>Agent Teams</h2>
-                <div class="new-session-glow">
+                <div class="sidebar-brand">
+                    <h2>Agent Teams</h2>
+                    <p>Sessions</p>
+                </div>
+                <div class="sidebar-actions">
                     <button id="new-btn" class="primary-btn">
-                        <svg viewBox="0 0 24 24" fill="none" class="icon">
+                        <svg viewBox="0 0 24 24" fill="none" class="icon" aria-hidden="true">
                             <path d="M12 4V20M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                         </svg>
-                        New Session
+                        <span>New Session</span>
                     </button>
                 </div>
             </header>
@@ -53,32 +55,37 @@
 
         <!-- Main Workspace -->
         <main class="workspace">
-            <!-- Topbar -->
-            <header class="topbar"
-                style="justify-content: space-between; padding: 0 1rem; border-bottom: 1px solid var(--border-color); height: 50px;">
-                <button id="toggle-sidebar" class="icon-btn" title="Toggle Sidebar">
-                    <svg viewBox="0 0 24 24" fill="none" class="icon">
-                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" />
-                    </svg>
-                </button>
-                <div style="flex:1"></div>
-                <button id="settings-btn" class="icon-btn" title="Settings" style="margin-right:0.5rem;">
-                    <svg viewBox="0 0 24 24" fill="none" class="icon">
-                        <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/>
-                        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                </button>
-                <button id="toggle-subagents" class="subagent-toggle-btn" title="Toggle Subagents">
-                    <span class="subagent-toggle-label">Subagents</span>
-                    <span class="subagent-toggle-summary">idle / 0 roles</span>
-                </button>
-                <button id="toggle-theme" class="icon-btn" title="Toggle Theme" style="margin-right:0.5rem;">
-                    <svg viewBox="0 0 24 24" fill="none" class="icon">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </button>
+            <header class="topbar">
+                <div class="topbar-section topbar-section-left">
+                    <button id="toggle-sidebar" class="icon-btn" title="Toggle Sidebar">
+                        <svg viewBox="0 0 24 24" fill="none" class="icon" aria-hidden="true">
+                            <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" />
+                        </svg>
+                    </button>
+                    <div class="workspace-heading">
+                        <div class="workspace-title">Workspace</div>
+                        <div class="workspace-subtitle">Coordinator output and run history</div>
+                    </div>
+                </div>
+                <div class="topbar-section topbar-section-right">
+                    <button id="settings-btn" class="icon-btn" title="Settings">
+                        <svg viewBox="0 0 24 24" fill="none" class="icon" aria-hidden="true">
+                            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/>
+                            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
+                        </svg>
+                    </button>
+                    <button id="toggle-theme" class="icon-btn" title="Toggle Theme">
+                        <svg viewBox="0 0 24 24" fill="none" class="icon" aria-hidden="true">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </button>
+                    <button id="toggle-subagents" class="subagent-toggle-btn" title="Toggle Subagents">
+                        <span class="subagent-toggle-label">Subagents</span>
+                        <span class="subagent-toggle-summary">idle / 0 roles</span>
+                    </button>
+                </div>
             </header>
 
             <!-- Chat Area -->
@@ -86,9 +93,8 @@
                 <!-- Coordinator chat messages -->
                 <div class="chat-scroll" id="chat-messages">
                     <div class="system-intro">
-                        <div class="intro-icon">🛸</div>
-                        <h1>Welcome to Agent Teams</h1>
-                        <p>Initialize a session or select from history to begin.</p>
+                        <div class="system-intro-title">No session selected</div>
+                        <p>Start a session from the left sidebar or open an existing one.</p>
                     </div>
                 </div>
 
@@ -114,16 +120,16 @@
                         </div>
                     </form>
                     <div class="input-controls">
-                        <div style="display: flex; gap: 1rem; align-items: center;">
+                        <div class="input-controls-left">
                             <div class="mode-selector-group">
-                            <label for="execution-mode-select" class="mode-label">模式</label>
-                            <select id="execution-mode-select" class="mode-select">
-                                <option value="ai">&#x1F916; AI 编排</option>
-                                <option value="manual">&#x1F9D1; 人工</option>
-                            </select>
+                                <label for="execution-mode-select" class="mode-label">Execution mode</label>
+                                <select id="execution-mode-select" class="mode-select">
+                                    <option value="ai">AI orchestration</option>
+                                    <option value="manual">Manual</option>
+                                </select>
+                            </div>
                         </div>
-                        </div>
-                        <div class="sub-text" style="margin-top: 0;">Enter to send · Shift+Enter for new line</div>
+                        <div class="sub-text">Enter to send · Shift+Enter for new line</div>
                     </div>
                 </div>
             </div>

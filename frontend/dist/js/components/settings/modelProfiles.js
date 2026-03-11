@@ -114,7 +114,7 @@ function handleEditProfile(name) {
     const apiKeyInput = document.getElementById('profile-api-key');
     document.getElementById('profile-editor-title').textContent = `Edit Profile: ${name}`;
     document.getElementById('profile-name').value = name;
-    document.getElementById('profile-name').disabled = true;
+    document.getElementById('profile-name').disabled = false;
     document.getElementById('profile-model').value = profile.model || '';
     document.getElementById('profile-base-url').value = profile.base_url || '';
     apiKeyInput.value = '';
@@ -167,6 +167,9 @@ async function handleSaveProfile() {
     if (apiKey) {
         profile.api_key = apiKey;
     }
+    if (editingProfile) {
+        profile.source_name = editingProfile;
+    }
 
     try {
         await saveModelProfile(name, profile);
@@ -192,7 +195,10 @@ async function handleTestProfile(name) {
     renderProfileProbeState(name);
 
     try {
-        const result = await probeModelConnection({ profile_name: name });
+        const result = await probeModelConnection({
+            profile_name: name,
+            timeout_ms: Math.round((profiles[name]?.connect_timeout_seconds || 15) * 1000),
+        });
         profileProbeStates[name] = buildProbeState(result);
     } catch (e) {
         profileProbeStates[name] = {

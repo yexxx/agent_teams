@@ -54,8 +54,18 @@ class ModelConfigService:
     ) -> tuple[ProviderModelInfo, ...]:
         return list_provider_models(self.runtime.llm_profiles, provider)
 
-    def save_model_profile(self, name: str, profile: JsonObject) -> None:
-        self._model_config_manager.save_model_profile(name, profile)
+    def save_model_profile(
+        self,
+        name: str,
+        profile: JsonObject,
+        *,
+        source_name: str | None = None,
+    ) -> None:
+        self._model_config_manager.save_model_profile(
+            name,
+            profile,
+            source_name=source_name,
+        )
         self.reload_model_config()
 
     def delete_model_profile(self, name: str) -> None:

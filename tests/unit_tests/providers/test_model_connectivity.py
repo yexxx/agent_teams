@@ -69,6 +69,35 @@ def test_probe_uses_saved_profile_and_returns_usage(monkeypatch) -> None:
     assert payload["top_p"] == pytest.approx(0.95)
 
 
+def test_probe_uses_profile_connect_timeout_when_request_timeout_omitted(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    service = ModelConnectivityProbeService(get_runtime=lambda: _runtime_config())
+
+    def fake_post(
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json: object,
+        timeout: float,
+    ) -> httpx.Response:
+        captured["url"] = url
+        captured["headers"] = dict(headers)
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return httpx.Response(200, json={"usage": {}})
+
+    monkeypatch.setattr(
+        "agent_teams.providers.model_connectivity.httpx.post", fake_post
+    )
+
+    result = service.probe(ModelConnectivityProbeRequest(profile_name="default"))
+
+    assert result.ok is True
+    assert captured["timeout"] == pytest.approx(17.5)
+
+
 def test_probe_merges_override_with_saved_profile(monkeypatch) -> None:
     captured: dict[str, object] = {}
     service = ModelConnectivityProbeService(get_runtime=lambda: _runtime_config())
@@ -165,6 +194,43 @@ def test_probe_returns_auth_error_for_unauthorized_response(monkeypatch) -> None
     assert result.error_message == "Invalid API key."
 
 
+def test_probe_accepts_editor_default_timeout(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    service = ModelConnectivityProbeService(get_runtime=lambda: _runtime_config())
+
+    def fake_post(
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json: object,
+        timeout: float,
+    ) -> httpx.Response:
+        captured["url"] = url
+        captured["headers"] = dict(headers)
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return httpx.Response(200, json={"usage": {}})
+
+    monkeypatch.setattr(
+        "agent_teams.providers.model_connectivity.httpx.post", fake_post
+    )
+
+    result = service.probe(
+        ModelConnectivityProbeRequest(
+            override=ModelConnectivityProbeOverride(
+                model="draft-model",
+                base_url="https://draft.test/v1",
+                api_key="draft-api-key",
+            ),
+            timeout_ms=15000,
+        )
+    )
+
+    assert result.ok is True
+    assert captured["url"] == "https://draft.test/v1/chat/completions"
+    assert captured["timeout"] == pytest.approx(15.0)
+
+
 def test_probe_requires_source_config() -> None:
     service = ModelConnectivityProbeService(get_runtime=lambda: _runtime_config())
 
@@ -183,6 +249,7 @@ def _runtime_config() -> RuntimeConfig:
             top_p=0.95,
             max_tokens=128,
         ),
+        connect_timeout_seconds=17.5,
     )
     return RuntimeConfig(
         paths=RuntimePaths(

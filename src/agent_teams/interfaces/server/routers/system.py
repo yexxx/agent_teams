@@ -58,6 +58,7 @@ def get_model_profiles(
 class ModelProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    source_name: str | None = None
     provider: ProviderType = ProviderType.OPENAI_COMPATIBLE
     model: str
     base_url: str
@@ -86,7 +87,7 @@ def save_model_profile(
         }
         if req.api_key is not None and req.api_key.strip():
             profile["api_key"] = req.api_key
-        service.save_model_profile(name, profile)
+        service.save_model_profile(name, profile, source_name=req.source_name)
         return {"status": "ok"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

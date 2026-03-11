@@ -135,6 +135,63 @@ console.log(JSON.stringify({
     assert saved_profile_body["top_p"] == 0.95
 
 
+def test_edit_profile_allows_renaming_and_sends_source_name(tmp_path: Path) -> None:
+    payload = _run_model_profiles_script(
+        tmp_path=tmp_path,
+        runner_source="""
+import { bindModelProfileHandlers, loadModelProfilesPanel } from "./modelProfiles.mjs";
+
+const alerts = [];
+
+const elements = createElements();
+installGlobals(elements, alerts);
+bindModelProfileHandlers();
+await loadModelProfilesPanel();
+
+document.getElementById("profiles-list").querySelectorAll(".edit-profile-btn")[0].onclick();
+document.getElementById("profile-name").value = "renamed-profile";
+
+await document.getElementById("save-profile-btn").onclick();
+
+console.log(JSON.stringify({
+    nameDisabled: document.getElementById("profile-name").disabled,
+    savedProfile: globalThis.__savedProfile,
+}));
+""".strip(),
+    )
+
+    saved_profile = cast(JsonObject, payload["savedProfile"])
+    saved_profile_body = cast(JsonObject, saved_profile["profile"])
+    assert payload["nameDisabled"] is False
+    assert saved_profile["name"] == "renamed-profile"
+    assert saved_profile_body["source_name"] == "default"
+
+
+def test_saved_profile_probe_uses_profile_connect_timeout(tmp_path: Path) -> None:
+    payload = _run_model_profiles_script(
+        tmp_path=tmp_path,
+        runner_source="""
+import { loadModelProfilesPanel } from "./modelProfiles.mjs";
+
+const alerts = [];
+
+const elements = createElements();
+installGlobals(elements, alerts);
+await loadModelProfilesPanel();
+
+await document.getElementById("profiles-list").querySelectorAll(".profile-card-test-btn")[0].onclick();
+
+console.log(JSON.stringify({
+    probePayload: globalThis.__probePayload,
+}));
+""".strip(),
+    )
+
+    probe_payload = cast(JsonObject, payload["probePayload"])
+    assert probe_payload["profile_name"] == "default"
+    assert probe_payload["timeout_ms"] == 15000
+
+
 def test_model_profile_cards_render_inline_probe_region(tmp_path: Path) -> None:
     payload = _run_model_profiles_script(
         tmp_path=tmp_path,
@@ -328,6 +385,38 @@ function createElements() {{
 }}
 
 function installGlobals(elements, alerts) {{
+    function collectDocumentMatches(selector) {{
+        if (selector !== ".profile-card") {{
+            return [];
+        }}
+        const source = elements.get("profiles-list")?.innerHTML || "";
+        const pattern = /data-profile-name="([^"]+)"/g;
+        const matches = [];
+        let match = pattern.exec(source);
+        while (match) {{
+            const profileName = match[1];
+            matches.push({{
+                dataset: {{ profileName }},
+                querySelector(innerSelector) {{
+                    if (innerSelector === ".profile-card-test-btn") {{
+                        return elements
+                            .get("profiles-list")
+                            ?.querySelectorAll(".profile-card-test-btn")
+                            .find(candidate => candidate.dataset.name === profileName) || null;
+                    }}
+                    if (innerSelector === "[data-profile-probe-container]") {{
+                        return {{
+                            innerHTML: "",
+                        }};
+                    }}
+                    return null;
+                }},
+            }});
+            match = pattern.exec(source);
+        }}
+        return matches;
+    }}
+
     globalThis.document = {{
         getElementById(id) {{
             const element = elements.get(id);
@@ -335,6 +424,9 @@ function installGlobals(elements, alerts) {{
                 throw new Error(`Missing element: ${{id}}`);
             }}
             return element;
+        }},
+        querySelectorAll(selector) {{
+            return collectDocumentMatches(selector);
         }},
     }};
 

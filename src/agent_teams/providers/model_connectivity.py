@@ -18,6 +18,7 @@ from agent_teams.runs.runtime_config import RuntimeConfig
 
 
 _INVALID_RESPONSE_PAYLOAD = object()
+_MAX_PROBE_TIMEOUT_MS = 300_000
 
 
 class ModelConnectivityProbeOverride(BaseModel):
@@ -37,7 +38,7 @@ class ModelConnectivityProbeRequest(BaseModel):
 
     profile_name: str | None = Field(default=None, min_length=1)
     override: ModelConnectivityProbeOverride | None = None
-    timeout_ms: int = Field(default=5000, ge=1000, le=10000)
+    timeout_ms: int | None = Field(default=None, ge=1000, le=_MAX_PROBE_TIMEOUT_MS)
 
 
 class ModelConnectivityTokenUsage(BaseModel):
@@ -84,12 +85,13 @@ class ModelConnectivityProbeService:
         request: ModelConnectivityProbeRequest,
     ) -> ModelConnectivityProbeResult:
         resolved_config = self._resolve_endpoint_config(request)
+        timeout_ms = self._resolve_timeout_ms(request=request, config=resolved_config)
         if resolved_config.provider == ProviderType.ECHO:
             return self._build_echo_result(resolved_config)
         if resolved_config.provider == ProviderType.OPENAI_COMPATIBLE:
             return self._probe_openai_compatible(
                 config=resolved_config,
-                timeout_ms=request.timeout_ms,
+                timeout_ms=timeout_ms,
             )
         raise ValueError(
             f"Connectivity probe is not supported for provider '{resolved_config.provider.value}'."
@@ -183,6 +185,16 @@ class ModelConnectivityProbeService:
                 top_k=base_config.sampling.top_k,
             ),
         )
+
+    def _resolve_timeout_ms(
+        self,
+        *,
+        request: ModelConnectivityProbeRequest,
+        config: ModelEndpointConfig,
+    ) -> int:
+        if request.timeout_ms is not None:
+            return request.timeout_ms
+        return int(config.connect_timeout_seconds * 1000)
 
     def _build_echo_result(
         self,

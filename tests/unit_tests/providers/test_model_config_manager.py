@@ -139,3 +139,46 @@ def test_save_model_profile_preserves_existing_api_key_when_blank(
     assert saved_profile["model"] == "kimi-k2.5"
     assert saved_profile["top_p"] == 0.95
     assert saved_profile["api_key"] == "secret-key"
+
+
+def test_save_model_profile_renames_and_preserves_existing_api_key(
+    tmp_path: Path,
+) -> None:
+    manager = ModelConfigManager(config_dir=tmp_path)
+    model_file = tmp_path / "model.json"
+    model_file.write_text(
+        json.dumps(
+            {
+                "default": {
+                    "provider": "openai_compatible",
+                    "model": "gpt-4o-mini",
+                    "base_url": "https://example.test/v1",
+                    "api_key": "secret-key",
+                    "temperature": 0.2,
+                    "top_p": 1.0,
+                    "max_tokens": 1024,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager.save_model_profile(
+        "renamed-profile",
+        {
+            "provider": "openai_compatible",
+            "model": "kimi-k2.5",
+            "base_url": "https://api.moonshot.cn/v1",
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        },
+        source_name="default",
+    )
+
+    config = manager.get_model_config()
+    saved_profile = cast(JsonObject, config["renamed-profile"])
+
+    assert "default" not in config
+    assert saved_profile["model"] == "kimi-k2.5"
+    assert saved_profile["api_key"] == "secret-key"

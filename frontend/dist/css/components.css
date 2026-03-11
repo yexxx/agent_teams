@@ -2543,3 +2543,506 @@
 .round-token-summary .token-tools {
     color: var(--text-secondary);
 }
+
+/* Interface refresh */
+.new-session-glow::before {
+    display: none;
+}
+
+.primary-btn,
+.secondary-btn {
+    min-height: 38px;
+    padding: 0.625rem 0.875rem;
+    border-radius: 8px;
+    font-weight: 500;
+    box-shadow: none;
+    transform: none;
+}
+
+.primary-btn {
+    width: 100%;
+    background: var(--primary);
+    color: var(--text-on-primary);
+}
+
+.primary-btn:hover {
+    background: var(--primary-hover);
+}
+
+.primary-btn:active,
+.secondary-btn:active {
+    transform: none;
+}
+
+.secondary-btn {
+    background: var(--settings-secondary-btn-bg);
+}
+
+.icon-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-secondary);
+}
+
+.icon-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.subagent-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 34px;
+    padding: 0.45rem 0.7rem;
+    margin-right: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-surface-muted);
+    color: var(--text-primary);
+}
+
+.subagent-toggle-btn:hover,
+.subagent-toggle-btn.active {
+    border-color: rgba(145, 166, 152, 0.38);
+    background: var(--bg-hover);
+}
+
+.subagent-toggle-label {
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.subagent-toggle-summary {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.session-item,
+.round-item {
+    margin: 0 0.75rem 0.35rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+
+.session-item:hover,
+.round-item:hover {
+    background: var(--bg-hover);
+}
+
+.session-item.active,
+.round-item.active {
+    background: var(--bg-hover);
+    border: 1px solid rgba(145, 166, 152, 0.3);
+    border-left: 1px solid rgba(145, 166, 152, 0.3);
+}
+
+.session-id,
+.round-item-text {
+    font-weight: 500;
+}
+
+.session-status-pill,
+.round-state-pill,
+.round-nav-state,
+.recovery-status-pill,
+.tool-approval-state,
+.subagent-meta-status,
+.subagent-task-chip,
+.subagent-task-empty {
+    border-radius: 8px;
+}
+
+.status-indicator.online span {
+    width: 7px;
+    height: 7px;
+    box-shadow: none;
+}
+
+.system-intro {
+    margin-top: 0;
+    padding: 1.25rem 1.5rem;
+    border: 1px dashed var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-surface);
+    text-align: left;
+    animation: none;
+}
+
+.intro-icon {
+    display: none;
+}
+
+.system-intro h1,
+.system-intro-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    background: none;
+    -webkit-text-fill-color: initial;
+}
+
+.system-intro p {
+    margin-top: 0.35rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.message {
+    margin-bottom: 1.25rem;
+    animation: none;
+}
+
+.msg-header {
+    margin-bottom: 0.4rem;
+}
+
+.msg-role {
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.role-user,
+.role-agent,
+.role-coordinator_agent {
+    background: none;
+}
+
+.msg-content {
+    color: var(--text-msg-content);
+}
+
+.msg-content pre,
+.msg-text pre,
+.tool-block,
+.tool-result,
+.tool-call {
+    border-radius: 8px;
+}
+
+.tool-block {
+    background: var(--bg-tool-block);
+    border-color: var(--border-color);
+}
+
+.tool-header {
+    padding: 0.7rem 0.85rem;
+    background: var(--bg-tool-header);
+}
+
+.tool-header:hover {
+    background: var(--bg-tool-header-hover);
+}
+
+.tool-body {
+    background: var(--bg-tool-body);
+}
+
+#prompt-input {
+    padding: 0.95rem 7.9rem 0.95rem 1rem;
+    font-size: 0.95rem;
+}
+
+#send-btn,
+#stop-btn {
+    bottom: 0.6rem;
+    height: 34px;
+    border-radius: 8px;
+    box-shadow: none;
+    transform: none;
+}
+
+#send-btn {
+    width: 34px;
+    right: 0.6rem;
+}
+
+#stop-btn {
+    right: 3.05rem;
+    padding: 0 0.7rem;
+    border: 1px solid rgba(194, 123, 114, 0.35);
+    background: transparent;
+    color: var(--danger);
+    letter-spacing: 0;
+}
+
+#stop-btn:hover {
+    background: rgba(194, 123, 114, 0.08);
+    border-color: rgba(194, 123, 114, 0.48);
+    color: var(--danger);
+}
+
+.input-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.7rem;
+}
+
+.input-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.mode-selector-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.mode-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.mode-select {
+    min-height: 32px;
+    padding: 0.35rem 0.65rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.mode-select:hover,
+.mode-select:focus {
+    border-color: rgba(145, 166, 152, 0.42);
+    box-shadow: none;
+}
+
+.sub-text {
+    margin-top: 0;
+    color: var(--text-secondary);
+}
+
+.round-detail-header,
+.round-nav-float,
+.recovery-banner,
+.human-dispatch-panel,
+.gate-card {
+    border-radius: 10px;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.round-detail-header {
+    margin-bottom: 1rem;
+    padding: 0.9rem 1rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
+}
+
+.round-detail-label {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+}
+
+.round-detail-time,
+.intent-label {
+    color: var(--text-secondary);
+}
+
+.live-badge {
+    margin-left: 0.4rem;
+    padding: 0.08rem 0.35rem;
+    border-radius: 6px;
+    font-size: 0.64rem;
+}
+
+.round-nav-float {
+    right: 1.25rem;
+    top: 1rem;
+    width: 240px;
+    max-height: 40%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+}
+
+.round-nav-title {
+    padding: 0.7rem 0.8rem;
+    font-size: 0.76rem;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.round-nav-item {
+    border-radius: 8px;
+}
+
+.round-nav-item.active {
+    background: var(--bg-hover);
+}
+
+.round-token-summary,
+.token-badge {
+    gap: 0.5rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 8px;
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-color);
+    animation: none;
+}
+
+.recovery-banner {
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+}
+
+.recovery-banner-label {
+    font-size: 0.76rem;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.recovery-banner-title {
+    margin-top: 0.1rem;
+}
+
+.recovery-action-btn,
+.recovery-choice-btn {
+    border-radius: 8px;
+}
+
+.human-dispatch-panel,
+.gate-card {
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+}
+
+.human-dispatch-panel .dispatch-header {
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.dispatch-task-row {
+    border-top-color: var(--border-color);
+}
+
+.subagent-role-select,
+.panel-inject-input,
+.gate-feedback-input {
+    border-radius: 8px;
+}
+
+.subagent-meta-empty,
+.panel-empty,
+.panel-loading {
+    color: var(--text-secondary);
+}
+
+.log-entry {
+    border-bottom: 1px solid var(--border-color);
+}
+
+@media (max-width: 960px) {
+    .input-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .sub-text {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+body.light-theme .session-item,
+body.light-theme .round-item,
+body.light-theme .round-detail-header,
+body.light-theme .system-intro,
+body.light-theme .tool-block,
+body.light-theme .tool-body,
+body.light-theme .tool-call,
+body.light-theme .tool-result,
+body.light-theme .human-dispatch-panel,
+body.light-theme .gate-card,
+body.light-theme .round-nav-float,
+body.light-theme .recovery-banner,
+body.light-theme .round-token-summary,
+body.light-theme .token-badge {
+    background: var(--bg-surface);
+}
+
+body.light-theme .tool-header,
+body.light-theme .subagent-task-chip,
+body.light-theme .subagent-task-empty,
+body.light-theme .subagent-task-row,
+body.light-theme .round-state-pill,
+body.light-theme .round-nav-state,
+body.light-theme .recovery-status-pill,
+body.light-theme .subagent-meta-status {
+    background: #ece4d8;
+    border-color: var(--border-color);
+}
+
+body.light-theme .session-item.active,
+body.light-theme .round-item.active,
+body.light-theme .round-nav-item.active {
+    background: #e8dfd1;
+}
+
+body.light-theme .subagent-toggle-btn {
+    background: var(--bg-surface-muted);
+}
+
+body.light-theme .subagent-toggle-btn:hover,
+body.light-theme .subagent-toggle-btn.active {
+    background: #ebe5da;
+}
+
+body.light-theme .primary-btn {
+    background: var(--primary);
+    color: var(--text-on-primary);
+}
+
+body.light-theme .primary-btn:hover {
+    background: var(--primary-hover);
+}
+
+body.light-theme .tool-body,
+body.light-theme .tool-result,
+body.light-theme .tool-call,
+body.light-theme .msg-content pre,
+body.light-theme .msg-text pre {
+    background: #efe7db;
+}
+
+body.light-theme .subagent-task-row {
+    background: transparent;
+}
+
+body.light-theme .round-detail-header,
+body.light-theme .round-nav-float,
+body.light-theme .recovery-banner,
+body.light-theme .human-dispatch-panel,
+body.light-theme .gate-card,
+body.light-theme .tool-block,
+body.light-theme .system-intro {
+    border-color: var(--border-color);
+}
+
+body.light-theme .mode-select,
+body.light-theme .subagent-role-select,
+body.light-theme .gate-feedback-input,
+body.light-theme .panel-inject-input {
+    background: #fbf7f0;
+}

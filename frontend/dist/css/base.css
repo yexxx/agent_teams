@@ -1,57 +1,64 @@
-/* base.css - Premium Dark Theme + Glassmorphism Variables & Base Styles */
+/* base.css - Core theme variables and global primitives */
 
 :root {
-    --bg-base: #0f1115;
-    --bg-surface: #1a1d24;
-    --bg-surface-glass: rgba(26, 29, 36, 0.7);
-    --border-color: #2b303b;
-    --text-primary: #e2e8f0;
-    --text-secondary: #94a3b8;
-    --primary: #6366f1;
-    --primary-hover: #818cf8;
-    --success: #10b981;
-    --danger: #ef4444;
-    --warning: #f59e0b;
-    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --bg-base: #161718;
+    --bg-surface: #1d1f21;
+    --bg-surface-glass: #1d1f21;
+    --bg-surface-muted: #202326;
+    --border-color: #30343a;
+    --text-primary: #f0eee8;
+    --text-secondary: #a5aaa6;
+    --text-on-primary: #101211;
+    --text-msg-content: #ece9e1;
+    --text-tool-name: #d7dccd;
+    --text-tool-args: #afb7ab;
+    --text-node-title: #f0eee8;
+    --primary: #91a698;
+    --primary-hover: #a8b8ac;
+    --success: #76a17b;
+    --danger: #c27b72;
+    --warning: #b89a66;
+    --font-ui: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.16);
+    --radius-sm: 0.375rem;
     --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
+    --radius-lg: 0.625rem;
 
-    --bg-hover: rgba(255, 255, 255, 0.05);
-    --bg-hover-strong: rgba(255, 255, 255, 0.1);
-    --bg-tool-header: rgba(255, 255, 255, 0.02);
-    --bg-tool-header-hover: rgba(255, 255, 255, 0.05);
-    --bg-tool-body: rgba(0, 0, 0, 0.4);
-    --bg-tool-block: rgba(0, 0, 0, 0.2);
-    --code-bg: rgba(255, 255, 255, 0.1);
+    --bg-hover: rgba(240, 238, 232, 0.04);
+    --bg-hover-strong: rgba(240, 238, 232, 0.08);
+    --bg-tool-header: #1f2124;
+    --bg-tool-header-hover: #24272a;
+    --bg-tool-body: #181a1d;
+    --bg-tool-block: #181a1d;
+    --code-bg: rgba(240, 238, 232, 0.08);
 
-    --settings-overlay-bg: rgba(9, 11, 15, 0.82);
-    --settings-shell-bg: linear-gradient(180deg, rgba(20, 23, 29, 0.995), rgba(15, 18, 23, 0.995));
-    --settings-shell-border: rgba(102, 109, 124, 0.3);
-    --settings-shell-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
-    --settings-sidebar-bg: rgba(13, 16, 21, 0.9);
-    --settings-header-bg: rgba(18, 21, 27, 0.9);
-    --settings-surface-bg: rgba(17, 20, 26, 0.94);
-    --settings-surface-strong-bg: rgba(17, 20, 26, 0.97);
-    --settings-surface-muted-bg: rgba(17, 20, 26, 0.95);
-    --settings-empty-bg: rgba(17, 20, 26, 0.93);
-    --settings-row-bg: rgba(255, 255, 255, 0.02);
-    --settings-row-hover-bg: rgba(255, 255, 255, 0.03);
-    --settings-chip-bg: rgba(255, 255, 255, 0.03);
-    --settings-chip-border: rgba(118, 125, 142, 0.18);
-    --settings-code-bg: rgba(255, 255, 255, 0.04);
-    --settings-input-bg: rgba(255, 255, 255, 0.035);
-    --settings-input-focus-bg: rgba(255, 255, 255, 0.05);
-    --settings-secondary-btn-bg: rgba(255, 255, 255, 0.04);
-    --settings-secondary-btn-hover-bg: rgba(255, 255, 255, 0.06);
-    --settings-border-soft: rgba(118, 125, 142, 0.18);
-    --settings-border-default: rgba(118, 125, 142, 0.2);
-    --settings-border-strong: rgba(118, 125, 142, 0.22);
-    --settings-border-hover: rgba(118, 125, 142, 0.26);
-    --settings-divider: rgba(118, 125, 142, 0.16);
-    --settings-card-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+    --settings-overlay-bg: rgba(18, 20, 22, 0.72);
+    --settings-shell-bg: #1d1f21;
+    --settings-shell-border: rgba(96, 102, 110, 0.35);
+    --settings-shell-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    --settings-sidebar-bg: #1a1c1e;
+    --settings-header-bg: #1f2124;
+    --settings-surface-bg: #202326;
+    --settings-surface-strong-bg: #1c1f22;
+    --settings-surface-muted-bg: #222529;
+    --settings-empty-bg: #1c1f22;
+    --settings-row-bg: #1f2124;
+    --settings-row-hover-bg: #24272a;
+    --settings-chip-bg: #25292c;
+    --settings-chip-border: rgba(96, 102, 110, 0.28);
+    --settings-code-bg: rgba(240, 238, 232, 0.06);
+    --settings-input-bg: #181a1d;
+    --settings-input-focus-bg: #1b1d20;
+    --settings-secondary-btn-bg: #1f2124;
+    --settings-secondary-btn-hover-bg: #24272a;
+    --settings-border-soft: rgba(96, 102, 110, 0.22);
+    --settings-border-default: rgba(96, 102, 110, 0.28);
+    --settings-border-strong: rgba(96, 102, 110, 0.34);
+    --settings-border-hover: rgba(96, 102, 110, 0.4);
+    --settings-divider: rgba(96, 102, 110, 0.22);
+    --settings-card-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
     --settings-frame-padding: 1.1rem;
 }
 
@@ -68,60 +75,68 @@ body {
     line-height: 1.5;
     height: 100vh;
     overflow: hidden;
-    transition: background-color 0.3s, color 0.3s;
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 body.light-theme {
-    --bg-base: #f8fafc;
-    --bg-surface: #ffffff;
-    --bg-surface-glass: rgba(255, 255, 255, 0.7);
-    --border-color: #e2e8f0;
-    --text-primary: #0f1115;
-    --text-secondary: #64748b;
+    --bg-base: #f3eee6;
+    --bg-surface: #faf6ef;
+    --bg-surface-glass: #f6f1e8;
+    --bg-surface-muted: #eee7dc;
+    --border-color: #d7cdbd;
+    --text-primary: #191c1b;
+    --text-secondary: #66695f;
+    --text-on-primary: #f8f7f4;
+    --text-msg-content: #222624;
+    --text-tool-name: #31433a;
+    --text-tool-args: #556159;
+    --text-node-title: #191c1b;
+    --primary: #667b6e;
+    --primary-hover: #55685d;
+    --success: #4d815b;
+    --danger: #b16558;
+    --warning: #9a7740;
 
-    --bg-hover: rgba(0, 0, 0, 0.05);
-    --bg-hover-strong: rgba(0, 0, 0, 0.1);
-    --bg-tool-header: rgba(0, 0, 0, 0.01);
-    --bg-tool-header-hover: rgba(0, 0, 0, 0.04);
-    --bg-tool-body: rgba(0, 0, 0, 0.02);
-    --bg-tool-block: rgba(0, 0, 0, 0.03);
+    --bg-hover: rgba(25, 28, 27, 0.05);
+    --bg-hover-strong: rgba(25, 28, 27, 0.09);
+    --bg-tool-header: #f0e9de;
+    --bg-tool-header-hover: #e9dfd0;
+    --bg-tool-body: #f8f3eb;
+    --bg-tool-block: #f8f3eb;
+    --code-bg: rgba(25, 28, 27, 0.08);
 
-    --text-on-primary: #ffffff;
-    --text-msg-content: #1e293b;
-    --text-tool-name: #c026d3;
-    --text-tool-args: #7c3aed;
-    --text-node-title: #0f172a;
-    --code-bg: rgba(0, 0, 0, 0.1);
-
-    --settings-overlay-bg: rgba(226, 232, 240, 0.72);
-    --settings-shell-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(245, 247, 250, 0.99));
-    --settings-shell-border: rgba(148, 163, 184, 0.26);
-    --settings-shell-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
-    --settings-sidebar-bg: rgba(248, 250, 252, 0.92);
-    --settings-header-bg: rgba(255, 255, 255, 0.92);
-    --settings-surface-bg: rgba(255, 255, 255, 0.88);
-    --settings-surface-strong-bg: rgba(255, 255, 255, 0.94);
-    --settings-surface-muted-bg: rgba(248, 250, 252, 0.94);
-    --settings-empty-bg: rgba(248, 250, 252, 0.96);
-    --settings-row-bg: rgba(248, 250, 252, 0.9);
-    --settings-row-hover-bg: rgba(241, 245, 249, 0.95);
-    --settings-chip-bg: rgba(248, 250, 252, 0.95);
-    --settings-chip-border: rgba(148, 163, 184, 0.22);
-    --settings-code-bg: rgba(15, 23, 42, 0.06);
-    --settings-input-bg: rgba(255, 255, 255, 0.96);
-    --settings-input-focus-bg: rgba(255, 255, 255, 1);
-    --settings-secondary-btn-bg: rgba(248, 250, 252, 0.96);
-    --settings-secondary-btn-hover-bg: rgba(241, 245, 249, 0.96);
-    --settings-border-soft: rgba(148, 163, 184, 0.18);
-    --settings-border-default: rgba(148, 163, 184, 0.22);
-    --settings-border-strong: rgba(148, 163, 184, 0.26);
-    --settings-border-hover: rgba(148, 163, 184, 0.32);
-    --settings-divider: rgba(148, 163, 184, 0.18);
-    --settings-card-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    --settings-overlay-bg: rgba(29, 31, 33, 0.14);
+    --settings-shell-bg: #faf6ef;
+    --settings-shell-border: rgba(91, 96, 92, 0.18);
+    --settings-shell-shadow: 0 8px 24px rgba(17, 19, 18, 0.08);
+    --settings-sidebar-bg: #f0e9de;
+    --settings-header-bg: #f3ede2;
+    --settings-surface-bg: #faf6ef;
+    --settings-surface-strong-bg: #fcf8f2;
+    --settings-surface-muted-bg: #f3ede2;
+    --settings-empty-bg: #f3ede2;
+    --settings-row-bg: #f3ede2;
+    --settings-row-hover-bg: #ebe2d5;
+    --settings-chip-bg: #eee5d9;
+    --settings-chip-border: rgba(91, 96, 92, 0.16);
+    --settings-code-bg: rgba(25, 28, 27, 0.05);
+    --settings-input-bg: #fbf7f0;
+    --settings-input-focus-bg: #fdfaf5;
+    --settings-secondary-btn-bg: #f1eadf;
+    --settings-secondary-btn-hover-bg: #e9dfd0;
+    --settings-border-soft: rgba(91, 96, 92, 0.12);
+    --settings-border-default: rgba(91, 96, 92, 0.16);
+    --settings-border-strong: rgba(91, 96, 92, 0.2);
+    --settings-border-hover: rgba(91, 96, 92, 0.26);
+    --settings-divider: rgba(91, 96, 92, 0.12);
+    --settings-card-shadow: 0 4px 14px rgba(17, 19, 18, 0.06);
     --settings-frame-padding: 1.1rem;
 }
 
-/* Animations */
+::selection {
+    background: rgba(145, 166, 152, 0.24);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -135,7 +150,7 @@ body.light-theme {
 @keyframes slideUp {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(8px);
     }
 
     to {

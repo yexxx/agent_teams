@@ -19,7 +19,9 @@ from agent_teams.providers.model_config import ProviderModelInfo, ProviderType
 class _FakeSystemService:
     def __init__(self) -> None:
         self.saved_notification_config: dict[str, object] | None = None
-        self.saved_model_profile: tuple[str, dict[str, object]] | None = None
+        self.saved_model_profile: tuple[str, dict[str, object], str | None] | None = (
+            None
+        )
 
     def get_config_status(self) -> dict[str, object]:
         return {"model": {"loaded": True}}
@@ -30,8 +32,14 @@ class _FakeSystemService:
     def get_model_profiles(self) -> dict[str, object]:
         return {}
 
-    def save_model_profile(self, name: str, profile: dict[str, object]) -> None:
-        self.saved_model_profile = (name, profile)
+    def save_model_profile(
+        self,
+        name: str,
+        profile: dict[str, object],
+        *,
+        source_name: str | None = None,
+    ) -> None:
+        self.saved_model_profile = (name, profile, source_name)
 
     def delete_model_profile(self, _name: str) -> None:
         return None
@@ -152,8 +160,9 @@ def test_save_model_profile_includes_connect_timeout_seconds() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert service.saved_model_profile is not None
-    _, saved_profile = service.saved_model_profile
+    _, saved_profile, source_name = service.saved_model_profile
     assert saved_profile["connect_timeout_seconds"] == 25.0
+    assert source_name is None
 
 
 def test_save_notification_config() -> None:
@@ -238,7 +247,34 @@ def test_save_model_profile_allows_missing_api_key_for_edit() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert service.saved_model_profile is not None
-    saved_name, saved_profile = service.saved_model_profile
+    saved_name, saved_profile, source_name = service.saved_model_profile
     assert saved_name == "default"
     assert "api_key" not in saved_profile
     assert saved_profile["top_p"] == 0.95
+    assert source_name is None
+
+
+def test_save_model_profile_accepts_source_name_for_rename() -> None:
+    service = _FakeSystemService()
+    client = _create_test_client(service)
+
+    response = client.put(
+        "/api/system/configs/model/profiles/renamed",
+        json={
+            "source_name": "default",
+            "provider": ProviderType.OPENAI_COMPATIBLE.value,
+            "model": "kimi-k2.5",
+            "base_url": "https://api.moonshot.cn/v1",
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert service.saved_model_profile is not None
+    saved_name, saved_profile, source_name = service.saved_model_profile
+    assert saved_name == "renamed"
+    assert saved_profile["model"] == "kimi-k2.5"
+    assert source_name == "default"

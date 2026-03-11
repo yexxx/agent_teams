@@ -54,6 +54,7 @@ Returns normalized model profiles.
 ### `PUT /system/configs/model/profiles/{name}`
 
 Upserts a model profile.
+Request body may include optional `source_name` to rename an existing profile while preserving its stored API key when `api_key` is omitted.
 
 ### `DELETE /system/configs/model/profiles/{name}`
 
@@ -66,6 +67,7 @@ Replaces the full model config object.
 ### `POST /system/configs/model:probe`
 
 Tests model connectivity for a saved profile and/or draft override.
+If `timeout_ms` is omitted, the backend uses the resolved profile `connect_timeout_seconds` value, or `15s` when no saved profile is involved.
 
 ### `POST /system/configs/model:reload`
 

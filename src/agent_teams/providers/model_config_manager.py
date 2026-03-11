@@ -43,16 +43,26 @@ class ModelConfigManager:
             }
         return result
 
-    def save_model_profile(self, name: str, profile: JsonObject) -> None:
+    def save_model_profile(
+        self,
+        name: str,
+        profile: JsonObject,
+        *,
+        source_name: str | None = None,
+    ) -> None:
         model_file = self._config_dir / "model.json"
         config: JsonObject = {}
         if model_file.exists():
             config = _load_json_object(model_file)
         existing_profile = config.get(name)
+        if source_name is not None and source_name != name:
+            existing_profile = config.get(source_name, existing_profile)
         config[name] = _merge_profile_api_key(
             existing_profile=existing_profile,
             next_profile=profile,
         )
+        if source_name is not None and source_name != name:
+            config.pop(source_name, None)
         _ = model_file.write_text(dumps(config, indent=2), encoding="utf-8")
 
     def delete_model_profile(self, name: str) -> None:

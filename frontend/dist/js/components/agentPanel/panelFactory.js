@@ -25,9 +25,10 @@ export function createPanel(instanceId, roleId, onClose) {
     panelEl.innerHTML = `
         <div class="agent-panel-header">
             <div class="agent-panel-title">
-                <span class="panel-icon">*</span>
-                <span class="panel-role">${friendlyRole}</span>
-                <span class="panel-id">${instanceId.slice(0, 8)}</span>
+                <div class="panel-role-stack">
+                    <span class="panel-role">${friendlyRole}</span>
+                    <span class="panel-id">${instanceId.slice(0, 8)}</span>
+                </div>
             </div>
             <div class="agent-token-usage" data-instance-id="${instanceId}"></div>
             <button class="agent-panel-stop" title="Stop this subagent">Stop</button>

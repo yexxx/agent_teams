@@ -24,6 +24,11 @@ class _FakeAgentRepo:
     def list_by_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
         return self._agents
 
+    def list_session_role_instances(
+        self, session_id: str
+    ) -> tuple[AgentRuntimeRecord, ...]:
+        return self._agents
+
 
 class _FakeTaskRepo:
     def __init__(self, tasks: tuple[TaskRecord, ...] = ()) -> None:
@@ -41,22 +46,12 @@ class _FakeRunRuntimeRepo:
         return self._runtimes
 
 
-def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
+def test_build_session_rounds_uses_task_bound_role_instance_map() -> None:
     session_id = "session-1"
     run_id = "run-1"
     role_id = "spec_coder"
 
-    agent_old = AgentRuntimeRecord(
-        run_id=run_id,
-        trace_id=run_id,
-        session_id=session_id,
-        instance_id="inst-old",
-        role_id=role_id,
-        workspace_id=build_workspace_id(session_id),
-        conversation_id=build_conversation_id(session_id, role_id),
-        status=InstanceStatus.IDLE,
-    )
-    agent_new = AgentRuntimeRecord(
+    agent = AgentRuntimeRecord(
         run_id=run_id,
         trace_id=run_id,
         session_id=session_id,
@@ -72,14 +67,39 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
         status=RunRuntimeStatus.RUNNING,
         phase=RunRuntimePhase.COORDINATOR_RUNNING,
     )
+    root_task = TaskRecord(
+        envelope=TaskEnvelope(
+            task_id="task-root",
+            session_id=session_id,
+            parent_task_id=None,
+            trace_id=run_id,
+            objective="root",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+    delegated_task = TaskRecord(
+        envelope=TaskEnvelope(
+            task_id="task-1",
+            session_id=session_id,
+            parent_task_id="task-root",
+            trace_id=run_id,
+            role_id=role_id,
+            objective="implement",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        ),
+        assigned_instance_id="inst-new",
+    )
 
     rounds = build_session_rounds(
         session_id=session_id,
         agent_repo=cast(
             AgentInstanceRepository,
-            cast(object, _FakeAgentRepo((agent_old, agent_new))),
+            cast(object, _FakeAgentRepo((agent,))),
         ),
-        task_repo=cast(TaskRepository, cast(object, _FakeTaskRepo())),
+        task_repo=cast(
+            TaskRepository,
+            cast(object, _FakeTaskRepo((root_task, delegated_task))),
+        ),
         approval_tickets_by_run={},
         run_runtime_repo=cast(
             RunRuntimeRepository,
@@ -92,10 +112,7 @@ def test_build_session_rounds_uses_latest_instance_for_same_role() -> None:
     round_item = rounds[0]
     instance_role_map = cast(dict[str, str], round_item["instance_role_map"])
     role_instance_map = cast(dict[str, str], round_item["role_instance_map"])
-    assert instance_role_map == {
-        "inst-old": role_id,
-        "inst-new": role_id,
-    }
+    assert instance_role_map == {"inst-new": role_id}
     assert role_instance_map[role_id] == "inst-new"
 
 

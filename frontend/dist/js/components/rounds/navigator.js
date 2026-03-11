@@ -2,7 +2,6 @@
  * components/rounds/navigator.js
  * Floating round navigator rendering and active-state sync.
  */
-import { els } from '../../utils/dom.js';
 import { esc, roundStateLabel, roundStateTone } from './utils.js';
 
 let navRounds = [];
@@ -25,8 +24,6 @@ export function renderRoundNavigator(rounds, onSelectRound) {
     if (navRounds.length === 0) {
         nav.style.display = 'none';
         nav.innerHTML = '';
-        if (els.workflowPanel) els.workflowPanel.style.display = 'none';
-        if (els.workflowCollapsed) els.workflowCollapsed.style.display = 'none';
         return;
     }
 

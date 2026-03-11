@@ -248,6 +248,109 @@ async def test_dispatch_task_reuses_bound_instance_for_followup(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
+async def test_dispatch_task_reuses_session_role_instance_across_tasks(
+    tmp_path: Path,
+) -> None:
+    (
+        service,
+        task_repo,
+        agent_repo,
+        _message_repo,
+        execution_service,
+    ) = _build_service(tmp_path / "task_orchestration_reuse_role_instance.db")
+    first = task_repo.create(
+        TaskEnvelope(
+            task_id="task-1",
+            session_id="session-1",
+            parent_task_id="task-root",
+            trace_id="run-1",
+            role_id="spec_coder",
+            title="Implement endpoint",
+            objective="Implement the endpoint",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+    second = task_repo.create(
+        TaskEnvelope(
+            task_id="task-2",
+            session_id="session-1",
+            parent_task_id="task-root",
+            trace_id="run-1",
+            role_id="spec_coder",
+            title="Refine endpoint",
+            objective="Refine the endpoint",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+
+    first_dispatch = await service.dispatch_task(run_id="run-1", task_id="task-1")
+    second_dispatch = await service.dispatch_task(run_id="run-1", task_id="task-2")
+
+    first_task = cast(JsonObject, first_dispatch["task"])
+    second_task = cast(JsonObject, second_dispatch["task"])
+    assert first_task["instance_id"] == second_task["instance_id"]
+    assert execution_service.calls == [
+        (str(first_task["instance_id"]), "spec_coder", first.envelope.task_id),
+        (str(second_task["instance_id"]), "spec_coder", second.envelope.task_id),
+    ]
+    session_agents = agent_repo.list_session_role_instances("session-1")
+    assert len(session_agents) == 1
+    assert session_agents[0].role_id == "spec_coder"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_task_rejects_same_role_while_other_task_is_in_progress(
+    tmp_path: Path,
+) -> None:
+    (
+        service,
+        task_repo,
+        _agent_repo,
+        _message_repo,
+        _execution_service,
+    ) = _build_service(tmp_path / "task_orchestration_role_busy.db")
+    first = task_repo.create(
+        TaskEnvelope(
+            task_id="task-1",
+            session_id="session-1",
+            parent_task_id="task-root",
+            trace_id="run-1",
+            role_id="spec_coder",
+            title="Implement endpoint",
+            objective="Implement the endpoint",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+    second = task_repo.create(
+        TaskEnvelope(
+            task_id="task-2",
+            session_id="session-1",
+            parent_task_id="task-root",
+            trace_id="run-1",
+            role_id="spec_coder",
+            title="Refine endpoint",
+            objective="Refine the endpoint",
+            verification=VerificationPlan(checklist=("non_empty_response",)),
+        )
+    )
+
+    first_dispatch = await service.dispatch_task(run_id="run-1", task_id="task-1")
+    instance_id = str(cast(JsonObject, first_dispatch["task"])["instance_id"])
+    task_repo.update_status(
+        first.envelope.task_id,
+        TaskStatus.RUNNING,
+        assigned_instance_id=instance_id,
+    )
+
+    with pytest.raises(ValueError, match="role instance is busy"):
+        await service.dispatch_task(run_id="run-1", task_id=second.envelope.task_id)
+
+    second_record = task_repo.get(second.envelope.task_id)
+    assert second_record.assigned_instance_id == instance_id
+    assert second_record.status == TaskStatus.ASSIGNED
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status", "feedback", "match"),
     [

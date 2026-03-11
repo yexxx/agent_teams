@@ -12,6 +12,7 @@ import {
     removeGateCard,
     showGateCard,
 } from '../../components/agentPanel.js';
+import { markSubagentStatus } from '../../components/subagentRail.js';
 import { renderHumanDispatchPanel } from './utils.js';
 
 export function handleAwaitingHumanDispatch(payload) {
@@ -39,6 +40,7 @@ export function handleGateResolved(payload, instanceId) {
 }
 
 export function handleSubagentStopped(payload) {
+    markSubagentStatus(payload.instance_id, 'stopped');
     state.pausedSubagent = {
         runId: state.activeRunId,
         instanceId: payload.instance_id,
@@ -53,6 +55,7 @@ export function handleSubagentStopped(payload) {
 }
 
 export function handleSubagentResumed(payload) {
+    markSubagentStatus(payload.instance_id, 'running');
     if (state.pausedSubagent && state.pausedSubagent.instanceId === payload.instance_id) {
         state.pausedSubagent = null;
     }

@@ -185,7 +185,7 @@ class SessionService:
         return tuple(enriched)
 
     def list_agents_in_session(self, session_id: str) -> tuple[AgentRuntimeRecord, ...]:
-        return self._agent_repo.list_by_session(session_id)
+        return self._agent_repo.list_session_role_instances(session_id)
 
     def get_agent_messages(
         self, session_id: str, instance_id: str

@@ -21,7 +21,8 @@ Common status codes:
 - Every delegated task is a persisted task record under that root task.
 - A delegated task binds to exactly one subagent instance on first dispatch.
 - Re-dispatching the same task reuses its bound instance.
-- Different tasks never share an instance, even when `role_id` is the same.
+- In one session, delegated tasks with the same `role_id` reuse the same session-level subagent instance.
+- Same-role task dispatch is serial only. If a role instance is already busy or paused on another task, dispatch returns a runtime conflict.
 
 Task status values:
 - `created`
@@ -167,7 +168,7 @@ Returns active run recovery state, pending tool approvals, paused subagent state
 
 ### `GET /sessions/{session_id}/agents`
 
-Lists agent instances in the session.
+Lists one session-level agent instance per delegated role in the session.
 
 ### `GET /sessions/{session_id}/events`
 
@@ -338,11 +339,12 @@ Request:
 ```
 
 Rules:
-- `created`: create a new bound subagent instance, then execute.
+- `created`: bind the task to the session-level subagent instance for its `role_id` (creating it if needed), then execute.
 - `assigned` or `stopped`: reuse the bound instance and continue.
 - `completed`: requires non-empty `feedback`, then reuses the same instance.
 - `running`: rejected as a conflict.
 - `failed` or `timeout`: rejected; create a new task instead.
+- If another task already holds the same role instance in `assigned`, `running`, or `stopped`, dispatch is rejected as a conflict.
 
 ## Role APIs
 

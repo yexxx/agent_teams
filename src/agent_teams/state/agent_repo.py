@@ -51,6 +51,9 @@ class AgentInstanceRepository:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_agent_instances_run_status ON agent_instances(run_id, status)"
         )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_instances_session_role ON agent_instances(session_id, role_id, updated_at)"
+        )
         self._conn.commit()
 
     def upsert_instance(
@@ -77,6 +80,10 @@ class AgentInstanceRepository:
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(instance_id)
             DO UPDATE SET
+                run_id=excluded.run_id,
+                trace_id=excluded.trace_id,
+                session_id=excluded.session_id,
+                role_id=excluded.role_id,
                 status=excluded.status,
                 workspace_id=excluded.workspace_id,
                 conversation_id=excluded.conversation_id,
@@ -132,6 +139,26 @@ class AgentInstanceRepository:
         ).fetchall()
         return tuple(self._to_record(row) for row in rows)
 
+    def list_session_role_instances(
+        self, session_id: str
+    ) -> tuple[AgentRuntimeRecord, ...]:
+        rows = self._conn.execute(
+            """
+            SELECT *
+            FROM agent_instances
+            WHERE session_id=?
+            ORDER BY role_id ASC, updated_at DESC, created_at DESC
+            """,
+            (session_id,),
+        ).fetchall()
+        latest_by_role: dict[str, AgentRuntimeRecord] = {}
+        for row in rows:
+            record = self._to_record(row)
+            latest_by_role.setdefault(record.role_id, record)
+        return tuple(
+            latest_by_role[role_id] for role_id in sorted(latest_by_role.keys())
+        )
+
     def get_instance(self, instance_id: str) -> AgentRuntimeRecord:
         row = self._conn.execute(
             "SELECT * FROM agent_instances WHERE instance_id=?",
@@ -141,14 +168,27 @@ class AgentInstanceRepository:
             raise KeyError(f"Unknown instance_id: {instance_id}")
         return self._to_record(row)
 
-    def get_coordinator_instance_id(self, session_id: str) -> str | None:
-        """Return the instance_id of the first coordinator_agent created for this session, or None."""
+    def get_session_role_instance(
+        self, session_id: str, role_id: str
+    ) -> AgentRuntimeRecord | None:
         row = self._conn.execute(
-            "SELECT instance_id FROM agent_instances "
-            "WHERE session_id=? AND role_id='coordinator_agent' ORDER BY created_at ASC LIMIT 1",
-            (session_id,),
+            """
+            SELECT *
+            FROM agent_instances
+            WHERE session_id=? AND role_id=?
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """,
+            (session_id, role_id),
         ).fetchone()
-        return str(row["instance_id"]) if row else None
+        if row is None:
+            return None
+        return self._to_record(row)
+
+    def get_coordinator_instance_id(self, session_id: str) -> str | None:
+        """Return the coordinator instance_id for this session, or None."""
+        record = self.get_session_role_instance(session_id, "coordinator_agent")
+        return record.instance_id if record is not None else None
 
     def delete_by_session(self, session_id: str) -> None:
         self._conn.execute(

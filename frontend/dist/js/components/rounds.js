@@ -1,6 +1,6 @@
 /**
  * components/rounds.js
- * Backward-compatible facade. New implementation lives under ./rounds/.
+ * Re-export the rounds timeline public API.
  */
 export {
     appendRoundUserMessage,
@@ -11,5 +11,4 @@ export {
     loadSessionRounds,
     overlayRoundRecoveryState,
     selectRound,
-    toggleWorkflow,
 } from './rounds/index.js';

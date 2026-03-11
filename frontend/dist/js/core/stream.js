@@ -29,9 +29,6 @@ export async function startIntentStream(promptText, sessionId, executionMode, on
         els.stopBtn.disabled = false;
     }
 
-    const panel = document.getElementById('workflow-panel');
-    if (panel) panel.classList.add('generating');
-
     if (state.activeEventSource) {
         state.activeEventSource.close();
         state.activeEventSource = null;
@@ -95,9 +92,6 @@ export function endStream() {
     }
     state.isGenerating = false;
 
-    const panel = document.getElementById('workflow-panel');
-    if (panel) panel.classList.remove('generating');
-
     if (els.sendBtn) els.sendBtn.disabled = false;
     if (els.stopBtn) {
         els.stopBtn.disabled = true;
@@ -127,8 +121,6 @@ export function resumeRunStream(runId, sessionId = state.currentSessionId, onCom
             els.stopBtn.style.display = 'inline-flex';
             els.stopBtn.disabled = false;
         }
-        const panel = document.getElementById('workflow-panel');
-        if (panel) panel.classList.add('generating');
     }
 
     if (state.activeEventSource) {

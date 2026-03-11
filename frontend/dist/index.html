@@ -69,6 +69,10 @@
                         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
                     </svg>
                 </button>
+                <button id="toggle-subagents" class="subagent-toggle-btn" title="Toggle Subagents">
+                    <span class="subagent-toggle-label">Subagents</span>
+                    <span class="subagent-toggle-summary">idle / 0 roles</span>
+                </button>
                 <button id="toggle-theme" class="icon-btn" title="Toggle Theme" style="margin-right:0.5rem;">
                     <svg viewBox="0 0 24 24" fill="none" class="icon">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"
@@ -127,20 +131,20 @@
         <div class="right-rail-resizer" id="right-rail-resizer" title="Drag to resize right rail"></div>
 
         <aside class="right-rail" id="right-rail">
-            <section class="rail-graph-card">
-                <div id="workflow-collapsed" class="workflow-collapsed" style="display:none;"></div>
-                <div id="workflow-panel" class="workflow-panel" style="display: flex;">
-                    <div class="workflow-header">
-                        <h4>Execution Graph — <span class="wf-hint">跟随当前 Round</span></h4>
-                        <span id="workflow-count" class="workflow-count">0</span>
-                    </div>
-                    <div class="workflow-canvas" id="workflow-canvas"></div>
-                </div>
-            </section>
-
             <section class="rail-subagent-card">
-                <div class="agent-placeholder">Click a node to view subagent details</div>
-                <aside class="agent-drawer" id="agent-drawer"></aside>
+                <div class="subagent-rail-header">
+                    <div class="subagent-rail-title">
+                        <h4>Subagents</h4>
+                        <span id="subagent-status-summary" class="subagent-status-summary">idle / 0 roles</span>
+                    </div>
+                    <select id="subagent-role-select" class="subagent-role-select" disabled>
+                        <option value="">No subagents</option>
+                    </select>
+                </div>
+                <div id="subagent-role-meta" class="subagent-role-meta">
+                    <div class="subagent-meta-empty">No delegated subagent instances in this session.</div>
+                </div>
+                <aside class="agent-drawer open" id="agent-drawer"></aside>
             </section>
 
             <section class="rail-inspector-card" id="rail-inspector">

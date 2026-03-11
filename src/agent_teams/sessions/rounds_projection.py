@@ -20,21 +20,18 @@ def build_session_rounds(
     get_session_messages: Callable[[str], list[dict[str, object]]],
 ) -> list[dict[str, object]]:
     session_tasks = task_repo.list_by_session(session_id)
-    session_agents = agent_repo.list_by_session(session_id)
+    session_agents = agent_repo.list_session_role_instances(session_id)
     session_messages = get_session_messages(session_id)
     run_runtime = {
         record.run_id: record for record in run_runtime_repo.list_by_session(session_id)
     }
 
-    agents_by_run: dict[str, list[object]] = defaultdict(list)
-    instance_role_by_run: dict[str, dict[str, str]] = defaultdict(dict)
     instance_role_by_session: dict[str, str] = {}
     role_instance_by_run: dict[str, dict[str, str]] = defaultdict(dict)
     for agent in session_agents:
-        agents_by_run[agent.run_id].append(agent)
-        instance_role_by_run[agent.run_id][agent.instance_id] = agent.role_id
         instance_role_by_session[agent.instance_id] = agent.role_id
-        role_instance_by_run[agent.run_id][agent.role_id] = agent.instance_id
+
+    instance_role_by_run: dict[str, dict[str, str]] = defaultdict(dict)
 
     tasks_by_run: dict[str, list[object]] = defaultdict(list)
     root_task_by_run: dict[str, object] = {}
@@ -47,6 +44,12 @@ def build_session_rounds(
         task_status_map_by_run[run_id][task.envelope.task_id] = task.status.value
         if task.assigned_instance_id:
             task_instance_map_by_run[run_id][task.envelope.task_id] = (
+                task.assigned_instance_id
+            )
+            instance_role_by_run[run_id][task.assigned_instance_id] = (
+                task.envelope.role_id
+            )
+            role_instance_by_run[run_id][task.envelope.role_id] = (
                 task.assigned_instance_id
             )
         if task.envelope.parent_task_id is None:

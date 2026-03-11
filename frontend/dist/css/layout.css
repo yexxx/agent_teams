@@ -128,37 +128,6 @@
     overflow: hidden;
 }
 
-/* ----------------- WORKFLOW PANEL ----------------- */
-.workflow-collapsed {
-    display: none;
-    padding: 0.5rem 1rem;
-    background-color: var(--bg-surface);
-    border-top: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.workflow-collapsed:hover {
-    background-color: var(--bg-hover);
-}
-
-.workflow-collapsed .workflow-status-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-}
-
-.workflow-count {
-    background: var(--primary);
-    color: white;
-    padding: 0.1rem 0.4rem;
-    border-radius: 10px;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
-
 .inspector header {
     padding: 1rem;
     border-bottom: 1px solid var(--border-color);
@@ -180,253 +149,25 @@
     font-size: 0.75rem;
 }
 
-.workflow-panel {
-    background-color: var(--bg-surface-glass);
-    border-top: 1px solid var(--border-color);
-    padding: 0.75rem 1rem;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    max-height: 260px;
-    overflow: hidden;
-}
 
-.workflow-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
-}
-
-.workflow-header h4 {
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.workflow-canvas {
-    width: 100%;
-    min-height: 160px;
-    display: flex;
-    overflow: auto;
-    padding: 0.5rem 0;
-}
-
-/* Custom DAG Layout */
-.dag-container {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 4rem;
-    padding: 1.5rem 2rem;
-    width: 100%;
-    min-width: max-content;
-}
-
-.dag-layer {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    position: relative;
-    z-index: 2;
-}
-
-.dag-node {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 0.75rem 1.25rem;
-    min-width: 140px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.35rem;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    position: relative;
-}
-
-.dag-node:hover {
-    transform: translateY(-2px);
-    border-color: var(--primary);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
-}
-
-.dag-node.active-tab {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25), 0 4px 12px -2px rgba(99, 102, 241, 0.3);
-    background: rgba(99, 102, 241, 0.06);
-}
-
-.dag-node.running {
-    animation: nodePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    border-color: var(--primary-hover);
-}
-
-.dag-node.status-pending {
-    border-style: dashed;
-    border-color: rgba(245, 158, 11, 0.55);
-    opacity: 0.82;
-}
-
-.dag-node.status-running {
-    border-color: rgba(99, 102, 241, 0.65);
-}
-
-.dag-node.status-completed {
-    border-color: rgba(16, 185, 129, 0.6);
-}
-
-.dag-node.status-failed {
-    border-color: rgba(239, 68, 68, 0.68);
-}
-
-.dag-node.status-timeout {
-    border-color: rgba(245, 158, 11, 0.72);
-}
-
-.dag-node.status-stopped {
-    border-color: rgba(156, 163, 175, 0.75);
-}
-
-.dag-node.status-unknown {
-    border-style: dashed;
-    border-color: rgba(148, 163, 184, 0.55);
-}
-
-@keyframes nodePulse {
-
-    0%,
-    100% {
-        box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.6);
-    }
-
-    50% {
-        box-shadow: 0 0 0 8px rgba(79, 70, 229, 0);
-    }
-}
-
-.node-icon {
-    font-size: 1.25rem;
-}
-
-.node-title {
-    font-weight: 600;
-    color: var(--text-node-title);
-    font-size: 0.8125rem;
-    text-align: center;
-}
-
-.node-role {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-}
-
-.node-state {
-    font-size: 0.62rem;
-    line-height: 1;
-    padding: 0.16rem 0.38rem;
-    border-radius: 999px;
-    margin-top: 0.2rem;
-    border: 1px solid transparent;
-}
-
-.node-state-pending {
-    color: var(--warning);
-    border-color: rgba(245, 158, 11, 0.45);
-    background: rgba(245, 158, 11, 0.12);
-}
-
-.node-state-running {
-    color: var(--primary-hover);
-    border-color: rgba(99, 102, 241, 0.45);
-    background: rgba(99, 102, 241, 0.12);
-}
-
-.node-state-completed {
-    color: var(--success);
-    border-color: rgba(16, 185, 129, 0.45);
-    background: rgba(16, 185, 129, 0.12);
-}
-
-.node-state-failed {
-    color: var(--danger);
-    border-color: rgba(239, 68, 68, 0.5);
-    background: rgba(239, 68, 68, 0.12);
-}
-
-.node-state-timeout {
-    color: var(--warning);
-    border-color: rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.14);
-}
-
-.node-state-stopped {
-    color: var(--text-secondary);
-    border-color: rgba(156, 163, 175, 0.55);
-    background: rgba(156, 163, 175, 0.12);
-}
-
-.node-state-unknown {
-    color: var(--text-secondary);
-    border-color: rgba(148, 163, 184, 0.45);
-    background: rgba(148, 163, 184, 0.1);
-}
-
-/* SVG Connectors */
-.dag-edges {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.dag-edge-path {
-    fill: none;
-    stroke: var(--border-color);
-    stroke-width: 2px;
-    transition: stroke 0.3s;
-}
-
-.workflow-panel.generating .dag-edge-path {
-    stroke: var(--primary);
-    stroke-dasharray: 6 6;
-    animation: flow-ant 1s linear infinite;
-}
-
-@keyframes flow-ant {
-    to {
-        stroke-dashoffset: -12;
-    }
-}
-
-/* ─── Agent Drawer (right side subagent panel) ─────────────────────────────── */
+/* 鈹€鈹€鈹€ Agent Drawer (right side subagent panel) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .agent-drawer {
-    width: 0;
+    width: 100%;
     min-width: 0;
     overflow: hidden;
     background-color: var(--bg-surface);
-    border-left: 1px solid var(--border-color);
+    border-left: none;
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
+    flex: 1 1 auto;
 }
 
 .agent-drawer.open {
-    width: 420px;
-    min-width: 320px;
+    width: 100%;
+    min-width: 0;
 }
 
 .drawer-placeholder {
@@ -443,7 +184,7 @@
     line-height: 1.6;
 }
 
-/* ─── Agent Panel (inside drawer) ─────────────────────────────────────────── */
+/* 鈹€鈹€鈹€ Agent Panel (inside drawer) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .agent-panel {
     display: flex;
@@ -606,17 +347,6 @@
     font-size: 0.875rem;
 }
 
-/* ─── Workflow hint ────────────────────────────────────────────────────────── */
-
-.wf-hint {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    font-weight: 400;
-    font-style: italic;
-    text-transform: none;
-    letter-spacing: 0;
-}
-
 /* ----------------- Right Rail Unified Layout ----------------- */
 .app-container {
     overflow: hidden;
@@ -684,6 +414,38 @@
     opacity: 0.6;
 }
 
+.subagent-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    cursor: pointer;
+    margin-right: 0.5rem;
+}
+
+.subagent-toggle-btn.active {
+    border-color: color-mix(in srgb, var(--primary) 38%, var(--border-color));
+}
+
+.subagent-toggle-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.subagent-toggle-summary {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.right-rail-resizer.hidden {
+    display: none;
+}
+
 .right-rail {
     width: var(--right-rail-width, 280px);
     min-width: 180px;
@@ -695,90 +457,133 @@
     overflow: hidden;
 }
 
-.rail-graph-card {
-    flex: 0 0 270px;
-    min-height: 220px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-surface-glass);
-    transition: flex-basis 0.22s ease, min-height 0.22s ease, opacity 0.22s ease;
-}
-
-.rail-graph-card .workflow-panel {
-    height: 100%;
-    max-height: none;
-    border-top: none;
-    padding: 0.5rem 0.65rem;
-    background: transparent;
-}
-
-.rail-graph-card .workflow-header {
-    margin-bottom: 0.25rem;
-}
-
-.rail-graph-card .workflow-canvas {
-    min-height: 0;
-    height: calc(100% - 24px);
-    overflow: auto;
-    padding: 0.2rem 0;
-    transition: opacity 0.22s ease;
-}
-
-.right-rail.right-rail-recovery-priority .rail-graph-card {
-    flex-basis: 148px;
-    min-height: 132px;
-}
-
-.right-rail.right-rail-followup-priority .rail-graph-card {
-    flex-basis: 188px;
-    min-height: 164px;
-}
-
-.rail-graph-card.is-compact .workflow-canvas {
-    opacity: 0.58;
-}
-
-.rail-graph-card.is-muted .workflow-header {
-    opacity: 0.88;
+.right-rail.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    border-left: none !important;
 }
 
 .rail-subagent-card {
     display: flex;
     flex: 1 1 auto;
     min-height: 100px;
-    border-top: 1px solid var(--border-color);
     flex-direction: column;
+    min-height: 0;
 }
 
-.rail-subagent-card .agent-placeholder {
+.subagent-rail-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-surface-glass);
+}
+
+.subagent-rail-title {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.subagent-rail-title h4 {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.subagent-status-summary {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+.subagent-role-select {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    padding: 0.55rem 0.7rem;
+}
+
+.subagent-role-meta {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-base);
+}
+
+.subagent-meta-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.subagent-meta-empty {
     color: var(--text-secondary);
     font-size: 0.8rem;
-    opacity: 0.6;
-    padding: 1rem;
-    text-align: center;
-    flex: 1;
+}
+
+.subagent-meta-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.subagent-meta-role {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.subagent-meta-status {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.subagent-meta-status.is-running {
+    color: var(--primary);
+    border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.subagent-meta-secondary {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+}
+
+.subagent-meta-tasks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.subagent-task-chip,
+.subagent-task-empty {
+    font-size: 0.7rem;
+    border-radius: 999px;
+    padding: 0.2rem 0.5rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
 }
 
 .rail-subagent-card .agent-drawer {
-    display: none;
     width: 100%;
     min-width: 0;
-    border-left: none;
     border-right: none;
     height: 100%;
     flex: 1 1 auto;
-}
-
-.rail-subagent-card .agent-drawer.open {
-    display: flex;
-    width: 100% !important;
-    min-width: 0 !important;
-}
-
-.rail-subagent-card.open .agent-placeholder {
-    display: none;
 }
 
 .rail-inspector-card {

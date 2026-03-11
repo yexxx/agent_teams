@@ -22,7 +22,6 @@ import {
 import {
     COORDINATOR_ROLE,
     coordinatorContainerFor,
-    tryRenderLiveDAG,
 } from './utils.js';
 
 export function handleToolCall(payload, eventMeta, instanceId, roleId) {
@@ -78,10 +77,6 @@ export function handleToolResult(payload, instanceId, eventMeta = null, roleId =
             roleId,
         },
     );
-
-    if (payload.tool_name === 'create_workflow_graph' && resultEnvelope) {
-        tryRenderLiveDAG(resultEnvelope);
-    }
 }
 
 export function handleToolApprovalRequested(payload, eventMeta, instanceId) {

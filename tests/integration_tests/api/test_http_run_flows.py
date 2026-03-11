@@ -105,5 +105,5 @@ def test_task_dispatch_updates_round_task_maps(api_client: httpx.Client) -> None
     assert isinstance(task_instance_map, dict)
     assert isinstance(task_status_map, dict)
     assert len(task_instance_map) >= 2
-    assert len(set(str(value) for value in task_instance_map.values())) >= 2
+    assert len(set(str(value) for value in task_instance_map.values())) == 1
     assert "completed" in set(str(value) for value in task_status_map.values())

@@ -24,10 +24,6 @@ export async function fetchSessionHistory(sessionId) {
     return requestJson(`/api/sessions/${sessionId}`, undefined, 'Failed to fetch session history');
 }
 
-export async function fetchSessionWorkflows(sessionId) {
-    return requestJson(`/api/sessions/${sessionId}/workflows`, undefined, 'Failed to fetch session workflows');
-}
-
 export async function fetchSessionRounds(sessionId, { limit = 8, cursorRunId = null } = {}) {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
@@ -57,6 +53,10 @@ export async function fetchSessionRecovery(sessionId) {
 
 export async function fetchSessionAgents(sessionId) {
     return requestJson(`/api/sessions/${sessionId}/agents`, undefined, 'Failed to fetch session agents');
+}
+
+export async function fetchSessionTasks(sessionId) {
+    return requestJson(`/api/sessions/${sessionId}/tasks`, undefined, 'Failed to fetch session tasks');
 }
 
 export async function fetchAgentMessages(sessionId, instanceId) {

@@ -2,7 +2,7 @@
  * app/recovery.js
  * Session recovery snapshot loading, banner rendering, and explicit resume actions.
  */
-import { openAgentPanel } from '../components/agentPanel.js';
+import { focusSubagent, refreshSubagentRail } from '../components/subagentRail.js';
 import {
     loadSessionRounds,
     overlayRoundRecoveryState,
@@ -53,6 +53,7 @@ export async function hydrateSessionView(
         if (state.currentSessionId !== safeSessionId) return null;
     }
     const snapshot = await refreshSessionRecovery(safeSessionId, { quiet });
+    await refreshSubagentRail(safeSessionId, { preserveSelection: true });
     syncSessionContinuity();
     return snapshot;
 }
@@ -845,27 +846,11 @@ function ensureRecoveryBannerHost() {
 function syncRecoveryRailMode({ approvals = [], pausedSubagent = null } = {}) {
     const rightRail = els.rightRail || document.getElementById('right-rail');
     if (!rightRail) return;
-    const graphCard = rightRail.querySelector('.rail-graph-card');
-    const hint = rightRail.querySelector('.wf-hint');
     const hasPendingApprovals = Array.isArray(approvals) && approvals.length > 0;
     const hasPausedSubagent = !!pausedSubagent;
 
     rightRail.classList.toggle('right-rail-recovery-priority', hasPendingApprovals);
     rightRail.classList.toggle('right-rail-followup-priority', !hasPendingApprovals && hasPausedSubagent);
-
-    if (graphCard) {
-        graphCard.classList.toggle('is-compact', hasPendingApprovals);
-        graphCard.classList.toggle('is-muted', hasPendingApprovals || hasPausedSubagent);
-    }
-    if (hint) {
-        if (hasPendingApprovals) {
-            hint.textContent = '审批中，图已收拢';
-        } else if (hasPausedSubagent) {
-            hint.textContent = '等待 Follow-up';
-        } else {
-            hint.textContent = '跟随当前 Round';
-        }
-    }
 }
 
 function getFooterActions(activeRun, approvals, pausedSubagent) {
@@ -922,7 +907,10 @@ async function handleRecoveryAction(actionDef, activeRun, pausedSubagent) {
         return;
     }
     if (actionDef.action === 'open-subagent' && pausedSubagent?.instanceId) {
-        openAgentPanel(pausedSubagent.instanceId, pausedSubagent.roleId || pausedSubagent.instanceId);
+        focusSubagent(
+            pausedSubagent.instanceId,
+            pausedSubagent.roleId || pausedSubagent.instanceId,
+        );
     }
 }
 
@@ -1157,29 +1145,17 @@ function renderPausedSubagentCallout(pausedSubagent) {
 function approvalTitle(approval) {
     const toolName = String(approval?.tool_name || '');
     const args = parseApprovalArgs(approval?.args_preview);
-    if (toolName === 'create_workflow_graph') {
-        const workflowType = String(args.workflow_type || 'custom');
-        const taskCount = normalizeCount(args.task_count);
-        if (taskCount > 0) {
-            return `Create ${workflowType} workflow with ${taskCount} task${taskCount === 1 ? '' : 's'}`;
-        }
-        return `Create ${workflowType} workflow`;
-    }
-    if (toolName === 'dispatch_tasks') {
-        const action = String(args.action || 'next');
-        if (action === 'next') {
-            return 'Run next workflow step';
-        }
-        if (action === 'revise') {
-            return 'Revise previous workflow step';
-        }
-        if (action === 'finalize') {
-            return 'Finalize workflow';
-        }
-        return `${humanizeToolName(action)} workflow`;
-    }
     if (toolName === 'list_available_roles') {
         return 'List available roles';
+    }
+    if (toolName === 'create_tasks') {
+        const taskCount = normalizeCount(args.task_count);
+        return taskCount > 0
+            ? `Create ${taskCount} delegated task${taskCount === 1 ? '' : 's'}`
+            : 'Create delegated tasks';
+    }
+    if (toolName === 'dispatch_task') {
+        return 'Dispatch task';
     }
     return `Run ${humanizeToolName(toolName || 'tool')}`;
 }

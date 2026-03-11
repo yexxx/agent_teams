@@ -5,7 +5,6 @@
 import { scheduleRecoveryContinuityRefresh } from '../../app/recovery.js';
 import { state } from '../state.js';
 import { sysLog } from '../../utils/logger.js';
-import { refreshDagNodeStatuses } from '../../components/workflow.js';
 import {
     handleModelStepFinished,
     handleModelStepStarted,
@@ -56,10 +55,6 @@ export function routeEvent(evType, payload, eventMeta) {
             state.taskStatusMap[taskId] = 'completed';
         }
     }
-    if (taskId || instanceId) {
-        refreshDagNodeStatuses();
-    }
-
     if (evType === 'run_started') {
         handleRunStarted(eventMeta);
     } else if (evType === 'run_resumed') {

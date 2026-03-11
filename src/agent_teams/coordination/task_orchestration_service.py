@@ -181,21 +181,12 @@ class TaskOrchestrationService:
         instance_id = record.assigned_instance_id or ""
 
         if record.status == TaskStatus.CREATED:
-            instance = self._instance_pool.create_subagent(
-                role_id,
+            bound_instance_id = self._ensure_role_instance(
                 session_id=record.envelope.session_id,
-            )
-            instance_id = instance.instance_id
-            self._agent_repo.upsert_instance(
                 run_id=resolved_run_id,
-                trace_id=resolved_run_id,
-                session_id=record.envelope.session_id,
-                instance_id=instance.instance_id,
-                role_id=instance.role_id,
-                workspace_id=instance.workspace_id,
-                conversation_id=instance.conversation_id,
-                status=InstanceStatus.IDLE,
+                role_id=role_id,
             )
+            instance_id = bound_instance_id
             self._task_repo.update_status(
                 task_id=task_id,
                 status=TaskStatus.ASSIGNED,
@@ -211,6 +202,8 @@ class TaskOrchestrationService:
             instance_id = record.assigned_instance_id or ""
         if not instance_id:
             raise ValueError("task has no bound instance to dispatch")
+
+        self._assert_instance_available(task=record, instance_id=instance_id)
 
         if normalized_feedback:
             self._append_followup_prompt(
@@ -249,6 +242,58 @@ class TaskOrchestrationService:
             trace_id=task.envelope.trace_id,
             content=content,
         )
+
+    def _ensure_role_instance(
+        self,
+        *,
+        session_id: str,
+        run_id: str,
+        role_id: str,
+    ) -> str:
+        existing = self._agent_repo.get_session_role_instance(session_id, role_id)
+        if existing is not None:
+            self._instance_pool.ensure_from_record(existing)
+            self._agent_repo.upsert_instance(
+                run_id=run_id,
+                trace_id=run_id,
+                session_id=session_id,
+                instance_id=existing.instance_id,
+                role_id=existing.role_id,
+                workspace_id=existing.workspace_id,
+                conversation_id=existing.conversation_id,
+                status=existing.status,
+            )
+            return existing.instance_id
+
+        instance = self._instance_pool.create_subagent(role_id, session_id=session_id)
+        self._agent_repo.upsert_instance(
+            run_id=run_id,
+            trace_id=run_id,
+            session_id=session_id,
+            instance_id=instance.instance_id,
+            role_id=instance.role_id,
+            workspace_id=instance.workspace_id,
+            conversation_id=instance.conversation_id,
+            status=InstanceStatus.IDLE,
+        )
+        return instance.instance_id
+
+    def _assert_instance_available(self, *, task: TaskRecord, instance_id: str) -> None:
+        blocking_statuses = {
+            TaskStatus.ASSIGNED,
+            TaskStatus.RUNNING,
+            TaskStatus.STOPPED,
+        }
+        for candidate in self._task_repo.list_by_session(task.envelope.session_id):
+            if candidate.envelope.task_id == task.envelope.task_id:
+                continue
+            if candidate.assigned_instance_id != instance_id:
+                continue
+            if candidate.status not in blocking_statuses:
+                continue
+            raise ValueError(
+                "role instance is busy; finish or resume the existing task before dispatching another task for this role"
+            )
 
     def _get_root_task(self, run_id: str) -> TaskRecord:
         for record in self._task_repo.list_by_trace(run_id):

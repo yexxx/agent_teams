@@ -38,6 +38,9 @@ export async function selectSession(sessionId) {
     state.activeAgentInstanceId = null;
     state.autoSwitchedSubagentInstances = {};
     state.pausedSubagent = null;
+    state.sessionAgents = [];
+    state.sessionTasks = [];
+    state.selectedRoleId = null;
     clearSessionRecovery();
 
     document.querySelectorAll('.session-item').forEach(el => {

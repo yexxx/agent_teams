@@ -46,6 +46,11 @@ CREATE INDEX IF NOT EXISTS idx_agent_instances_run_status
 
 Purpose: runtime snapshot of agent instances.
 
+Notes:
+- Runtime semantics are session-level: one delegated role instance is reused across all tasks in the same session.
+- `run_id` / `trace_id` are last-observed execution metadata, not uniqueness keys.
+- New dispatches for the same `session_id + role_id` reuse the existing row instead of creating a new instance.
+
 `status` values:
 - `idle`
 - `running`

@@ -468,13 +468,25 @@ class CoordinatorGraph(BaseModel):
         root_task: TaskEnvelope,
     ) -> str:
         _ = self.role_registry.get(ROLE_COORDINATOR)
-        existing_instance_id = self.agent_repo.get_coordinator_instance_id(session_id)
-        known_ids = {i.instance_id for i in self.instance_pool.list_instances()}
-        if existing_instance_id and existing_instance_id in known_ids:
-            coordinator_instance_id = existing_instance_id
+        existing = self.agent_repo.get_session_role_instance(
+            session_id, ROLE_COORDINATOR
+        )
+        if existing is not None:
+            coordinator_instance_id = existing.instance_id
+            _ = self.instance_pool.ensure_from_record(existing)
             _ = self.instance_pool.mark_idle(coordinator_instance_id)
             _ = self.agent_repo.mark_status(
                 coordinator_instance_id, InstanceStatus.IDLE
+            )
+            self.agent_repo.upsert_instance(
+                run_id=trace_id,
+                trace_id=trace_id,
+                session_id=session_id,
+                instance_id=coordinator_instance_id,
+                role_id=ROLE_COORDINATOR,
+                workspace_id=existing.workspace_id,
+                conversation_id=existing.conversation_id,
+                status=InstanceStatus.IDLE,
             )
             self.task_repo.update_status(
                 task_id=root_task.task_id,

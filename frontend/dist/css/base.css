@@ -121,10 +121,6 @@ body.light-theme {
     --settings-frame-padding: 1.1rem;
 }
 
-body.light-theme .dag-node {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
 /* Animations */
 @keyframes fadeIn {
     from {

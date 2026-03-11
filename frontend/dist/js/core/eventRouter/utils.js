@@ -4,8 +4,7 @@
  */
 import { state } from '../state.js';
 import { els } from '../../utils/dom.js';
-import { errorToPayload, logError, sysLog } from '../../utils/logger.js';
-import { renderNativeDAG } from '../../components/workflow.js';
+import { sysLog } from '../../utils/logger.js';
 import { dispatchHumanTask } from '../api.js';
 
 export const COORDINATOR_ROLE = 'coordinator_agent';
@@ -19,45 +18,6 @@ export function coordinatorContainerFor(eventMeta) {
     const latest = els.chatMessages?.querySelector('.session-round-section:last-of-type');
     if (latest) return latest;
     return els.chatMessages;
-}
-
-export function tryRenderLiveDAG(result) {
-    try {
-        let envelope = typeof result === 'string' ? JSON.parse(result) : result;
-        if (!envelope) return;
-        if (envelope.ok === false) return;
-        let data = envelope.data !== undefined ? envelope.data : envelope;
-        if (typeof data === 'string') {
-            data = JSON.parse(data);
-        }
-        if (!data || !data.ok || !data.tasks) return;
-
-        const taskMap = {};
-        const tasksArr = Array.isArray(data.tasks) ? data.tasks : Object.values(data.tasks);
-        for (const t of tasksArr) {
-            taskMap[t.task_name || t.task_id] = {
-                task_id: t.task_id,
-                role_id: t.role_id,
-                depends_on: t.depends_on || [],
-            };
-        }
-
-        const workflow = { tasks: taskMap, workflow_id: data.workflow_id };
-
-        const panel = document.getElementById('workflow-panel');
-        if (panel) panel.style.display = 'flex';
-        const collapsed = document.getElementById('workflow-collapsed');
-        if (collapsed) collapsed.style.display = 'none';
-
-        renderNativeDAG(workflow);
-        sysLog(`Live DAG rendered (${Object.keys(taskMap).length} tasks)`);
-    } catch (e) {
-        logError(
-            'frontend.workflow.render_live_failed',
-            'Failed to render live DAG',
-            errorToPayload(e),
-        );
-    }
 }
 
 export function renderHumanDispatchPanel(payload) {
@@ -78,7 +38,7 @@ export function renderHumanDispatchPanel(payload) {
     `).join('');
 
     panel.innerHTML = `
-        <div class="dispatch-header">Human orchestration - choose next sub-task</div>
+        <div class="dispatch-header">Human orchestration - choose next task</div>
         ${taskRows || '<div class="dispatch-empty">(No pending tasks)</div>'}
     `;
 

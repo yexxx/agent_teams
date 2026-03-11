@@ -7,9 +7,12 @@ import {
     markRunStreamConnected,
     markRunTerminalState,
 } from '../../app/recovery.js';
+import {
+    markSubagentStatus,
+    rememberLiveSubagent,
+} from '../../components/subagentRail.js';
 import { els } from '../../utils/dom.js';
 import { sysLog } from '../../utils/logger.js';
-import { updateDagActiveNode } from '../../components/workflow.js';
 import {
     appendStreamChunk,
     finalizeStream,
@@ -33,7 +36,6 @@ export function handleRunStarted(eventMeta) {
     }
     state.activeAgentRoleId = COORDINATOR_ROLE;
     state.activeAgentInstanceId = null;
-    updateDagActiveNode();
 }
 
 export function handleModelStepStarted(instanceId, roleId) {
@@ -44,6 +46,7 @@ export function handleModelStepStarted(instanceId, roleId) {
         state.instanceRoleMap[instanceId] = roleId;
         state.roleInstanceMap[roleId] = instanceId;
         if (roleId !== COORDINATOR_ROLE) {
+            rememberLiveSubagent(instanceId, roleId);
             getPanelScrollContainer(instanceId, roleId);
             if (!state.autoSwitchedSubagentInstances[instanceId]) {
                 state.autoSwitchedSubagentInstances[instanceId] = true;
@@ -53,7 +56,6 @@ export function handleModelStepStarted(instanceId, roleId) {
     }
     state.activeAgentRoleId = roleId;
     state.activeAgentInstanceId = instanceId || null;
-    updateDagActiveNode();
 }
 
 export function handleTextDelta(payload, eventMeta, instanceId, roleId) {
@@ -80,11 +82,13 @@ export function handleTextDelta(payload, eventMeta, instanceId, roleId) {
 export function handleModelStepFinished(instanceId) {
     const key = instanceId || 'coordinator';
     finalizeStream(key, instanceId ? '' : COORDINATOR_ROLE);
+    if (instanceId) {
+        markSubagentStatus(instanceId, 'completed');
+    }
     if (!instanceId || state.activeAgentInstanceId === instanceId) {
         state.activeAgentInstanceId = null;
         state.activeAgentRoleId = null;
     }
-    updateDagActiveNode();
 }
 
 export function handleRunCompleted() {
@@ -109,11 +113,13 @@ export function handleRunCompleted() {
         els.promptInput.focus();
     }
     finalizeStream('coordinator');
-    updateDagActiveNode();
 }
 
 export function handleRunStopped(payload) {
     sysLog(`Run stopped: ${payload?.reason || 'stopped_by_user'}`, 'log-info');
+    if (state.activeAgentInstanceId) {
+        markSubagentStatus(state.activeAgentInstanceId, 'stopped');
+    }
     if (state.activeRunId) {
         markRunTerminalState(state.activeRunId, {
             status: 'stopped',
@@ -135,11 +141,13 @@ export function handleRunStopped(payload) {
         els.promptInput.focus();
     }
     finalizeStream('coordinator');
-    updateDagActiveNode();
 }
 
 export function handleRunFailed(payload) {
     sysLog(`Run failed: ${payload?.error || ''}`, 'log-error');
+    if (state.activeAgentInstanceId) {
+        markSubagentStatus(state.activeAgentInstanceId, 'failed');
+    }
     if (state.activeRunId) {
         markRunTerminalState(state.activeRunId, {
             status: 'failed',
@@ -156,5 +164,4 @@ export function handleRunFailed(payload) {
         els.stopBtn.style.display = 'none';
     }
     if (els.promptInput) els.promptInput.disabled = false;
-    updateDagActiveNode();
 }

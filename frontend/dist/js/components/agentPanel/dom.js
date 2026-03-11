@@ -1,6 +1,6 @@
 /**
  * components/agentPanel/dom.js
- * DOM helpers for agent drawer and DAG highlight state.
+ * DOM helpers for the session-level subagent panel.
  */
 export function getDrawer() {
     return document.getElementById('agent-drawer');
@@ -22,23 +22,4 @@ export function closeDrawerUi() {
     if (drawer) drawer.classList.remove('open');
     const card = getSubagentCard();
     if (card) card.classList.remove('open');
-}
-
-export function clearDagNodeHighlight() {
-    document.querySelectorAll('.dag-node').forEach(n => n.classList.remove('active-tab'));
-}
-
-export function highlightNode(roleId, instanceId) {
-    document.querySelectorAll('.dag-node').forEach(n => {
-        n.classList.remove('active-tab');
-        if (instanceId) {
-            if (n.dataset.instanceId === instanceId) {
-                n.classList.add('active-tab');
-            }
-            return;
-        }
-        if (roleId && n.dataset.role === roleId) {
-            n.classList.add('active-tab');
-        }
-    });
 }

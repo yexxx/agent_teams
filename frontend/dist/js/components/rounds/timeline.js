@@ -5,7 +5,7 @@
 import { els } from '../../utils/dom.js';
 import { state } from '../../core/state.js';
 import { fetchRunTokenUsage } from '../../core/api.js';
-import { clearAllPanels, setRoundPendingApprovals } from '../agentPanel.js';
+import { setRoundPendingApprovals } from '../agentPanel.js';
 import {
     clearAllStreamState,
     getCoordinatorStreamOverlay,
@@ -15,7 +15,6 @@ import { renderRoundNavigator, setActiveRoundNav } from './navigator.js';
 import { applyRoundPage, fetchInitialRoundsPage, fetchOlderRoundsPage } from './paging.js';
 import { roundsState } from './state.js';
 import { roundSectionId, esc, roundStateLabel, roundStateTone } from './utils.js';
-import { updateWorkflowByRound } from './workflow.js';
 import { errorToPayload, logError } from '../../utils/logger.js';
 
 export let currentRounds = [];
@@ -49,7 +48,6 @@ export function createLiveRound(runId, intentText) {
                 created_at: new Date().toISOString(),
                 intent: intentText,
                 coordinator_messages: [],
-                workflows: [],
                 instance_role_map: {},
                 role_instance_map: {},
                 run_status: 'running',
@@ -138,7 +136,6 @@ export function overlayRoundRecoveryState(runId, overlay = {}) {
             ? nextRound.pending_tool_approvals
             : [];
         setRoundPendingApprovals(safeRunId, pendingApprovals);
-        updateWorkflowByRound(nextRound);
     }
 }
 
@@ -160,7 +157,6 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
     const oldScroll = container.scrollTop;
     container.innerHTML = '';
 
-    clearAllPanels();
     clearAllStreamState();
     roundsState.activeRunId = null;
     roundsState.activeVisibility = 0;
@@ -175,7 +171,6 @@ function renderSessionTimeline(rounds, opts = { preserveScroll: true }) {
         roundsState.activeRunId = null;
         setRoundPendingApprovals('', [], {});
         renderRoundNavigator([], selectRound);
-        updateWorkflowByRound(null);
         container.innerHTML = `
             <div class="system-intro">
                 <div class="intro-icon">🛸</div>
@@ -332,7 +327,6 @@ function activateRoundSection(section, visibleScore) {
     syncExportedState();
 
     setActiveRoundNav(runId);
-    updateWorkflowByRound(roundsState.currentRound);
 }
 
 async function loadOlderRounds() {

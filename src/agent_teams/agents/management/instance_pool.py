@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from agent_teams.agents.enums import InstanceStatus
 from agent_teams.agents.ids import new_instance_id
 from agent_teams.agents.models import SubAgentInstance
+from agent_teams.agents.models import AgentRuntimeRecord
 from agent_teams.workspace import (
     build_conversation_id,
     build_instance_conversation_id,
@@ -105,6 +106,36 @@ class InstancePool:
             if instance.instance_id == instance_id:
                 return instance
         raise KeyError(f"Unknown instance_id: {instance_id}")
+
+    def ensure_from_record(self, record: AgentRuntimeRecord) -> SubAgentInstance:
+        for idx, instance in enumerate(self._instances):
+            if instance.instance_id != record.instance_id:
+                continue
+            updated = instance.model_copy(
+                update={
+                    "role_id": record.role_id,
+                    "workspace_id": record.workspace_id,
+                    "conversation_id": record.conversation_id,
+                    "status": record.status,
+                    "created_at": record.created_at,
+                    "last_active_at": record.updated_at,
+                }
+            )
+            self._instances[idx] = updated
+            return updated
+
+        instance = SubAgentInstance(
+            instance_id=record.instance_id,
+            role_id=record.role_id,
+            workspace_id=record.workspace_id or build_workspace_id(record.session_id),
+            conversation_id=record.conversation_id
+            or build_conversation_id(record.session_id, record.role_id),
+            status=record.status,
+            created_at=record.created_at,
+            last_active_at=record.updated_at,
+        )
+        self._instances.append(instance)
+        return instance
 
     def cleanup_idle(self, idle_ttl_seconds: int) -> tuple[str, ...]:
         cutoff = datetime.now(tz=timezone.utc) - timedelta(seconds=idle_ttl_seconds)

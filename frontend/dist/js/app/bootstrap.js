@@ -3,7 +3,7 @@
  * UI bindings and application startup sequence.
  */
 import { initSettings, openSettings } from '../components/settings.js';
-import { toggleWorkflow } from '../components/rounds.js';
+import { initializeSubagentRail } from '../components/subagentRail.js';
 import { handleNewSessionClick, loadSessions } from '../components/sidebar.js';
 import { setupNavbarBindings } from '../components/navbar.js';
 import { primeNotificationPermission } from '../utils/notifications.js';
@@ -53,9 +53,6 @@ export function setupEventBindings(handleSend) {
         };
     }
     if (els.newSessionBtn) els.newSessionBtn.onclick = () => handleNewSessionClick(true);
-    if (els.workflowCollapsed) els.workflowCollapsed.onclick = toggleWorkflow;
-    if (els.collapseWorkflowBtn) els.collapseWorkflowBtn.onclick = toggleWorkflow;
-
     document.addEventListener('run-approval-resolved', (event) => {
         const runId = event?.detail?.runId;
         if (!runId || typeof runId !== 'string') return;
@@ -79,6 +76,7 @@ export async function initApp(selectSession, handleSend) {
     logInfo('frontend.bootstrap.started', 'Frontend bootstrap started');
     sysLog('System Initialized');
     setupNavbarBindings();
+    initializeSubagentRail();
     setupEventBindings(handleSend);
     initSettings();
     setupSettingsButton();

@@ -290,21 +290,6 @@
     color: var(--text-secondary);
 }
 
-.workflow-select {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    padding: 0.3rem 0.6rem;
-    border-radius: var(--radius-md);
-    font-size: 0.8125rem;
-    outline: none;
-    cursor: pointer;
-}
-
-.workflow-select:hover {
-    border-color: var(--text-secondary);
-}
-
 .agent-tabs {
     display: flex;
     overflow-x: auto;
@@ -348,7 +333,7 @@
     border-bottom-color: var(--primary);
 }
 
-/* Hide dynamically added agent tabs - we use the DAG graph nodes for navigation now */
+/* Hide dynamically added agent tabs. Session-level role selection lives in the right rail. */
 .agent-tab:not([data-target="main"]) {
     display: none !important;
 }
@@ -783,11 +768,6 @@
 
 .round-messages {
     margin-bottom: 1rem;
-}
-
-.round-workflow {
-    border-top: 1px solid var(--border-color);
-    padding-top: 1rem;
 }
 
 .round-messages .message {
@@ -1293,85 +1273,14 @@
     padding: 0.65rem 0.9rem;
 }
 
-.workflow-float-card {
-    position: absolute;
-    right: 1rem;
-    top: 12rem;
-    width: 330px;
-    max-height: 40%;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    background: var(--bg-surface-glass);
-    backdrop-filter: blur(6px);
-    box-shadow: var(--shadow-md);
-    z-index: 8;
-}
-
-.workflow-float-card .workflow-panel {
-    margin: 0;
-    border: none;
-    border-radius: inherit;
-    background: transparent;
-    max-height: 100%;
-    padding: 0.45rem 0.55rem;
-    border-top: none;
-}
-
-.workflow-float-card .workflow-header {
-    margin-bottom: 0.25rem;
-}
-
-.workflow-float-card .workflow-header h4 {
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
-}
-
-.workflow-float-card .workflow-canvas {
-    min-height: 130px;
-    max-height: 240px;
-    padding: 0.15rem 0;
-    overflow-x: hidden;
-}
-
-.workflow-panel-floating .dag-container {
-    width: 100%;
-    min-width: 0;
-    gap: 1rem;
-    padding: 0.6rem;
-}
-
-.workflow-panel-floating .dag-node {
-    min-width: 90px;
-    padding: 0.45rem 0.6rem;
-}
-
-.workflow-panel-floating .node-title {
-    font-size: 0.72rem;
-}
-
-.workflow-panel-floating .node-role {
-    font-size: 0.62rem;
-}
-
 @media (max-width: 1200px) {
     .round-nav-float {
         width: 220px;
-    }
-
-    .workflow-float-card {
-        width: 280px;
     }
 }
 
 @media (max-width: 920px) {
     .round-nav-float {
-        display: none !important;
-    }
-
-    .workflow-float-card {
         display: none !important;
     }
 

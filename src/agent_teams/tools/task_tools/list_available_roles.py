@@ -11,7 +11,11 @@ def register(agent: Agent[ToolDeps, str]) -> None:
     @agent.tool
     async def list_available_roles(ctx: ToolContext) -> JsonObject:
         def _action() -> JsonObject:
-            roles = ctx.deps.role_registry.list_roles()
+            roles = [
+                role
+                for role in ctx.deps.role_registry.list_roles()
+                if role.role_id != "coordinator_agent"
+            ]
             return {
                 "ok": True,
                 "roles": [

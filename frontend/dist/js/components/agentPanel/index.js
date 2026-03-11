@@ -1,17 +1,11 @@
 /**
  * components/agentPanel/index.js
- * Public API for subagent drawer panels and gate cards.
+ * Public API for session-level subagent panels and gate cards.
  */
 import { resolveGate } from '../../core/api.js';
 import { state } from '../../core/state.js';
 import { parseMarkdown } from '../../utils/markdown.js';
-import {
-    clearDagNodeHighlight,
-    closeDrawerUi,
-    getDrawer,
-    highlightNode,
-    openDrawerUi,
-} from './dom.js';
+import { closeDrawerUi, getDrawer, openDrawerUi } from './dom.js';
 import { loadAgentHistory } from './history.js';
 import { createPanel } from './panelFactory.js';
 import {
@@ -37,24 +31,30 @@ function ensurePanel(instanceId, roleId) {
     return panel;
 }
 
-export function openAgentPanel(instanceId, roleId) {
+export function openAgentPanel(
+    instanceId,
+    roleId,
+    { reveal = false, forceRefresh = false } = {},
+) {
     const drawer = getDrawer();
     if (!drawer) return;
 
-    forEachPanel((p, id) => {
-        if (id !== instanceId) p.panelEl.style.display = 'none';
+    forEachPanel((panelRecord, currentId) => {
+        panelRecord.panelEl.style.display = currentId === instanceId ? 'flex' : 'none';
     });
 
     const existing = getPanel(instanceId);
     const panel = ensurePanel(instanceId, roleId);
     if (!panel) return;
-    const activeRunId = getActiveRoundRunId();
+    const activeRunId = state.activeRunId || getActiveRoundRunId();
     const shouldRefreshHistory = !!(
-        state.currentSessionId && (
-            !existing
-            || !state.isGenerating
+        state.currentSessionId
+        && (
+            forceRefresh
+            || !existing
             || panel.loadedSessionId !== (state.currentSessionId || '')
-            || panel.loadedRunId !== activeRunId
+            || panel.loadedRunId !== (activeRunId || '')
+            || !state.isGenerating
         )
     );
     if (shouldRefreshHistory) {
@@ -69,23 +69,27 @@ export function openAgentPanel(instanceId, roleId) {
 
     panel.panelEl.style.display = 'flex';
     setActiveInstanceId(instanceId);
-    openDrawerUi();
-    highlightNode(roleId, instanceId);
+    state.selectedRoleId = roleId || state.selectedRoleId;
+    const roleSelect = document.getElementById('subagent-role-select');
+    if (roleSelect && roleId) {
+        roleSelect.value = roleId;
+    }
+    if (reveal) {
+        openDrawerUi();
+    }
 }
 
 export function closeAgentPanel() {
     closeDrawerUi();
     setActiveInstanceId(null);
-    clearDagNodeHighlight();
 }
 
 export function clearAllPanels() {
     if (!getDrawer()) return;
-    forEachPanel(p => p.panelEl.remove());
+    forEachPanel(panel => panel.panelEl.remove());
     clearPanels();
     setActiveRoundContext('', []);
     setActiveInstanceId(null);
-    closeDrawerUi();
 }
 
 export function getPanelScrollContainer(instanceId, roleId) {
@@ -94,11 +98,11 @@ export function getPanelScrollContainer(instanceId, roleId) {
 }
 
 export function showGateCard(instanceId, roleId, gatePayload) {
-    openAgentPanel(instanceId, roleId);
+    openAgentPanel(instanceId, roleId, { reveal: true, forceRefresh: false });
     const panel = getPanel(instanceId);
     if (!panel) return;
 
-    panel.scrollEl.querySelectorAll('.gate-card').forEach(c => c.remove());
+    panel.scrollEl.querySelectorAll('.gate-card').forEach(card => card.remove());
     const { run_id, task_id, summary, role_id } = gatePayload;
 
     const card = document.createElement('div');
@@ -119,11 +123,15 @@ export function showGateCard(instanceId, roleId, gatePayload) {
     `;
 
     async function doResolve(action, feedback = '') {
-        card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        card.querySelectorAll('button').forEach(button => {
+            button.disabled = true;
+        });
         try {
             await resolveGate(run_id || state.activeRunId, task_id, action, feedback);
         } catch (e) {
-            card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+            card.querySelectorAll('button').forEach(button => {
+                button.disabled = false;
+            });
         }
     }
 
@@ -160,5 +168,5 @@ export function setRoundPendingApprovals(runId, pendingApprovals) {
     setActiveRoundContext(runId, pendingApprovals);
 }
 
-export { getActiveInstanceId, getPanels, getActiveRoundRunId } from './state.js';
+export { getActiveInstanceId, getActiveRoundRunId, getPanels } from './state.js';
 export { loadAgentHistory } from './history.js';

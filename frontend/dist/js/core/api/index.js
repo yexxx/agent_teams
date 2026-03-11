@@ -10,7 +10,7 @@ export {
     fetchSessionRecovery,
     fetchSessionRounds,
     fetchSessions,
-    fetchSessionWorkflows,
+    fetchSessionTasks,
     startNewSession,
 } from './sessions.js';
 

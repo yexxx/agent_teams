@@ -16,6 +16,10 @@ export const state = {
     taskStatusMap: {}, // taskId -> task status
     autoSwitchedSubagentInstances: {}, // instanceId -> true, auto-opened once per run
     currentRecoverySnapshot: null,
+    sessionAgents: [],
+    sessionTasks: [],
+    selectedRoleId: null,
+    rightRailExpanded: true,
 };
 
 export const els = {
@@ -30,7 +34,10 @@ export const els = {
     toggleInspector: document.getElementById('toggle-inspector'),
     inspectorPanel: document.getElementById('rail-inspector'),
     toggleSidebar: document.getElementById('toggle-sidebar'),
-    sidebar: document.querySelector('.sidebar')
+    sidebar: document.querySelector('.sidebar'),
+    toggleSubagents: document.getElementById('toggle-subagents'),
+    rightRail: document.getElementById('right-rail'),
+    rightRailResizer: document.getElementById('right-rail-resizer'),
 };
 
 // Configure Marked.js for Markdown parsing

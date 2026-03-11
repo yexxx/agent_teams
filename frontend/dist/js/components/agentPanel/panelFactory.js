@@ -11,6 +11,7 @@ import { getDrawer } from './dom.js';
 export function createPanel(instanceId, roleId, onClose) {
     const drawer = getDrawer();
     if (!drawer) return null;
+    void onClose;
 
     const panelEl = document.createElement('div');
     panelEl.className = 'agent-panel';
@@ -30,7 +31,6 @@ export function createPanel(instanceId, roleId, onClose) {
             </div>
             <div class="agent-token-usage" data-instance-id="${instanceId}"></div>
             <button class="agent-panel-stop" title="Stop this subagent">Stop</button>
-            <button class="agent-panel-close" title="Close">x</button>
         </div>
         <div class="agent-panel-scroll"></div>
         <div class="agent-panel-input">
@@ -43,8 +43,6 @@ export function createPanel(instanceId, roleId, onClose) {
         </div>
     `;
 
-    const closeBtn = panelEl.querySelector('.agent-panel-close');
-    if (closeBtn) closeBtn.onclick = onClose;
     const stopBtn = panelEl.querySelector('.agent-panel-stop');
     if (stopBtn) {
         stopBtn.onclick = async () => {
